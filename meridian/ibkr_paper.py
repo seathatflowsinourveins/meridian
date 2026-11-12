@@ -14,8 +14,10 @@ Order of events in every run (the checks are described in ``meridian.boundary``)
      on the paper port;
   3. ask the Gateway which accounts it manages, and refuse unless that is exactly one
      account of the paper form (and on the allowlist, if there is one);
-  4. in order mode, refuse unless a person at a terminal types the confirmation word;
-  5. only then build and run the node, with the account the Gateway reported;
+  4. in order mode, refuse unless a person at a terminal types the confirmation word, then
+     run every check again and refuse if anything changed while the prompt waited;
+  5. only then build and run the node, with the account the Gateway reported; the engine's
+     own output goes to a local log in ``runs/``, not to the terminal;
   6. run every check again after the run, and write no evidence if anything changed.
 
 A run passes only on the path M1 uses: the order is accepted, then cancelled without a
@@ -267,14 +269,37 @@ def main(argv: list[str] | None = None) -> int:
         "Paper checks passed: the Gateway's jts.ini says Paper Trading, the Gateway listens "
         f"only on port {bounds.port}, and it reports one account of the paper form{allowlisted}."
     )
+    try:
+        contract = boundary.CONTRACT_PATH.relative_to(boundary.REPO_ROOT)
+    except ValueError:  # a contract path outside the repository (tests use one)
+        contract = boundary.CONTRACT_PATH
+    if bounds.paper_accounts_sha256 is None:
+        print(f"Allowlist: none (no file at {contract}).")
+    else:
+        print(f"Allowlist: {contract}.")
 
-    if args.mode == "order" and not owner_confirms():
-        print(
-            "REFUSED TO START: order mode needs the owner at a terminal, typing "
-            f"{CONFIRM_WORD} to confirm.",
-            file=sys.stderr,
-        )
-        return 2
+    if args.mode == "order":
+        if not owner_confirms():
+            print(
+                "REFUSED TO START: order mode needs the owner at a terminal, typing "
+                f"{CONFIRM_WORD} to confirm.",
+                file=sys.stderr,
+            )
+            return 2
+        # The prompt can wait for any length of time: check everything again, right before
+        # the engine connects, and refuse unless nothing changed (the same Gateway process
+        # and socket, login mode, account and contract).
+        try:
+            bounds_now, account_now = gate()
+        except (boundary.BoundaryError, ib_probe.ProbeError) as e:
+            print(f"REFUSED TO START: after the confirmation, {e}", file=sys.stderr)
+            return 2
+        if (bounds_now, account_now) != (bounds, account):
+            print(
+                "REFUSED TO START: the Gateway changed while the confirmation was pending.",
+                file=sys.stderr,
+            )
+            return 2
     return _run_node(args.mode, bounds, account)
 
 

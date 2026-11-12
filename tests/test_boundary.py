@@ -164,6 +164,43 @@ def test_a_contract_that_is_a_directory_is_refused(tmp_path):
         boundary.load_contract(path)
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can search any folder")
+def test_a_contract_folder_that_cannot_be_searched_is_refused_not_skipped(tmp_path):
+    folder = tmp_path / "risk"
+    folder.mkdir()
+    write_contract(folder)
+    folder.chmod(0)
+    try:
+        with pytest.raises(boundary.BoundaryError):
+            boundary.load_contract(folder / "boundary.contract.json")
+    finally:
+        folder.chmod(0o700)
+
+
+def test_a_file_where_the_contract_folder_should_be_is_refused(tmp_path):
+    (tmp_path / "risk").write_text("not a folder", encoding="utf-8")
+    with pytest.raises(boundary.BoundaryError):
+        boundary.load_contract(tmp_path / "risk" / "boundary.contract.json")
+
+
+def test_a_broken_link_where_the_contract_folder_should_be_is_refused(tmp_path):
+    os.symlink(tmp_path / "missing-folder", tmp_path / "risk")
+    with pytest.raises(boundary.BoundaryError, match="broken link"):
+        boundary.load_contract(tmp_path / "risk" / "boundary.contract.json")
+
+
+def test_a_link_to_a_real_folder_without_a_contract_means_no_allowlist(tmp_path):
+    (tmp_path / "real").mkdir()
+    os.symlink(tmp_path / "real", tmp_path / "risk")
+    b = boundary.load_contract(tmp_path / "risk" / "boundary.contract.json")
+    assert b.paper_accounts_sha256 is None
+
+
+def test_no_contract_folder_at_all_means_no_allowlist(tmp_path):
+    b = boundary.load_contract(tmp_path / "risk" / "boundary.contract.json")
+    assert b.paper_accounts_sha256 is None
+
+
 def test_malformed_contract_is_refused(tmp_path):
     path = tmp_path / "boundary.contract.json"
     path.write_text("{not json", encoding="utf-8")
@@ -217,6 +254,8 @@ def test_the_fixed_target_and_the_gateway_paths():
     assert Path.home() / "Jts" / "jts.ini" == boundary.JTS_INI
     assert Path.home() / "Jts" / "ibgateway" == boundary.GATEWAY_DIR
     assert boundary.PAPER_TRADING_MODE == "p"
+    # The allowlist is read from exactly this place, which git ignores (tests/test_public_tree.py).
+    assert boundary.REPO_ROOT / "risk" / "boundary.contract.json" == boundary.CONTRACT_PATH
 
 
 # --- check 1: the Gateway's jts.ini says Paper Trading ---------------------------------------
@@ -258,6 +297,10 @@ def test_a_paper_login_passes(tmp_path, text):
         "[Logon]\ntradingMode=p\nTradingMode=l\n",  # the key twice, paper first
         "[Logon]\ntradingMode=l\ntradingMode=p\n",  # the key twice, paper last
         "[Logon]\ntradingMode=p\n[Logon]\nLocale=en\n",  # the section twice
+        "[Logon]\ntradingMode=p\n[LOGON]\ntradingMode=l\n",  # the section twice, other case
+        "[Logon]\ntradingMode=p\n[LOGON]\nLocale=en\n",  # a look-alike section, no key in it
+        "[ Logon ]\ntradingMode=p\n",  # a look-alike section name
+        "[Logon]\ntradingMode=p\n[IBGateway]\ntradingMode=l\n",  # the key in another section too
         "tradingMode=p\n",  # no section
         "",
         "not a settings file\n",
@@ -294,10 +337,11 @@ def tcp_row(n: int, port: int, state: str, inode: int, v6: bool = False) -> str:
     )
 
 
-def fake_proc(root: Path, processes, tcp=(), tcp6=None) -> Path:
+def fake_proc(root: Path, processes, tcp=(), tcp6=None, start: int = 1000) -> Path:
     """processes: [(exe, [socket inodes])]; tcp, tcp6: [(port, state, inode)], None = absent.
 
-    Process numbers start at 100, in the order given.
+    Process numbers start at 100, in the order given; each process started at ``start`` plus
+    its number (clock ticks, field 22 of /proc/<pid>/stat).
     """
     proc = root / "proc"
     (proc / "net").mkdir(parents=True)
@@ -310,6 +354,9 @@ def fake_proc(root: Path, processes, tcp=(), tcp6=None) -> Path:
         fd = proc / str(pid) / "fd"
         fd.mkdir(parents=True)
         os.symlink(exe, proc / str(pid) / "exe")
+        # The name holds a space and a ")" on purpose: the parser must split after the last ")".
+        stat_fields = ["S"] + ["0"] * 18 + [str(start + pid), "0", "0"]
+        (proc / str(pid) / "stat").write_text(f"{pid} (java) x) {' '.join(stat_fields)}\n")
         for n, inode in enumerate(inodes):
             os.symlink(f"socket:[{inode}]", fd / str(n))
         os.symlink("/dev/null", fd / str(len(inodes)))  # an open file that is not a socket
@@ -320,6 +367,34 @@ def fake_proc(root: Path, processes, tcp=(), tcp6=None) -> Path:
 def gw(tmp_path):
     gateway_dir = (tmp_path / "Jts" / "ibgateway").resolve()
     return gateway_dir, str(gateway_dir / "1050" / "jre" / "bin" / "java")
+
+
+def test_the_gateway_identity_names_its_process_start_and_socket(tmp_path, gw):
+    gateway_dir, java = gw
+    proc = fake_proc(tmp_path, [(java, [11])], tcp=[(4002, LISTEN, 11)], start=5000)
+    ports, identity = boundary.gateway_listening(proc, gateway_dir)
+    assert ports == {4002}
+    assert identity == {"process 100 started 5100", "socket 11 port 4002"}
+
+
+def test_a_restarted_gateway_has_another_identity(tmp_path, gw):
+    gateway_dir, java = gw
+    first = boundary.gateway_listening(
+        fake_proc(tmp_path / "a", [(java, [11])], tcp=[(4002, LISTEN, 11)], start=5000), gateway_dir
+    )
+    later = boundary.gateway_listening(
+        fake_proc(tmp_path / "b", [(java, [12])], tcp=[(4002, LISTEN, 12)], start=9000), gateway_dir
+    )
+    assert first[0] == later[0] == {4002}
+    assert first[1] != later[1]
+
+
+def test_a_gateway_process_whose_start_cannot_be_read_is_refused(tmp_path, gw):
+    gateway_dir, java = gw
+    proc = fake_proc(tmp_path, [(java, [11])], tcp=[(4002, LISTEN, 11)])
+    (proc / "100" / "stat").unlink()
+    with pytest.raises(boundary.BoundaryError, match="start time"):
+        boundary.gateway_listening(proc, gateway_dir)
 
 
 def test_the_gateway_on_the_paper_port_is_seen(tmp_path, gw):
@@ -421,7 +496,11 @@ def paper_state(tmp_path, monkeypatch):
     checks at a stand-in Gateway.
     """
     state = SimpleNamespace(
-        jts=write_jts(tmp_path, JTS_PAPER), extra_ports=set(), running=True, use=None
+        jts=write_jts(tmp_path, JTS_PAPER),
+        extra_ports=set(),
+        running=True,
+        identity={"process 100 started 5100"},  # change it to stand in for a Gateway restart
+        use=None,
     )
     monkeypatch.setattr(boundary, "JTS_INI", state.jts)
     monkeypatch.setattr(boundary, "CONTRACT_PATH", tmp_path / "no-contract.json")
@@ -431,12 +510,12 @@ def paper_state(tmp_path, monkeypatch):
         monkeypatch.setattr(boundary, "PAPER_PORT", gateway.port)
         monkeypatch.setattr(boundary, "PAPER_PORTS", frozenset({gateway.port}))
 
-        def listen_ports(proc=None, gateway_dir=None) -> frozenset[int]:
+        def listening(proc=None, gateway_dir=None) -> tuple[frozenset[int], frozenset[str]]:
             if not state.running:
                 raise boundary.BoundaryError("the IB Gateway installed in (test) is not running")
-            return frozenset({gateway.port, *state.extra_ports})
+            return frozenset({gateway.port, *state.extra_ports}), frozenset(state.identity)
 
-        monkeypatch.setattr(boundary, "gateway_listen_ports", listen_ports)
+        monkeypatch.setattr(boundary, "gateway_listening", listening)
 
     state.use = use
     return state
@@ -753,6 +832,58 @@ def test_order_mode_goes_on_only_when_the_owner_types_the_word(lane, monkeypatch
     assert reached == ([PAPER] if exit_code == 0 else [])
 
 
+def confirm_after(change):
+    """An owner_confirms stand-in: something changes while the prompt waits, then PAPER."""
+
+    def confirms() -> bool:
+        change()
+        return True
+
+    return confirms
+
+
+@pytest.mark.parametrize("change", ["live", "extra-port", "restarted", "other-account"])
+def test_order_mode_checks_everything_again_after_the_confirmation(
+    lane, paper_state, monkeypatch, capsys, change
+):
+    start, reached = lane
+    later = NOT_LISTED if change == "other-account" else None
+    with FakeGateway(PAPER, later_accounts=later) as gateway:
+        changes = {
+            "live": lambda: paper_state.jts.write_text(JTS_LIVE, encoding="utf-8"),
+            "extra-port": lambda: paper_state.extra_ports.add(5000),
+            "restarted": lambda: paper_state.identity.symmetric_difference_update(
+                {"process 100 started 5100", "process 200 started 9200"}
+            ),
+            "other-account": lambda: None,  # the Gateway reports another account the 2nd time
+        }
+        monkeypatch.setattr(ibkr_paper, "owner_confirms", confirm_after(changes[change]))
+        assert start(gateway, "order", confirm=False) == 2
+    assert reached == []  # the engine side was never entered
+    assert "REFUSED TO START" in capsys.readouterr().err
+
+
+def test_order_mode_goes_on_when_nothing_changed_during_the_confirmation(lane, monkeypatch):
+    start, reached = lane
+    monkeypatch.setattr(ibkr_paper, "owner_confirms", confirm_after(lambda: None))
+    with FakeGateway(PAPER) as gateway:
+        assert start(gateway, "order", confirm=False) == 0
+        assert gateway.sessions == 2  # asked before the prompt and again after it
+    assert reached == [PAPER]
+
+
+@pytest.mark.parametrize("listed", [None, (PAPER,)], ids=["no-contract", "contract"])
+def test_every_start_says_whether_an_allowlist_is_used(lane, capsys, listed):
+    start, _ = lane
+    with FakeGateway(PAPER) as gateway:
+        assert start(gateway, "restart", listed=listed) == 0
+    out = capsys.readouterr().out
+    if listed is None:
+        assert "Allowlist: none (no file at" in out
+    else:
+        assert "Allowlist: " in out and "none" not in out.split("Allowlist: ", 1)[1].split("\n")[0]
+
+
 def test_restart_mode_needs_no_confirmation(lane, monkeypatch, capsys):
     start, reached = lane
     monkeypatch.setattr(ibkr_paper, "owner_confirms", lambda: pytest.fail("asked in restart"))
@@ -887,6 +1018,20 @@ def test_no_evidence_when_the_gateway_opens_another_port_during_the_run(
     with FakeGateway(PAPER) as gateway:
         assert start(gateway, listed=listed) == 1
     assert not (tmp_path / "evidence").exists()
+
+
+def test_no_evidence_when_the_gateway_restarts_during_the_run(engine_stub, paper_state, tmp_path):
+    start, _, during = engine_stub
+    during.append(
+        lambda: paper_state.identity.symmetric_difference_update(
+            {"process 100 started 5100", "process 200 started 9200"}
+        )
+    )
+    with FakeGateway(PAPER) as gateway:
+        assert start(gateway) == 1
+    assert not (tmp_path / "evidence").exists()
+    (record,) = local_records(tmp_path)
+    assert record["boundary"]["paper_checks_passed_after_run"] is False
 
 
 def test_no_evidence_when_a_contract_appears_during_the_run(engine_stub, monkeypatch, tmp_path):

@@ -33,6 +33,7 @@ here contains an account id.
 from __future__ import annotations
 
 import configparser
+import dataclasses
 import getpass
 import hashlib
 import json
@@ -77,6 +78,9 @@ class IbkrBoundary:
     port: int
     # None when the owner has no contract: checks 1 to 3 decide alone.
     paper_accounts_sha256: frozenset[str] | None
+    # Which Gateway process and listening socket the checks saw. Compared before the engine
+    # connects and after the run, so a Gateway restart or a new socket in between refuses.
+    gateway_identity: frozenset[str] = frozenset()
 
 
 def account_hash(account_id: str) -> str:
@@ -94,10 +98,32 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return dict(pairs)
 
 
+def _no_contract_file(path: Path) -> bool:
+    """True only when the contract plainly does not exist. Any other doubt raises.
+
+    A folder that cannot be searched, a file or a broken link where the folder should be, or a
+    link loop is not "no contract": it refuses, so an allowlist the owner made is never skipped.
+    """
+    try:
+        os.lstat(path)
+        return False  # something is there: it must read as a valid contract
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        raise BoundaryError(f"cannot look up the boundary contract: {path}") from e
+    # The file is plainly missing. (A file, or a link to one, where the folder should be makes
+    # the lookup above fail with "not a directory", which already refused.) A broken link where
+    # the folder should be also reads as missing, so look for that one case.
+    folder = path.parent
+    if os.path.islink(folder) and not os.path.exists(folder):
+        raise BoundaryError(f"{folder} is a broken link")
+    return True
+
+
 def load_contract(path: Path | None = None) -> IbkrBoundary:
     """The owner's contract if there is one, else no allowlist. Raises on any doubt."""
     path = CONTRACT_PATH if path is None else path
-    if not os.path.lexists(path):
+    if _no_contract_file(path):
         return IbkrBoundary(host=GATEWAY_HOST, port=PAPER_PORT, paper_accounts_sha256=None)
     try:
         raw = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_keys)
@@ -150,6 +176,12 @@ def gateway_trading_mode(path: Path | None = None) -> str:
         parser.read_string(path.read_text(encoding="utf-8"), source=str(path))
     except (OSError, UnicodeError, configparser.Error) as e:
         raise BoundaryError(f"cannot read the IB Gateway's settings file {path}") from e
+    # Section names are compared exactly by configparser, so [Logon] and [LOGON] would both
+    # parse. Refuse anything but one plain [Logon], and a tradingMode anywhere else.
+    if [s for s in parser.sections() if s.strip().casefold() == "logon"] != ["Logon"]:
+        raise BoundaryError("the IB Gateway's settings file has no single plain [Logon] section")
+    if any(s != "Logon" and parser.has_option(s, "tradingMode") for s in parser.sections()):
+        raise BoundaryError("the IB Gateway's settings file states tradingMode outside [Logon]")
     value = parser.get("Logon", "tradingMode", fallback=None)
     if value is None:
         raise BoundaryError("the IB Gateway's settings file has no tradingMode under [Logon]")
@@ -191,10 +223,24 @@ def _listening_ports_by_inode(proc: Path) -> dict[str, int]:
     return found
 
 
-def gateway_listen_ports(
+def _process_start(entry: Path) -> str:
+    """The process's start time in clock ticks since boot (field 22 of /proc/<pid>/stat)."""
+    try:
+        text = (entry / "stat").read_text(encoding="ascii")
+        return text.rsplit(")", 1)[1].split()[19]  # the fields after "(name)" begin at field 3
+    except (OSError, UnicodeError, IndexError) as e:
+        raise BoundaryError("cannot read the IB Gateway's process start time") from e
+
+
+def gateway_listening(
     proc: Path | None = None, gateway_dir: Path | None = None
-) -> frozenset[int]:
-    """The TCP ports that processes of the installed IB Gateway listen on. Raises if none run."""
+) -> tuple[frozenset[int], frozenset[str]]:
+    """Ports the installed IB Gateway listens on, and which process and sockets those are.
+
+    The second value names each Gateway process by number and start time, and each listening
+    socket by inode, so a restarted Gateway or a re-opened socket shows up as a change.
+    Raises if no Gateway process runs.
+    """
     proc = PROC if proc is None else proc
     gateway_dir = GATEWAY_DIR if gateway_dir is None else gateway_dir
     prefix = str(gateway_dir.resolve()) + os.sep
@@ -205,6 +251,7 @@ def gateway_listen_ports(
         raise BoundaryError(f"cannot list {proc}") from e
     gateway_running = False
     ports: set[int] = set()
+    identity: set[str] = set()
     for entry in entries:
         if not entry.name.isdigit():
             continue
@@ -215,6 +262,7 @@ def gateway_listen_ports(
         if not exe.startswith(prefix):
             continue
         gateway_running = True
+        identity.add(f"process {entry.name} started {_process_start(entry)}")
         try:
             fds = list((entry / "fd").iterdir())
         except OSError as e:
@@ -225,29 +273,40 @@ def gateway_listen_ports(
             except OSError:
                 continue  # closed since the listing
             if target.startswith("socket:[") and target.endswith("]"):
-                port = listening.get(target[len("socket:[") : -1])
+                inode = target[len("socket:[") : -1]
+                port = listening.get(inode)
                 if port is not None:
                     ports.add(port)
+                    identity.add(f"socket {inode} port {port}")
     if not gateway_running:
         raise BoundaryError(f"the IB Gateway installed in {gateway_dir} is not running")
-    return frozenset(ports)
+    return frozenset(ports), frozenset(identity)
 
 
-def require_gateway_on_paper_port_only() -> None:
-    ports = gateway_listen_ports()
+def gateway_listen_ports(
+    proc: Path | None = None, gateway_dir: Path | None = None
+) -> frozenset[int]:
+    """The TCP ports that processes of the installed IB Gateway listen on. Raises if none run."""
+    return gateway_listening(proc, gateway_dir)[0]
+
+
+def require_gateway_on_paper_port_only() -> frozenset[str]:
+    """Refuse unless the Gateway listens on the paper port only; return what was seen."""
+    ports, identity = gateway_listening()
     if ports != PAPER_PORTS:
         shown = ", ".join(str(p) for p in sorted(ports)) or "no port"
         raise BoundaryError(
             f"the IB Gateway listens on {shown}; the lane needs it to listen on the paper port only"
         )
+    return identity
 
 
 def local_paper_checks(contract_path: Path | None = None) -> IbkrBoundary:
     """Checks 1, 2 and the optional contract. Reads local state only; no network."""
     bounds = load_contract(contract_path)
     require_paper_login()
-    require_gateway_on_paper_port_only()
-    return bounds
+    identity = require_gateway_on_paper_port_only()
+    return dataclasses.replace(bounds, gateway_identity=identity)
 
 
 # --- check 3: the account the Gateway reports -----------------------------------------------

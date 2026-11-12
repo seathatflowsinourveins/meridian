@@ -84,7 +84,10 @@ uv run python -m meridian.ibkr_paper restart    # reconcile only; places nothing
 `order` places one DAY LIMIT BUY of 1 share, 2% under the bid, and cancels it once the venue
 accepts it. A pass is "accepted, then cancelled, nothing filled". If the order ever fills, the
 run fails, the lane sends no second order, and the owner closes the share by hand.
-The terminal output of a run can show the account id; only `evidence/` is scrubbed.
+The engine's own output goes to `runs/…-engine.log`, which can show the account id and stays on
+this machine; the terminal shows only the lane's lines, and `evidence/` is scrubbed. In order
+mode every check runs again after PAPER is typed, and a change to the Gateway in the meantime
+(a restart, a re-login, another port) refuses.
 
 ## Dependencies
 

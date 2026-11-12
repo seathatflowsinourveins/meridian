@@ -23,8 +23,13 @@ the run is reported as a failure, and the owner closes the position by hand.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
+import traceback
+from collections.abc import Iterator
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from meridian import boundary
@@ -186,14 +191,55 @@ def build(mode: str, host: str, port: int, account: str, record: RunRecord) -> A
     return node
 
 
-def run(mode: str, host: str, port: int, account: str, record: RunRecord) -> None:
-    """Build the node and run it until it stops itself."""
-    node = build(mode, host, port, account, record)
-    schedule_node_stop(node, AUTO_STOP_SECONDS[mode])
+@contextlib.contextmanager
+def _output_to(path: Path) -> Iterator[None]:
+    """Send everything written to stdout and stderr, by Python or by the engine's Rust core
+    (file descriptors 1 and 2), to a local file, and restore both afterwards."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sys.stdout.flush()
+    sys.stderr.flush()
+    saved = (os.dup(1), os.dup(2))
+    log = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    stream = open(log, "w", buffering=1, encoding="utf-8", errors="replace", closefd=False)  # noqa: SIM115
+    old = (sys.stdout, sys.stderr)
     try:
-        node.run()
-    except KeyboardInterrupt:
-        record.engine_error("interrupted")
-    except Exception as e:  # a failed connection or reconciliation aborts startup with an error
-        record.engine_error(f"{type(e).__name__}: {e}")
-        print(f"The node stopped with an error: {type(e).__name__}: {e}", file=sys.stderr)
+        os.dup2(log, 1)
+        os.dup2(log, 2)
+        sys.stdout = sys.stderr = stream
+        yield
+    finally:
+        stream.flush()
+        sys.stdout, sys.stderr = old
+        os.dup2(saved[0], 1)
+        os.dup2(saved[1], 2)
+        stream.close()
+        for fd in (*saved, log):
+            os.close(fd)
+
+
+def run(mode: str, host: str, port: int, account: str, record: RunRecord) -> None:
+    """Build the node and run it until it stops itself.
+
+    The engine's own output can name the account, so it goes to a log in ``runs/`` (ignored by
+    git) and the terminal shows only the lane's lines.
+    """
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    log = boundary.REPO_ROOT / "runs" / f"M1-ibkr-paper-{stamp}-{mode}-engine.log"
+    shown = log.relative_to(boundary.REPO_ROOT)
+    record.local["engine_log"] = str(shown)
+    print(f"Engine output goes to {shown} (it can show the account id; it stays on this machine).")
+    failure = None
+    with _output_to(log):
+        try:
+            node = build(mode, host, port, account, record)
+            schedule_node_stop(node, AUTO_STOP_SECONDS[mode])
+            node.run()
+        except KeyboardInterrupt:
+            failure = "interrupted"
+        except Exception as e:  # a failed connection or reconciliation aborts with an error
+            failure = f"{type(e).__name__}: {e}"
+            traceback.print_exc()  # into the log
+    if failure is not None:
+        record.engine_error(failure)  # the text stays in runs/, never in evidence/
+        kind = failure.split(":", 1)[0]
+        print(f"The node stopped with an error ({kind}); details in {shown}.", file=sys.stderr)

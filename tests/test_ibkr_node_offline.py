@@ -7,13 +7,16 @@ The engine supports one node per process, so exactly one test here builds a real
 """
 
 import inspect
+import json
 import os
 import sys
 from types import SimpleNamespace
 
 import pytest
 
-from meridian import ibkr_paper
+from meridian import boundary, ibkr_paper
+
+FAKE = "DUFAKE0001"
 
 
 @pytest.fixture
@@ -100,3 +103,46 @@ def test_upstreams_helper_is_driven_as_the_lane_intends(clean_environ, monkeypat
     assert str(strategy.instrument_id) == "AAPL.XNAS"
     assert ("IB_V2_ENABLE_ORDER_SUBMISSION" in os.environ) == (mode == "order")
     assert os.environ["IB_V2_CLOSE_ON_STOP"] == "0"
+
+
+class TalkativeNode:
+    """Writes the account the way the engine can: to fds 1 and 2 directly, and through Python."""
+
+    def __init__(self, fail: bool) -> None:
+        self.fail = fail
+
+    def run(self) -> None:
+        os.write(1, f"AccountState(account_id=IB-{FAKE})\n".encode())
+        os.write(2, f"native stderr {FAKE}\n".encode())
+        print(f"python stdout {FAKE}")
+        print(f"python stderr {FAKE}", file=sys.stderr)
+        if self.fail:
+            raise RuntimeError(f"reconciliation failed for account {FAKE}")
+
+
+@pytest.mark.parametrize("fail", [False, True], ids=["clean-stop", "engine-error"])
+def test_engine_output_goes_to_the_local_log_not_the_terminal(tmp_path, monkeypatch, capfd, fail):
+    from meridian import ibkr_node
+
+    monkeypatch.setattr(boundary, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(ibkr_node, "build", lambda *a, **k: TalkativeNode(fail))
+    monkeypatch.setattr(ibkr_node, "schedule_node_stop", lambda node, seconds: None)
+    record = ibkr_paper.RunRecord("restart", 4002)
+
+    ibkr_node.run("restart", "127.0.0.1", 4002, FAKE, record)
+
+    out, err = capfd.readouterr()
+    assert FAKE not in out + err  # nothing the engine wrote reaches the terminal
+    assert "-engine.log" in out
+    (log,) = (tmp_path / "runs").glob("*-engine.log")
+    text = log.read_text(encoding="utf-8")
+    for piece in ("AccountState", "native stderr", "python stdout", "python stderr"):
+        assert piece in text
+    assert oct(log.stat().st_mode & 0o777) == "0o600"
+    assert record.data["engine_error"] is fail
+    assert FAKE not in json.dumps(record.data)  # the error text stays in the local part
+    if fail:
+        assert "RuntimeError" in err and "Traceback" in text
+    # The terminal works normally again afterwards.
+    print("after the run")
+    assert "after the run" in capfd.readouterr().out
