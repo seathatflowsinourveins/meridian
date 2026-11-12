@@ -52,7 +52,8 @@ uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run 
 
 Before a run:
 
-- IB Gateway runs inside this distro (its window shows through WSLg) and is logged in to
+- IB Gateway is installed by `deploy/wsl/setup.sh gateway`. The owner starts it with
+  `~/Jts/ibgateway/1050/ibgateway` (its window shows through WSLg) and logs in to
   **Paper Trading**. The lane connects to `127.0.0.1:4002` and nowhere else.
 - In the Gateway, Configure > Settings > API > Settings: socket port 4002, **Read-Only API
   unticked**, "Allow connections from localhost only" ticked.

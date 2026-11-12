@@ -4,3 +4,6 @@ __pycache__/
 .ruff_cache/
 # Local run output. May hold account ids and raw engine logs; never committed.
 runs/
+# The owner's allowlist. Its SHA-256 values can be reversed to the account id, and this
+# repository is public, so the file stays on this machine.
+risk/boundary.contract.json

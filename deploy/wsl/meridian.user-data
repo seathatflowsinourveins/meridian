@@ -60,6 +60,18 @@ packages:
   - curl
   - jq
   - unzip
+  # Libraries the IB Gateway window needs (it shows on the Windows desktop through WSLg).
+  # IBKR publishes no package list; this one is from the docs of the browser component the
+  # Gateway embeds. See UPSTREAM.md.
+  - libgtk-3-0t64
+  - libnss3
+  - libnspr4
+  - libasound2t64
+  - libatk1.0-0t64
+  - libatk-bridge2.0-0t64
+  - libatspi2.0-0t64
+  - libcups2t64
+  - xdg-utils
 
 runcmd:
   # Node.js: exact version, checksum from the release's SHASUMS256.txt.
@@ -83,3 +95,10 @@ runcmd:
     printf '{\n  "disableClaudeAiConnectors": true\n}\n' > /home/apoth/.claude/settings.json
     chown apoth:apoth /home/apoth/.claude/settings.json
     chmod 0644 /home/apoth/.claude/settings.json
+  # Ubuntu Insights (Ubuntu's opt-in telemetry): "no", recorded the way Ubuntu's own
+  # /usr/lib/wsl/ubuntu-insights.sh records it, so a first shell does not ask (its default is yes).
+  - |
+    set -eu
+    for source in linux wsl_setup ubuntu_release_upgrader; do
+      su apoth -c 'ubuntu-insights consent "$0" -s=false >/dev/null' -- "${source}"
+    done
