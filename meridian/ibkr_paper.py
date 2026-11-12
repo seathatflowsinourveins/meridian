@@ -8,13 +8,15 @@ This module is the gate and the run record. It is own design and uses only the s
 library. The engine is in ``meridian.ibkr_node``, which is imported only after the gate
 has passed, so a refused start never loads it.
 
-Order of events in every run:
-  1. read ``risk/boundary.contract.json`` (owner-created);
-  2. ask the Gateway which accounts it manages;
-  3. refuse unless that is exactly one account and it is on the paper allowlist;
+Order of events in every run (the checks are described in ``meridian.boundary``):
+  1. read the optional ``risk/boundary.contract.json`` (owner-created, if at all);
+  2. refuse unless the Gateway's jts.ini says Paper Trading and the Gateway listens only
+     on the paper port;
+  3. ask the Gateway which accounts it manages, and refuse unless that is exactly one
+     account of the paper form (and on the allowlist, if there is one);
   4. in order mode, refuse unless a person at a terminal types the confirmation word;
   5. only then build and run the node, with the account the Gateway reported;
-  6. ask the Gateway again after the run, and write no evidence if the answer changed.
+  6. run every check again after the run, and write no evidence if anything changed.
 
 A run passes only on the path M1 uses: the order is accepted, then cancelled without a
 fill. A fill is reported as a failure, because this lane has no second order to close it.
@@ -35,7 +37,7 @@ MODES = ("order", "restart")
 # Client id for the account probe. Distinct from the node's data and execution clients.
 PROBE_CLIENT_ID = 1599
 RECORD_SCHEMA = "meridian.run-record/1"
-CONFIRM_WORD = "PAPER"
+CONFIRM_WORD = boundary.CONFIRM_WORD
 GATEWAY_HINT = (
     "(check that the Gateway is running and logged in to Paper Trading, that its API "
     "socket port is 4002, and that Read-Only API is unticked in Configure > Settings > API)"
@@ -52,7 +54,7 @@ def ns_to_utc(ts_ns: int) -> str:
 
 def gate(contract_path: Path | None = None) -> tuple[boundary.IbkrBoundary, str]:
     """Return the boundary and the one allowed account, or raise. Builds no engine."""
-    bounds = boundary.load_contract(contract_path)
+    bounds = boundary.local_paper_checks(contract_path)  # before any connection
     reported = ib_probe.managed_accounts(bounds.host, bounds.port, PROBE_CLIENT_ID)
     return bounds, boundary.allowed_account(reported, bounds)
 
@@ -85,7 +87,7 @@ def scrubbed_json(data: dict[str, Any], forbidden: list[str]) -> str:
 class RunRecord:
     """What happened in one run, as normalised fields only (never raw broker text)."""
 
-    def __init__(self, mode: str, gateway_port: int) -> None:
+    def __init__(self, mode: str, gateway_port: int, allowlist_present: bool = False) -> None:
         self.data: dict[str, Any] = {
             "schema": RECORD_SCHEMA,
             "milestone": "M1",
@@ -94,10 +96,11 @@ class RunRecord:
             "run_started_utc": _utc_now(),
             "engine": {},
             "gateway": {"port": gateway_port},
-            # Observed, not assumed: the allowlist check before the run and again after it.
+            # Observed, not assumed: every paper check before the run and again after it.
             "boundary": {
-                "account_on_paper_allowlist_before_run": True,
-                "account_on_paper_allowlist_after_run": None,
+                "paper_checks_passed_before_run": True,
+                "paper_checks_passed_after_run": None,
+                "allowlist_contract_present": allowlist_present,
             },
             "startup_reconciliation": {"requested": True, "trader_started": False},
             "engine_error": False,
@@ -140,16 +143,14 @@ class RunRecord:
         self.data["engine_error"] = True
         self.local["engine_error"] = text
 
-    def allowlisted_after_run(self, still_allowlisted: bool) -> None:
-        self.data["boundary"]["account_on_paper_allowlist_after_run"] = still_allowlisted
+    def paper_checks_after_run(self, passed: bool) -> None:
+        self.data["boundary"]["paper_checks_passed_after_run"] = passed
 
     def problems(self) -> list[str]:
         d = self.data
         found: list[str] = []
-        if d["boundary"]["account_on_paper_allowlist_after_run"] is not True:
-            found.append(
-                "after the run the Gateway did not report the same allowlisted paper account"
-            )
+        if d["boundary"]["paper_checks_passed_after_run"] is not True:
+            found.append("after the run the paper checks did not pass again for the same account")
         if d["engine_error"]:
             found.append("the node stopped with an error")
 
@@ -224,15 +225,16 @@ class RunRecord:
 def _run_node(mode: str, bounds: boundary.IbkrBoundary, account: str) -> int:
     from meridian import ibkr_node  # the engine is loaded only after the gate has passed
 
-    record = RunRecord(mode, bounds.port)
+    record = RunRecord(mode, bounds.port, bounds.paper_accounts_sha256 is not None)
     ibkr_node.run(mode, bounds.host, bounds.port, account, record)
 
-    # The same question again now that the run is over: is the session still that account?
+    # Every check again now that the run is over: still a paper login, the same account,
+    # and the same contract (or still none)?
     try:
-        _, account_after = gate()
-        record.allowlisted_after_run(account_after == account)
+        bounds_after, account_after = gate()
+        record.paper_checks_after_run(account_after == account and bounds_after == bounds)
     except boundary.BoundaryError, ib_probe.ProbeError:
-        record.allowlisted_after_run(False)
+        record.paper_checks_after_run(False)
 
     passed, path = record.write([account, boundary.account_hash(account)])
     shown = path.relative_to(boundary.REPO_ROOT)
@@ -260,9 +262,10 @@ def main(argv: list[str] | None = None) -> int:
     except (boundary.BoundaryError, ib_probe.ProbeError) as e:
         print(f"REFUSED TO START: {e}", file=sys.stderr)
         return 2
+    allowlisted = ", on the owner's allowlist" if bounds.paper_accounts_sha256 is not None else ""
     print(
-        f"Boundary passed: the Gateway on port {bounds.port} reports one account and it is "
-        "on the paper allowlist."
+        "Paper checks passed: the Gateway's jts.ini says Paper Trading, the Gateway listens "
+        f"only on port {bounds.port}, and it reports one account of the paper form{allowlisted}."
     )
 
     if args.mode == "order" and not owner_confirms():

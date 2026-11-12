@@ -37,7 +37,7 @@ def order_run() -> ibkr_paper.RunRecord:
     for kind in ("OrderSubmitted", "OrderAccepted", "OrderCanceled"):
         record.event(kind, T0, client_order_id=ORDER_ID)
     record.at_stop(**counts(), order_status="CANCELED", filled_qty="0")
-    record.allowlisted_after_run(True)
+    record.paper_checks_after_run(True)
     return record
 
 
@@ -45,7 +45,7 @@ def restart_run(at_start: dict | None = None, at_stop: dict | None = None):
     record = ibkr_paper.RunRecord("restart", 4002)
     record.trader_started(**(at_start or counts()))
     record.at_stop(**(at_stop or counts()))
-    record.allowlisted_after_run(True)
+    record.paper_checks_after_run(True)
     return record
 
 
@@ -110,9 +110,9 @@ ORDER_FAILURES = {
     "filled": filled,
     "filled, by status only": lambda r: r.data["at_stop"].update(order_status="FILLED"),
     "engine error": lambda r: r.engine_error("RuntimeError: disconnect timeout"),
-    "another account after the run": lambda r: r.allowlisted_after_run(False),
+    "paper checks failed after the run": lambda r: r.paper_checks_after_run(False),
     "no check after the run": lambda r: r.data["boundary"].update(
-        account_on_paper_allowlist_after_run=None
+        paper_checks_passed_after_run=None
     ),
     "instrument not clean at start": lambda r: r.data["startup_reconciliation"].update(
         instrument_open_positions_at_start=1
@@ -179,6 +179,6 @@ def test_a_restart_that_ends_with_the_instrument_open_fails(tmp_path, at_stop):
 
 def test_a_restart_where_the_trader_never_started_fails(tmp_path):
     record = ibkr_paper.RunRecord("restart", 4002)
-    record.allowlisted_after_run(True)
+    record.paper_checks_after_run(True)
     passed, _ = record.write(FORBIDDEN, root=tmp_path)
     assert not passed
