@@ -1,0 +1,3 @@
+# No line-ending conversion on any checkout: the shell scripts need LF, and the files under
+# upstream/ are checked byte for byte.
+* -text
