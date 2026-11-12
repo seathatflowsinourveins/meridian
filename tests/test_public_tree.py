@@ -14,8 +14,8 @@ from pathlib import Path
 import pytest
 from test_paper_only import REPO_ROOT, git_files
 
-# This file states the patterns and their examples.
-NOT_SCANNED = {"tests/test_public_tree.py"}
+# Nothing is skipped, this file included: its examples are built from parts.
+NOT_SCANNED: set[str] = set()
 
 # A capital D, U, F or I, at most two more capital letters, then 5 to 9 digits, standing alone.
 # Covers the shapes in IBKR's API documentation examples (U, F and I for individual, advisor
@@ -28,7 +28,9 @@ WORKFLOW_HAZARDS = {
         r"pull_request_target"
     ),
     "self-hosted runner": re.compile(r"self-hosted", re.IGNORECASE),
-    "CI secret": re.compile(r"secrets\s*\.", re.IGNORECASE),
+    "CI secret": re.compile(
+        r"secrets\s*[.\[]|tojson\(\s*secrets|secrets\s*:\s*inherit", re.IGNORECASE
+    ),
 }
 
 
@@ -113,6 +115,9 @@ def test_the_scan_leaves_other_text_alone(text):
         "runs-on: [self-hosted, linux]",
         "token: ${{ secrets.SOME_TOKEN }}",
         "key: ${{ Secrets . KEY }}",
+        "token: ${{ secrets['KEY'] }}",
+        "env: ${{ toJSON(secrets) }}",
+        "    secrets: inherit",
     ],
 )
 def test_the_workflow_check_catches_hazards(text):

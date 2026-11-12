@@ -1,8 +1,12 @@
 """The lane refuses to start unless every paper check in meridian/boundary.py holds."""
 
+import io
 import json
 import os
+import shutil
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fake_gateway import FakeGateway
@@ -14,7 +18,18 @@ from meridian import boundary, ibkr_paper
 PAPER = "DUTEST0001"
 OTHER = "UTEST00002"  # the form of a real-money account
 NOT_LISTED = "DUTEST0003"  # the paper form, but not on the allowlist
-NOT_PAPER_FORM = [OTHER, "FTEST0003", "ITEST0004", "XTEST0005", "DTEST", "dutest0001", "D", "0001"]
+NOT_PAPER_FORM = [
+    OTHER,
+    "FTEST0003",
+    "ITEST0004",
+    "XTEST0005",
+    "UDTEST0006",  # a D, but not first
+    "DUTEST0007X",  # the paper form, then a trailing letter
+    "DTEST",
+    "dutest0001",
+    "D",
+    "0001",
+]
 CLEAN = {
     "instrument_open_orders": 0,
     "instrument_open_positions": 0,
@@ -22,7 +37,11 @@ CLEAN = {
     "account_open_positions": 0,
 }
 JTS_PAPER = "[IBGateway]\nApiOnly=true\n\n[Logon]\nLocale=en\ntradingMode=p\n"
+JTS_LIVE = "[Logon]\ntradingMode=l\n"
 LISTEN, ESTABLISHED = "0A", "01"
+WITH_AND_WITHOUT_A_CONTRACT = pytest.mark.parametrize(
+    "listed", [None, (PAPER,)], ids=["no-contract", "contract"]
+)
 
 
 def contract_dict(**overrides: object) -> dict:
@@ -55,6 +74,12 @@ def bounds(tmp_path: Path) -> boundary.IbkrBoundary:
 
 def no_contract(tmp_path: Path) -> boundary.IbkrBoundary:
     return boundary.load_contract(tmp_path / "absent.json")
+
+
+def assert_no_account_in(text: str, *accounts: str) -> None:
+    for account in accounts:
+        assert account not in text
+        assert boundary.account_hash(account) not in text
 
 
 # --- check 3: the account, and check 4: the optional allowlist ----------------------------------
@@ -113,7 +138,7 @@ def test_an_account_with_a_hyphen_is_refused_even_if_its_hash_is_listed(tmp_path
 def test_refusal_message_does_not_contain_the_account(tmp_path, account):
     with pytest.raises(boundary.BoundaryError) as refused:
         boundary.allowed_account([account], bounds(tmp_path))
-    assert account not in str(refused.value)
+    assert_no_account_in(str(refused.value), account)
 
 
 # --- the optional contract -------------------------------------------------------------------
@@ -206,26 +231,32 @@ def write_jts(tmp_path: Path, text: str | bytes) -> Path:
     return path
 
 
-def test_a_paper_login_passes(tmp_path):
-    boundary.require_paper_login(write_jts(tmp_path, JTS_PAPER))
-
-
-def test_spaces_around_the_value_are_ignored(tmp_path):
-    boundary.require_paper_login(write_jts(tmp_path, "[Logon]\ntradingMode =  p  \n"))
+@pytest.mark.parametrize(
+    "text",
+    [
+        JTS_PAPER,
+        "[Logon]\ntradingMode =  p  \n",  # spaces around the value
+        "[DEFAULT]\nLocale=en\n[Logon]\ntradingMode=p\n",  # a [DEFAULT] header is harmless
+    ],
+)
+def test_a_paper_login_passes(tmp_path, text):
+    boundary.require_paper_login(write_jts(tmp_path, text))
 
 
 @pytest.mark.parametrize(
     "text",
     [
-        "[Logon]\ntradingMode=l\n",
+        JTS_LIVE,
         "[Logon]\ntradingMode=P\n",
         "[Logon]\ntradingMode=\n",
         "[Logon]\ntradingMode=paper\n",
         "[Logon]\ntradingMode=p ; live\n",
         "[Logon]\nLocale=en\n",  # no key
         "[IBGateway]\ntradingMode=p\n",  # the key, but in another section
+        "[DEFAULT]\ntradingMode=p\n[Logon]\nLocale=en\n",  # the key only where it is inherited
         "[logon]\ntradingMode=p\n",  # another section name
-        "[Logon]\ntradingMode=p\nTradingMode=l\n",  # the key twice
+        "[Logon]\ntradingMode=p\nTradingMode=l\n",  # the key twice, paper first
+        "[Logon]\ntradingMode=l\ntradingMode=p\n",  # the key twice, paper last
         "[Logon]\ntradingMode=p\n[Logon]\nLocale=en\n",  # the section twice
         "tradingMode=p\n",  # no section
         "",
@@ -264,7 +295,10 @@ def tcp_row(n: int, port: int, state: str, inode: int, v6: bool = False) -> str:
 
 
 def fake_proc(root: Path, processes, tcp=(), tcp6=None) -> Path:
-    """processes: [(exe, [socket inodes])]; tcp, tcp6: [(port, state, inode)], None = absent."""
+    """processes: [(exe, [socket inodes])]; tcp, tcp6: [(port, state, inode)], None = absent.
+
+    Process numbers start at 100, in the order given.
+    """
     proc = root / "proc"
     (proc / "net").mkdir(parents=True)
     for name, rows, v6 in (("tcp", tcp, False), ("tcp6", tcp6, True)):
@@ -322,6 +356,16 @@ def test_ports_of_every_gateway_process_are_counted(tmp_path, gw):
     assert boundary.gateway_listen_ports(proc, gateway_dir) == {4002, 5000}
 
 
+def test_a_gateway_process_whose_sockets_cannot_be_read_is_refused(tmp_path, gw):
+    gateway_dir, java = gw
+    proc = fake_proc(
+        tmp_path, [(java, [11]), (java, [12])], tcp=[(4002, LISTEN, 11), (5000, LISTEN, 12)]
+    )
+    shutil.rmtree(proc / "101" / "fd")
+    with pytest.raises(boundary.BoundaryError, match="open sockets"):
+        boundary.gateway_listen_ports(proc, gateway_dir)
+
+
 @pytest.mark.parametrize("exe", ["/usr/bin/python3", "{dir}-old/1050/jre/bin/java", "{dir}"])
 def test_no_gateway_process_is_refused(tmp_path, gw, exe):
     gateway_dir, _ = gw
@@ -370,23 +414,32 @@ def test_the_lane_needs_the_gateway_on_the_paper_port_only(
 
 @pytest.fixture
 def paper_state(tmp_path, monkeypatch):
-    """The Gateway's local state on a paper login, with no contract. Tests change parts."""
-    jts = write_jts(tmp_path, JTS_PAPER)
-    monkeypatch.setattr(boundary, "JTS_INI", jts)
+    """The Gateway's local state on a paper login, with no contract. Tests change parts:
+
+    ``state.jts`` (the settings file), ``state.extra_ports`` (more listening ports) and
+    ``state.running`` (False: the Gateway process is gone). ``state.use(gateway)`` points the
+    checks at a stand-in Gateway.
+    """
+    state = SimpleNamespace(
+        jts=write_jts(tmp_path, JTS_PAPER), extra_ports=set(), running=True, use=None
+    )
+    monkeypatch.setattr(boundary, "JTS_INI", state.jts)
     monkeypatch.setattr(boundary, "CONTRACT_PATH", tmp_path / "no-contract.json")
-    extra_ports: set[int] = set()
 
     def use(gateway: FakeGateway) -> None:
         # The stand-in listens on a free port; make that the paper port for this test only.
         monkeypatch.setattr(boundary, "PAPER_PORT", gateway.port)
         monkeypatch.setattr(boundary, "PAPER_PORTS", frozenset({gateway.port}))
-        monkeypatch.setattr(
-            boundary,
-            "gateway_listen_ports",
-            lambda proc=None, gateway_dir=None: frozenset({gateway.port, *extra_ports}),
-        )
 
-    return jts, extra_ports, use
+        def listen_ports(proc=None, gateway_dir=None) -> frozenset[int]:
+            if not state.running:
+                raise boundary.BoundaryError("the IB Gateway installed in (test) is not running")
+            return frozenset({gateway.port, *state.extra_ports})
+
+        monkeypatch.setattr(boundary, "gateway_listen_ports", listen_ports)
+
+    state.use = use
+    return state
 
 
 def allowlist(tmp_path: Path, monkeypatch, gateway: FakeGateway, accounts) -> None:
@@ -401,7 +454,6 @@ def allowlist(tmp_path: Path, monkeypatch, gateway: FakeGateway, accounts) -> No
 @pytest.fixture
 def lane(tmp_path, monkeypatch, paper_state):
     """Start the lane against a stand-in Gateway; record whether the engine side was reached."""
-    _, _, use = paper_state
     reached: list[str] = []
 
     def fake_run_node(mode, bounds, account):
@@ -411,7 +463,7 @@ def lane(tmp_path, monkeypatch, paper_state):
     monkeypatch.setattr(ibkr_paper, "_run_node", fake_run_node)
 
     def start(gateway: FakeGateway, mode: str = "order", confirm: bool = True, listed=None) -> int:
-        use(gateway)
+        paper_state.use(gateway)
         if listed is not None:
             allowlist(tmp_path, monkeypatch, gateway, listed)
         if confirm:  # stand in for the owner typing the word; the tests below leave it real
@@ -421,11 +473,14 @@ def lane(tmp_path, monkeypatch, paper_state):
     return start, reached
 
 
-def test_lane_starts_without_a_contract_when_every_paper_check_holds(lane):
+def test_lane_starts_without_a_contract_when_every_paper_check_holds(lane, capsys):
     start, reached = lane
     with FakeGateway(PAPER) as gateway:
         assert start(gateway) == 0
     assert reached == [PAPER]
+    out = capsys.readouterr()
+    assert "Paper checks passed" in out.out
+    assert_no_account_in(out.out + out.err, PAPER)
 
 
 def test_lane_refuses_a_real_money_form_account(lane, capsys):
@@ -433,9 +488,9 @@ def test_lane_refuses_a_real_money_form_account(lane, capsys):
     with FakeGateway(OTHER) as gateway:
         assert start(gateway) == 2
     assert reached == []  # the engine side was never entered
-    err = capsys.readouterr().err
-    assert "REFUSED TO START" in err and "not of the paper form" in err
-    assert OTHER not in err
+    out = capsys.readouterr()
+    assert "REFUSED TO START" in out.err and "not of the paper form" in out.err
+    assert_no_account_in(out.out + out.err, OTHER)
 
 
 def test_lane_refuses_a_real_money_form_account_even_if_the_contract_lists_it(lane, capsys):
@@ -451,43 +506,57 @@ def test_lane_refuses_to_start_against_a_non_allowlisted_account(lane, capsys):
     with FakeGateway(NOT_LISTED) as gateway:
         assert start(gateway, listed=(PAPER,)) == 2
     assert reached == []
-    err = capsys.readouterr().err
-    assert "REFUSED TO START" in err and "not on the paper allowlist" in err
-    assert NOT_LISTED not in err
+    out = capsys.readouterr()
+    assert "REFUSED TO START" in out.err and "not on the paper allowlist" in out.err
+    assert_no_account_in(out.out + out.err, NOT_LISTED)
 
 
-def test_lane_starts_with_an_allowlisted_account(lane):
+def test_lane_starts_with_an_allowlisted_account(lane, capsys):
     start, reached = lane
     with FakeGateway(PAPER) as gateway:
         assert start(gateway, listed=(PAPER,)) == 0
     assert reached == [PAPER]
+    out = capsys.readouterr()
+    assert "on the owner's allowlist" in out.out
+    assert_no_account_in(out.out + out.err, PAPER)
 
 
-@pytest.mark.parametrize("jts_text", ["[Logon]\ntradingMode=l\n", None])
+@WITH_AND_WITHOUT_A_CONTRACT
+@pytest.mark.parametrize("jts_text", [JTS_LIVE, None], ids=["live", "no-file"])
 def test_lane_refuses_unless_jts_says_paper_and_never_contacts_the_gateway(
-    lane, paper_state, capsys, jts_text
+    lane, paper_state, capsys, jts_text, listed
 ):
     start, reached = lane
-    jts, _, _ = paper_state
     if jts_text is None:
-        jts.unlink()
+        paper_state.jts.unlink()
     else:
-        jts.write_text(jts_text, encoding="utf-8")
+        paper_state.jts.write_text(jts_text, encoding="utf-8")
     with FakeGateway(PAPER) as gateway:
-        assert start(gateway) == 2
+        assert start(gateway, listed=listed) == 2
         assert gateway.sessions == 0
     assert reached == []
     assert "REFUSED TO START" in capsys.readouterr().err
 
 
-def test_lane_refuses_when_the_gateway_also_listens_on_another_port(lane, paper_state):
+@WITH_AND_WITHOUT_A_CONTRACT
+def test_lane_refuses_when_the_gateway_also_listens_on_another_port(lane, paper_state, listed):
     start, reached = lane
-    _, extra_ports, _ = paper_state
-    extra_ports.add(5000)
+    paper_state.extra_ports.add(5000)
     with FakeGateway(PAPER) as gateway:
-        assert start(gateway) == 2
+        assert start(gateway, listed=listed) == 2
         assert gateway.sessions == 0
     assert reached == []
+
+
+@WITH_AND_WITHOUT_A_CONTRACT
+def test_lane_refuses_when_the_gateway_process_is_not_running(lane, paper_state, capsys, listed):
+    start, reached = lane
+    paper_state.running = False
+    with FakeGateway(PAPER) as gateway:
+        assert start(gateway, listed=listed) == 2
+        assert gateway.sessions == 0
+    assert reached == []
+    assert "not running" in capsys.readouterr().err
 
 
 def test_lane_refuses_with_a_malformed_contract(lane, tmp_path, monkeypatch):
@@ -507,8 +576,8 @@ def test_lane_refuses_unless_the_gateway_reports_exactly_one_account(lane, capsy
     with FakeGateway(accounts) as gateway:
         assert start(gateway) == 2
     assert reached == []
-    err = capsys.readouterr().err
-    assert PAPER not in err and NOT_LISTED not in err
+    out = capsys.readouterr()
+    assert_no_account_in(out.out + out.err, PAPER, NOT_LISTED)
 
 
 def test_lane_refuses_when_no_gateway_is_listening(lane):
@@ -525,11 +594,10 @@ def test_lane_refuses_when_no_gateway_is_listening(lane):
 @pytest.fixture
 def contract_cmd(monkeypatch, paper_state):
     """Run ``python -m meridian.boundary contract`` against a stand-in Gateway."""
-    _, _, use = paper_state
     asked: list[bool] = []
 
     def run(gateway: FakeGateway, typed: str = "PAPER", at_terminal: bool = True) -> int:
-        use(gateway)
+        paper_state.use(gateway)
         monkeypatch.setattr(boundary, "_owner_at_terminal", lambda: at_terminal)
 
         def answer() -> str:
@@ -568,6 +636,41 @@ def test_the_contract_text_names_the_real_paper_port_and_loopback(tmp_path):
     assert PAPER not in path.read_text(encoding="utf-8")
 
 
+class Stream(io.StringIO):
+    """A text stream that says whether it is a terminal."""
+
+    def __init__(self, tty: bool, text: str = "") -> None:
+        super().__init__(text)
+        self._tty = tty
+
+    def isatty(self) -> bool:
+        return self._tty
+
+
+@pytest.mark.parametrize(
+    ("stdin_tty", "stderr_tty"), [(False, False), (True, False), (False, True), (True, True)]
+)
+def test_the_contract_command_needs_a_terminal_on_stdin_and_stderr(
+    monkeypatch, paper_state, stdin_tty, stderr_tty
+):
+    # The real guard and the real answer reader run here; only the streams are stand-ins.
+    out, err = Stream(False), Stream(stderr_tty)  # stdout redirected, as documented
+    monkeypatch.setattr(sys, "stdin", Stream(stdin_tty, "PAPER\n"))
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(sys, "stderr", err)
+    with FakeGateway(PAPER) as gateway:
+        paper_state.use(gateway)
+        code = boundary._main(["contract"])
+        sessions = gateway.sessions
+    if stdin_tty and stderr_tty:
+        assert code == 0 and sessions == 1
+        assert boundary.account_hash(PAPER) in out.getvalue()
+    else:
+        assert code == 2 and sessions == 0
+        assert out.getvalue() == ""
+        assert PAPER not in err.getvalue()
+
+
 def test_contract_command_refuses_without_a_terminal_and_does_not_ask_the_gateway(contract_cmd):
     run, asked = contract_cmd
     with FakeGateway(PAPER) as gateway:
@@ -576,10 +679,17 @@ def test_contract_command_refuses_without_a_terminal_and_does_not_ask_the_gatewa
     assert asked == []
 
 
-def test_contract_command_refuses_when_jts_does_not_say_paper(contract_cmd, paper_state, capsys):
+@pytest.mark.parametrize("change", ["live", "extra-port", "not-running"])
+def test_contract_command_refuses_unless_the_local_paper_checks_hold(
+    contract_cmd, paper_state, capsys, change
+):
     run, asked = contract_cmd
-    jts, _, _ = paper_state
-    jts.write_text("[Logon]\ntradingMode=l\n", encoding="utf-8")
+    if change == "live":
+        paper_state.jts.write_text(JTS_LIVE, encoding="utf-8")
+    elif change == "extra-port":
+        paper_state.extra_ports.add(5000)
+    else:
+        paper_state.running = False
     with FakeGateway(PAPER) as gateway:
         assert run(gateway) == 2
         assert gateway.sessions == 0
@@ -607,7 +717,7 @@ def test_contract_command_refuses_before_asking_when_the_gateway_report_is_wrong
     captured = capsys.readouterr()
     assert captured.out == ""
     assert asked == []
-    assert OTHER not in captured.err and NOT_LISTED not in captured.err
+    assert_no_account_in(captured.err, OTHER, NOT_LISTED)
 
 
 def test_contract_command_refuses_when_no_gateway_is_listening(contract_cmd, capsys):
@@ -628,7 +738,9 @@ def test_order_mode_refuses_without_a_terminal(lane, capsys):
         # The real check runs: under pytest neither stdin nor stdout is a terminal.
         assert start(gateway, "order", confirm=False) == 2
     assert reached == []
-    assert "needs the owner at a terminal" in capsys.readouterr().err
+    out = capsys.readouterr()
+    assert "needs the owner at a terminal" in out.err
+    assert_no_account_in(out.out + out.err, PAPER)
 
 
 @pytest.mark.parametrize(("typed", "exit_code"), [("yes", 2), ("paper", 2), ("", 2), ("PAPER", 0)])
@@ -641,12 +753,14 @@ def test_order_mode_goes_on_only_when_the_owner_types_the_word(lane, monkeypatch
     assert reached == ([PAPER] if exit_code == 0 else [])
 
 
-def test_restart_mode_needs_no_confirmation(lane, monkeypatch):
+def test_restart_mode_needs_no_confirmation(lane, monkeypatch, capsys):
     start, reached = lane
     monkeypatch.setattr(ibkr_paper, "owner_confirms", lambda: pytest.fail("asked in restart"))
     with FakeGateway(PAPER) as gateway:
         assert start(gateway, "restart", confirm=False) == 0
     assert reached == [PAPER]
+    out = capsys.readouterr()
+    assert_no_account_in(out.out + out.err, PAPER)
 
 
 # --- the hand-off to the engine, and the checks after the run ---------------------------------
@@ -657,7 +771,6 @@ def engine_stub(tmp_path, monkeypatch, paper_state):
     """Run the real _run_node with the engine replaced by a clean restart."""
     from meridian import ibkr_node  # imported first: it fixes its paths at import time
 
-    _, _, use = paper_state
     seen: dict = {}
     during: list = []  # callables run in the middle of the stand-in run
 
@@ -672,7 +785,7 @@ def engine_stub(tmp_path, monkeypatch, paper_state):
     monkeypatch.setattr(boundary, "REPO_ROOT", tmp_path)
 
     def start(gateway: FakeGateway, listed=None) -> int:
-        use(gateway)
+        paper_state.use(gateway)
         if listed is not None:
             allowlist(tmp_path, monkeypatch, gateway, listed)
         return ibkr_paper.main(["restart"])
@@ -680,7 +793,11 @@ def engine_stub(tmp_path, monkeypatch, paper_state):
     return start, seen, during
 
 
-def test_the_engine_gets_the_gated_host_port_and_account(engine_stub, tmp_path):
+def local_records(tmp_path: Path) -> list[dict]:
+    return [json.loads(p.read_text(encoding="utf-8")) for p in (tmp_path / "runs").iterdir()]
+
+
+def test_the_engine_gets_the_gated_host_port_and_account(engine_stub, tmp_path, capsys):
     start, seen, _ = engine_stub
     with FakeGateway(PAPER) as gateway:
         assert start(gateway) == 0
@@ -693,12 +810,15 @@ def test_the_engine_gets_the_gated_host_port_and_account(engine_stub, tmp_path):
         assert gateway.sessions == 2  # asked before the run and again after it
     (evidence,) = (tmp_path / "evidence").iterdir()
     text = evidence.read_text(encoding="utf-8")
-    assert PAPER not in text and boundary.account_hash(PAPER) not in text
+    assert_no_account_in(text, PAPER)
     assert json.loads(text)["boundary"] == {
         "paper_checks_passed_before_run": True,
         "paper_checks_passed_after_run": True,
         "allowlist_contract_present": False,
     }
+    out = capsys.readouterr()
+    assert "PASS" in out.out
+    assert_no_account_in(out.out + out.err, PAPER)
 
 
 def test_the_record_says_when_an_allowlist_was_used(engine_stub, tmp_path):
@@ -711,12 +831,17 @@ def test_the_record_says_when_an_allowlist_was_used(engine_stub, tmp_path):
     ]
 
 
-def test_no_evidence_when_the_gateway_reports_another_account_after_the_run(engine_stub, tmp_path):
+def test_no_evidence_when_the_gateway_reports_another_account_after_the_run(
+    engine_stub, tmp_path, capsys
+):
     start, seen, _ = engine_stub
     with FakeGateway(PAPER, later_accounts=NOT_LISTED) as gateway:
         assert start(gateway) == 1
     assert seen["account"] == PAPER
     assert not (tmp_path / "evidence").exists()
+    out = capsys.readouterr()
+    assert "FAIL" in out.err
+    assert_no_account_in(out.out + out.err, PAPER, NOT_LISTED)
 
 
 def test_no_evidence_when_the_gateway_reports_no_account_after_the_run(engine_stub, tmp_path):
@@ -726,34 +851,48 @@ def test_no_evidence_when_the_gateway_reports_no_account_after_the_run(engine_st
     assert not (tmp_path / "evidence").exists()
 
 
-def test_no_evidence_when_jts_stops_saying_paper_during_the_run(engine_stub, paper_state, tmp_path):
-    start, _, during = engine_stub
-    jts, _, _ = paper_state
-    during.append(lambda: jts.write_text("[Logon]\ntradingMode=l\n", encoding="utf-8"))
-    with FakeGateway(PAPER) as gateway:
-        assert start(gateway) == 1
-    assert not (tmp_path / "evidence").exists()
-
-
-def test_no_evidence_when_the_gateway_opens_another_port_during_the_run(
-    engine_stub, paper_state, tmp_path
+def test_no_evidence_but_a_local_record_when_the_gateway_is_gone_after_the_run(
+    engine_stub, tmp_path
 ):
     start, _, during = engine_stub
-    _, extra_ports, _ = paper_state
-    during.append(lambda: extra_ports.add(5000))
+    holder: dict = {}
+    during.append(lambda: holder["gateway"].__exit__(None, None, None))  # it goes away mid-run
     with FakeGateway(PAPER) as gateway:
+        holder["gateway"] = gateway
         assert start(gateway) == 1
+    assert not (tmp_path / "evidence").exists()
+    (record,) = local_records(tmp_path)  # the owner still has the local record of the run
+    assert record["boundary"]["paper_checks_passed_after_run"] is False
+
+
+@WITH_AND_WITHOUT_A_CONTRACT
+def test_no_evidence_when_jts_stops_saying_paper_during_the_run(
+    engine_stub, paper_state, tmp_path, listed
+):
+    start, _, during = engine_stub
+    during.append(lambda: paper_state.jts.write_text(JTS_LIVE, encoding="utf-8"))
+    with FakeGateway(PAPER) as gateway:
+        assert start(gateway, listed=listed) == 1
+    assert not (tmp_path / "evidence").exists()
+    (record,) = local_records(tmp_path)
+    assert record["boundary"]["paper_checks_passed_after_run"] is False
+
+
+@WITH_AND_WITHOUT_A_CONTRACT
+def test_no_evidence_when_the_gateway_opens_another_port_during_the_run(
+    engine_stub, paper_state, tmp_path, listed
+):
+    start, _, during = engine_stub
+    during.append(lambda: paper_state.extra_ports.add(5000))
+    with FakeGateway(PAPER) as gateway:
+        assert start(gateway, listed=listed) == 1
     assert not (tmp_path / "evidence").exists()
 
 
 def test_no_evidence_when_a_contract_appears_during_the_run(engine_stub, monkeypatch, tmp_path):
     start, _, during = engine_stub
     holder: dict = {}
-
-    def add_contract() -> None:
-        allowlist(tmp_path, monkeypatch, holder["gateway"], (PAPER,))
-
-    during.append(add_contract)
+    during.append(lambda: allowlist(tmp_path, monkeypatch, holder["gateway"], (PAPER,)))
     with FakeGateway(PAPER) as gateway:
         holder["gateway"] = gateway
         assert start(gateway) == 1

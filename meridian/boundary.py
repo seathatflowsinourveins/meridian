@@ -141,7 +141,11 @@ def gateway_trading_mode(path: Path | None = None) -> str:
     and nothing else from it is kept or shown.
     """
     path = JTS_INI if path is None else path
-    parser = configparser.ConfigParser(strict=True, interpolation=None)
+    # No key is inherited from another section: with this default_section, a literal
+    # [DEFAULT] header in the file is an ordinary section, so only [Logon]'s own key counts.
+    parser = configparser.ConfigParser(
+        strict=True, interpolation=None, default_section="\0meridian: no default section\0"
+    )
     try:
         parser.read_string(path.read_text(encoding="utf-8"), source=str(path))
     except (OSError, UnicodeError, configparser.Error) as e:
