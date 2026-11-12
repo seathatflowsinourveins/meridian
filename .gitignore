@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+# Local run output. May hold account ids and raw engine logs; never committed.
+runs/

@@ -1,0 +1,39 @@
+[project]
+name = "meridian"
+version = "0.1.0"
+description = "Paper-trading harness on NautilusTrader. Paper only."
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "nautilus_trader==2.0.0rc9",
+]
+
+[dependency-groups]
+dev = [
+    "pyright[nodejs]>=1.1.414",
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
+
+[tool.uv]
+# uv itself is pinned where it is installed: deploy/wsl/setup.sh and the CI workflow.
+# Release cooldown: nothing uploaded in the last 7 days is resolved...
+exclude-newer = "7 days"
+# ...except the engine, which is pinned exactly to a release candidate (see UPSTREAM.md).
+exclude-newer-package = { nautilus-trader = false }
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["upstream"]
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "B", "SIM", "I"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+include = ["meridian", "tests"]
+extraPaths = ["tests", "upstream/nautilus_trader/v2.0.0rc9/examples/live/interactive_brokers"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "tests"]
