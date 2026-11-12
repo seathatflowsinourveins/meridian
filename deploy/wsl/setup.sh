@@ -41,10 +41,17 @@ cmd_check() {
   ok "packages: git gh build-essential curl jq unzip"
   [ "$(node --version)" = "${NODE_VERSION}" ] || fail "node is $(node --version 2>/dev/null), expected ${NODE_VERSION}"
   ok "node ${NODE_VERSION}"
+  [ "$(timedatectl show -p Timezone --value)" = America/New_York ] \
+    || fail "time zone is $(timedatectl show -p Timezone --value), expected America/New_York"
+  grep -qx 'useWindowsTimezone=false' /etc/wsl.conf \
+    || fail "/etc/wsl.conf does not set useWindowsTimezone=false"
+  ok "time zone America/New_York, not inherited from Windows"
   jq -e '.disableClaudeAiConnectors == true' "${HOME}/.claude/settings.json" >/dev/null \
     || fail "disableClaudeAiConnectors is not true in ~/.claude/settings.json"
-  ok "claude.ai connectors disabled for Claude Code started in a terminal here"
-  echo "note: that setting does not cover sessions opened from the Claude desktop app"
+  jq -e '.disableClaudeAiConnectors == true' /etc/claude-code/managed-settings.json >/dev/null \
+    || fail "disableClaudeAiConnectors is not true in /etc/claude-code/managed-settings.json"
+  ok "claude.ai connectors disabled for Claude Code in this distro (user and machine-wide settings)"
+  echo "note: that setting does not cover connectors the Claude desktop app itself attaches to a session"
 }
 
 cmd_uv() {

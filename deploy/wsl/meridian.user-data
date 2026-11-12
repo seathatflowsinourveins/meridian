@@ -23,6 +23,10 @@ users:
     shell: /usr/sbin/nologin
     lock_passwd: true
 
+# New York time, set here and not inherited from Windows (see [time] below), so the
+# shell, the logs and the engine agree with US market hours wherever the host clock points.
+timezone: America/New_York
+
 write_files:
   # Whole file, not appended: one definition, no duplicate sections.
   - path: /etc/wsl.conf
@@ -36,6 +40,17 @@ write_files:
 
       [interop]
       appendWindowsPath=false
+
+      [time]
+      useWindowsTimezone=false
+  # Claude Code, machine-wide: no claude.ai connectors, whichever user or config home
+  # starts it (a terminal, or a tool that launches it with its own profile).
+  - path: /etc/claude-code/managed-settings.json
+    permissions: "0644"
+    content: |
+      {
+        "disableClaudeAiConnectors": true
+      }
 
 package_update: true
 packages:
@@ -61,7 +76,7 @@ runcmd:
       ln -sf "/opt/node-${NODE_VERSION}/bin/${bin}" "/usr/local/bin/${bin}"
     done
     rm -f "/var/tmp/${NODE_TARBALL}"
-  # Claude Code user settings: claude.ai connectors never load in this distro.
+  # The same setting in the owner's own Claude Code settings.
   - |
     set -eu
     install -d -o apoth -g apoth -m 0700 /home/apoth/.claude
