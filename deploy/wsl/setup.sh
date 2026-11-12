@@ -39,7 +39,8 @@ cmd_check() {
   ok "passwordless sudo"
   id paper >/dev/null 2>&1 || fail "service user 'paper' is missing"
   [ "$(getent passwd paper | cut -d: -f7)" = /usr/sbin/nologin ] || fail "'paper' has a login shell"
-  ok "service user paper (no login)"
+  [ "$(getent passwd paper | cut -d: -f6)" = /nonexistent ] || fail "'paper' has a home directory"
+  ok "service user paper (no login, no home)"
   case ":${PATH}:" in
     *:/mnt/c/*) fail "Windows PATH is appended (appendWindowsPath should be false)" ;;
   esac
@@ -69,7 +70,11 @@ cmd_check() {
     ubuntu-insights consent "${source}" 2>/dev/null | grep -qx "${source}: false" \
       || fail "Ubuntu Insights consent for ${source} is not recorded as false"
   done
-  ok "Ubuntu Insights declined"
+  for timer in ubuntu-insights-collect.timer ubuntu-insights-upload.timer; do
+    [ "$(systemctl --user is-enabled "${timer}" 2>/dev/null)" != enabled ] \
+      || fail "${timer} is enabled"
+  done
+  ok "Ubuntu Insights declined, its timers off"
 }
 
 cmd_uv() {
@@ -77,7 +82,8 @@ cmd_uv() {
   tmp="$(mktemp -d)"
   curl -fsSLo "${tmp}/uv-installer.sh" "https://astral.sh/uv/${UV_VERSION}/install.sh"
   echo "${UV_INSTALLER_SHA256}  ${tmp}/uv-installer.sh" | sha256sum -c -
-  sh "${tmp}/uv-installer.sh"
+  # No shell files are edited: Ubuntu's ~/.profile already puts ~/.local/bin on PATH.
+  UV_NO_MODIFY_PATH=1 sh "${tmp}/uv-installer.sh"
   rm -rf "${tmp}"
   "${HOME}/.local/bin/uv" --version
 }

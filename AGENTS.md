@@ -29,7 +29,8 @@ A paper-trading harness on NautilusTrader. One repo, one WSL2 distro (`meridian`
 - Everything installed or integrated has a row in `UPSTREAM.md`, added in the same commit:
   version or commit, the URL that was read, the date, what it is for, "upstream" or "own design".
 - Start from upstream's own example. Files under `upstream/` are verbatim copies and are never
-  edited; `tests/test_upstream_unmodified.py` checks them.
+  edited (its `NOTICE.md` is the one file written here); `tests/test_upstream_unmodified.py`
+  checks them. No licence is chosen for this repo's own code: that is the owner's decision.
 - Check a finding at its source before acting on it. Find the root cause before disabling a check.
 - Run the checks before saying something works. Report a failure as a failure.
 - Add nothing the current milestone does not need.
@@ -63,7 +64,10 @@ Before a run:
   `~/Jts/ibgateway/1050/ibgateway` (its window shows through WSLg) and logs in to
   **Paper Trading**. The lane connects to `127.0.0.1:4002` and nowhere else.
 - In the Gateway, Configure > Settings > API > Settings: socket port 4002, **Read-Only API
-  unticked**, "Allow connections from localhost only" ticked.
+  unticked**, "Allow connections from localhost only" ticked. The Gateway listens on every
+  interface (`*:4002`) and the machine uses mirrored networking, so that box is what keeps
+  other hosts out. `~/Jts/jts.ini` lists `TrustedIPs=127.0.0.1` only; the box itself is stored
+  in the Gateway's encrypted settings and can only be checked in its window.
 - The lane refuses unless the Gateway's `~/Jts/jts.ini` says `tradingMode=p`, the Gateway
   listens on port 4002 only, and it reports one account whose id has the paper form (a D
   prefix: an observed convention, not a documented rule). Details in `meridian/boundary.py`.
