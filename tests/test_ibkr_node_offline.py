@@ -36,7 +36,7 @@ def test_the_order_node_builds_offline_with_the_lanes_settings(clean_environ):
     from meridian import ibkr_node
 
     record = ibkr_paper.RunRecord("order", 4002)
-    node = ibkr_node.build("order", "127.0.0.1", 4002, "DUTEST0001", record)
+    node = ibkr_node.build("order", "127.0.0.1", 4002, "DUFAKE0001", record)
 
     assert node is not None
     assert record.data["engine"]["nautilus_trader"] == "2.0.0rc9"
@@ -84,7 +84,7 @@ def test_upstreams_helper_is_driven_as_the_lane_intends(clean_environ, monkeypat
     monkeypatch.setattr(upstream_common, "LiveNode", SimpleNamespace(builder=lambda *a: builder))
 
     record = ibkr_paper.RunRecord(mode, 4002)
-    ibkr_node.build(mode, "127.0.0.1", 4002, "DUTEST0001", record)
+    ibkr_node.build(mode, "127.0.0.1", 4002, "DUFAKE0001", record)
 
     # Reconciliation is on and the risk engine is not bypassed, whatever the shell held.
     assert builder.named("with_reconciliation") == [(True,)]
@@ -94,7 +94,7 @@ def test_upstreams_helper_is_driven_as_the_lane_intends(clean_environ, monkeypat
     ((_, _, exec_config),) = builder.named("add_exec_client")
     assert (data_config.host, data_config.port, data_config.client_id) == ("127.0.0.1", 4002, 1511)
     assert (exec_config.host, exec_config.port, exec_config.client_id) == ("127.0.0.1", 4002, 1512)
-    assert exec_config.account_id == "DUTEST0001"
+    assert exec_config.account_id == "DUFAKE0001"
     # One strategy, on the lane's instrument and not the one the shell asked for.
     (strategy,) = builder.strategies
     assert str(strategy.instrument_id) == "AAPL.XNAS"

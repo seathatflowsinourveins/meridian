@@ -12,17 +12,17 @@ def ask(gateway: FakeGateway, timeout: float = 5.0) -> list[str]:
 
 
 def test_reads_the_account_the_gateway_reports():
-    with FakeGateway("DUTEST0001") as gw:
-        assert ask(gw) == ["DUTEST0001"]
+    with FakeGateway("DUFAKE0001") as gw:
+        assert ask(gw) == ["DUFAKE0001"]
 
 
 def test_reads_several_accounts_and_ignores_a_trailing_comma():
-    with FakeGateway("DUTEST0001,DUTEST0002,") as gw:
-        assert ask(gw) == ["DUTEST0001", "DUTEST0002"]
+    with FakeGateway("DUFAKE0001,DUFAKE0002,") as gw:
+        assert ask(gw) == ["DUFAKE0001", "DUFAKE0002"]
 
 
 def test_sends_the_handshake_and_start_api_and_nothing_after():
-    with FakeGateway("DUTEST0001") as gw:
+    with FakeGateway("DUFAKE0001") as gw:
         ask(gw)
         assert gw.client_gone.wait(2)
         assert gw.handshakes == ["v100..176"]
@@ -31,18 +31,18 @@ def test_sends_the_handshake_and_start_api_and_nothing_after():
 
 
 def test_skips_a_notice_that_arrives_before_the_handshake_answer():
-    with FakeGateway("DUTEST0001", notice_before_answer=True) as gw:
-        assert ask(gw) == ["DUTEST0001"]
+    with FakeGateway("DUFAKE0001", notice_before_answer=True) as gw:
+        assert ask(gw) == ["DUFAKE0001"]
 
 
 def test_reassembles_frames_that_arrive_a_byte_at_a_time():
-    with FakeGateway("DUTEST0001", bytewise=True) as gw:
-        assert ask(gw) == ["DUTEST0001"]
+    with FakeGateway("DUFAKE0001", bytewise=True) as gw:
+        assert ask(gw) == ["DUFAKE0001"]
 
 
 def test_the_timeout_bounds_the_whole_call_even_while_frames_keep_arriving():
     with (
-        FakeGateway("DUTEST0001", chatter_seconds=2.0) as gw,
+        FakeGateway("DUFAKE0001", chatter_seconds=2.0) as gw,
         pytest.raises(ib_probe.ProbeError, match="in time"),
     ):
         ask(gw, timeout=0.5)
@@ -50,7 +50,7 @@ def test_the_timeout_bounds_the_whole_call_even_while_frames_keep_arriving():
 
 def test_fails_on_a_managed_accounts_message_without_an_account_field():
     with (
-        FakeGateway("DUTEST0001", malformed_accounts=True) as gw,
+        FakeGateway("DUFAKE0001", malformed_accounts=True) as gw,
         pytest.raises(ib_probe.ProbeError, match="malformed"),
     ):
         ask(gw)
@@ -58,7 +58,7 @@ def test_fails_on_a_managed_accounts_message_without_an_account_field():
 
 def test_fails_on_an_absurd_frame_length():
     with (
-        FakeGateway("DUTEST0001", oversize_frame=True) as gw,
+        FakeGateway("DUFAKE0001", oversize_frame=True) as gw,
         pytest.raises(ib_probe.ProbeError, match="unexpected size"),
     ):
         ask(gw, timeout=2)
@@ -67,7 +67,7 @@ def test_fails_on_an_absurd_frame_length():
 @pytest.mark.parametrize("version_text", ["²", "4", "999"])
 def test_fails_on_a_handshake_answer_that_is_not_an_offered_version(version_text):
     with (
-        FakeGateway("DUTEST0001", version_text=version_text) as gw,
+        FakeGateway("DUFAKE0001", version_text=version_text) as gw,
         pytest.raises(ib_probe.ProbeError),
     ):
         ask(gw, timeout=0.5)
@@ -75,7 +75,7 @@ def test_fails_on_a_handshake_answer_that_is_not_an_offered_version(version_text
 
 def test_reports_the_gateways_error_code_when_it_hangs_up():
     with (
-        FakeGateway("DUTEST0001", error_code="326") as gw,
+        FakeGateway("DUFAKE0001", error_code="326") as gw,
         pytest.raises(ib_probe.ProbeError, match="326"),
     ):
         ask(gw)

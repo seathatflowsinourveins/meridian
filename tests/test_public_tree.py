@@ -18,9 +18,8 @@ from test_paper_only import REPO_ROOT, git_files
 NOT_SCANNED: set[str] = set()
 
 # A capital D, U, F or I, at most two more capital letters, then 5 to 9 digits, standing alone.
-# Covers the shapes in IBKR's API documentation examples (U, F and I for individual, advisor
-# and institutional accounts; DU, DF and DUD for paper ones, with 5 to 7 digits) and the
-# paper id this lane has seen (three capital letters, then 6 digits).
+# Covers the shapes in IBKR's and NautilusTrader's documentation examples: U, F and I for
+# individual, advisor and institutional accounts; DU, DF and DUD for paper ones; 5 to 7 digits.
 ACCOUNT_ID = re.compile(r"(?<![A-Za-z0-9])[DUFI][A-Z]{0,2}[0-9]{5,9}(?![A-Za-z0-9])")
 
 WORKFLOW_HAZARDS = {
@@ -80,7 +79,6 @@ def test_ci_has_no_fork_reachable_token_secret_or_runner():
         ("DF", "1234567"),
         ("F", "1234567"),
         ("I", "1234567"),
-        ("DUT", "123456"),
         ("DF", "12345"),
         ("DUD", "12345"),
     ],
@@ -94,7 +92,7 @@ def test_the_scan_catches_account_id_shapes(parts):
 @pytest.mark.parametrize(
     "text",
     [
-        "DUTEST0001",  # the fake ids the boundary tests use
+        "DUFAKE0001",  # the fake ids the boundary tests use
         "UTEST00002",
         "port = 4002",
         "sha256 = 'a9b1ea35ebee0b377255f7d069e45ed41c1fe718cb67208c64fffb2179f3a5be'",

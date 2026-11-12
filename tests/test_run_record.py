@@ -6,7 +6,7 @@ import pytest
 
 from meridian import ibkr_paper
 
-ACCOUNT = "DUTEST0001"
+ACCOUNT = "DUFAKE0001"
 ACCOUNT_HASH = "ab" * 32
 FORBIDDEN = [ACCOUNT, ACCOUNT_HASH]
 T0 = 1_794_000_000_000_000_000

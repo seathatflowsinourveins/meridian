@@ -15,18 +15,18 @@ from meridian import boundary, ibkr_paper
 
 # Fake ids. They have letters between prefix and digits, so they never look like a real id
 # to tests/test_public_tree.py.
-PAPER = "DUTEST0001"
+PAPER = "DUFAKE0001"
 OTHER = "UTEST00002"  # the form of a real-money account
-NOT_LISTED = "DUTEST0003"  # the paper form, but not on the allowlist
+NOT_LISTED = "DUFAKE0003"  # the paper form, but not on the allowlist
 NOT_PAPER_FORM = [
     OTHER,
     "FTEST0003",
     "ITEST0004",
     "XTEST0005",
     "UDTEST0006",  # a D, but not first
-    "DUTEST0007X",  # the paper form, then a trailing letter
+    "DUFAKE0007X",  # the paper form, then a trailing letter
     "DTEST",
-    "dutest0001",
+    "dufake0001",
     "D",
     "0001",
 ]
