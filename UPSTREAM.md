@@ -5,24 +5,50 @@ commit, the page it was read from, the date it was read, and what it is used for
 "upstream" means the thing is used as its maintainers ship it. "own design" means it was written
 here and no upstream ships it.
 
-A row is added in the same commit that adds the tool. Versions marked "recorded after first boot"
-are filled in from the running distro, not from memory.
+A row is added in the same commit that adds the tool. Versions are taken from the running distro
+or the lockfile, not from memory. Transitive Python packages are pinned with hashes in `uv.lock`.
 
 ## Distro (`deploy/wsl/`)
 
 | Component | Version or commit | Source URL (read) | Date read | Used for | Origin |
 |---|---|---|---|---|---|
-| WSL (already on the host, not installed by this repo) | 3.0.3.0 | `wsl --help` and `wsl --version` on this machine; https://learn.microsoft.com/windows/wsl/basic-commands | 2026-11-12 | `--install --name --location --vhd-size --no-launch`, `--set-default`, `--mount --vhd --bare`, `--unmount` | upstream |
-| Ubuntu 26.04 LTS WSL image | `Ubuntu-26.04` from `wsl --list --online`; build recorded after first boot | https://documentation.ubuntu.com/wsl/stable/howto/cloud-init/ | 2026-11-12 | the `meridian` distro | upstream |
-| cloud-init, WSL datasource | shipped in the image; version recorded after first boot | https://cloudinit.readthedocs.io/en/latest/reference/datasources/wsl.html | 2026-11-12 | applies `deploy/wsl/meridian.user-data` on first boot, looked up as `%USERPROFILE%\.cloud-init\meridian.user-data` | upstream |
+| WSL (already on the host, not installed by this repo) | 3.0.3.0 | `wsl --help` and `wsl --version` on this machine; https://learn.microsoft.com/windows/wsl/basic-commands | 2026-11-12 | the commands in the header of `deploy/wsl/meridian.user-data`: `--install --name --location --vhd-size --no-launch`, `-d <distro> -u root`, `--terminate`, `--set-default` | upstream |
+| Ubuntu WSL image | Ubuntu 26.04.1 LTS (resolute), installed as `Ubuntu-26.04` | https://documentation.ubuntu.com/wsl/stable/howto/cloud-init/ | 2026-11-12 | the `meridian` distro | upstream |
+| cloud-init, WSL datasource | 26.1-0ubuntu3~26.04.1 (in the image) | https://cloudinit.readthedocs.io/en/latest/reference/datasources/wsl.html | 2026-11-12 | applies `deploy/wsl/meridian.user-data` on first boot, looked up as `%USERPROFILE%\.cloud-init\meridian.user-data` | upstream |
 | `/etc/wsl.conf` keys | n/a (WSL 3.0.3.0) | https://learn.microsoft.com/windows/wsl/wsl-config | 2026-11-12 | `[boot] systemd=true`, `[user] default`, `[interop] appendWindowsPath=false` | upstream |
-| apt packages `git gh build-essential curl jq unzip` | Ubuntu 26.04 archive; versions recorded after first boot | https://packages.ubuntu.com/resolute/ | 2026-11-12 | base tools named in the plan | upstream |
+| apt packages | git 1:2.53.0-1ubuntu1.1, gh 2.46.0-4, build-essential 12.12ubuntu2.26.04.2, curl 8.18.0-1ubuntu2.8, jq 1.8.1-4ubuntu2, unzip 6.0-29ubuntu1 | https://packages.ubuntu.com/resolute/ | 2026-11-12 | base tools named in the plan | upstream |
 | Node.js | v24.22.3 (LTS "Krypton"), `node-v24.22.3-linux-x64.tar.xz`, sha256 `4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb` | https://nodejs.org/dist/v24.22.3/SHASUMS256.txt ; https://nodejs.org/dist/index.json | 2026-11-12 | pinned Node >= 18.18 for the agent CLIs of the next sitting; nothing in this repo runs on it yet | upstream |
 | uv | 0.13.7, installer sha256 `d263ee68314cf5bea36b08e6bd9e2c4563240d7adb73756cf33af5c199b92db4` | https://astral.sh/uv/0.13.7/install.sh ; https://docs.astral.sh/uv/getting-started/installation/ ; https://github.com/astral-sh/uv/releases/tag/0.13.7 | 2026-11-12 | Python project, lockfile, managed CPython | upstream |
-| Claude Code (native installer) | 2.1.322 | https://code.claude.com/docs/en/setup ; https://claude.ai/install.sh ; https://downloads.claude.ai/claude-code-releases/latest | 2026-11-12 | the lead agent in the distro | upstream |
-| Claude Code setting `disableClaudeAiConnectors` | n/a | https://code.claude.com/docs/en/settings | 2026-11-12 | set to `true` in `~/.claude/settings.json` so claude.ai connectors (including an Interactive Brokers one) never load in the distro | upstream |
+| Claude Code (native installer) | 2.1.322 asked for at install; it updates itself afterwards | https://code.claude.com/docs/en/setup ; https://claude.ai/install.sh ; https://downloads.claude.ai/claude-code-releases/latest | 2026-11-12 | the lead agent in the distro | upstream |
+| Claude Code setting `disableClaudeAiConnectors` | n/a | https://code.claude.com/docs/en/settings | 2026-11-12 | set to `true` in `~/.claude/settings.json` so claude.ai connectors (including an Interactive Brokers one) do not load in Claude Code started from a terminal in the distro. It does not cover sessions opened from the Claude desktop app | upstream |
 | Orca `orca.yaml` file format | v1.4.257, commit `b0570d90fc9af8c9e7e3566c0fb841d0884e2462` | https://github.com/stablyai/orca/blob/v1.4.257/docs/site/content/docs/model/orca-yaml.mdx | 2026-11-12 | `orca.yaml` (`scripts.setup`). Orca itself is not installed in this sitting | upstream |
 | `deploy/wsl/meridian.user-data`, `deploy/wsl/setup.sh` | this repo | n/a | 2026-11-12 | the distro definition and the user-level setup steps | own design |
+
+## Trading (IBKR paper lane, milestone M1)
+
+| Component | Version or commit | Source URL (read) | Date read | Used for | Origin |
+|---|---|---|---|---|---|
+| NautilusTrader | 2.0.0rc9 from PyPI (tag `v2.0.0rc9`, commit `da6b57aefdd62b44f675e434ffcfefca7f4025dd`), licence LGPL-3.0-only; wheel hashes in `uv.lock` | https://pypi.org/pypi/nautilus_trader/2.0.0rc9/json ; https://github.com/nautechsystems/nautilus_trader/releases/tag/v2.0.0rc9 | 2026-11-12 | the engine: live node, Interactive Brokers adapter, startup reconciliation | upstream |
+| NautilusTrader IB integration guide and reconciliation concept | at tag `v2.0.0rc9` | https://raw.githubusercontent.com/nautechsystems/nautilus_trader/v2.0.0rc9/docs/integrations/interactive_brokers.md ; https://raw.githubusercontent.com/nautechsystems/nautilus_trader/v2.0.0rc9/docs/concepts/execution/reconciliation.md | 2026-11-12 | ports, client ids, what startup reconciliation does and when it aborts | upstream |
+| `upstream/.../interactive_brokers/_common.py` | git blob `c3ce3319514926dbbe29d46dd458168dfd385d79` at the tag commit | https://raw.githubusercontent.com/nautechsystems/nautilus_trader/da6b57aefdd62b44f675e434ffcfefca7f4025dd/examples/live/interactive_brokers/_common.py | 2026-11-12 | `build_ib_live_node`, `instrument_provider_config`, `schedule_node_stop`, `default_aapl_instrument_id`. Verbatim copy | upstream |
+| `upstream/.../interactive_brokers/ib_v2_order_strategies.py` | git blob `80c8bcca0eca0ea2b76714c3af67a2406d6c4885` at the tag commit | https://raw.githubusercontent.com/nautechsystems/nautilus_trader/da6b57aefdd62b44f675e434ffcfefca7f4025dd/examples/live/interactive_brokers/ib_v2_order_strategies.py | 2026-11-12 | `IbV2OrderStrategy`: waits for a quote, submits once, cancels on acceptance, cancels its own orders on stop. Its close-on-stop is switched off by the lane. Verbatim copy | upstream |
+| Upstream example `notebooks/market_order_example.py` (read, not copied) | at the tag commit | https://raw.githubusercontent.com/nautechsystems/nautilus_trader/da6b57aefdd62b44f675e434ffcfefca7f4025dd/examples/live/interactive_brokers/notebooks/market_order_example.py | 2026-11-12 | the pattern `meridian/ibkr_node.py` follows: subclass the base strategy, build the node with upstream's helper | upstream |
+| CPython | 3.14.10, installed and managed by uv | https://docs.astral.sh/uv/concepts/python-versions/ | 2026-11-12 | the interpreter (`.python-version` is `3.14`) | upstream |
+| uv settings `exclude-newer`, `exclude-newer-package` | uv 0.13.7 | https://docs.astral.sh/uv/reference/settings/ ; https://docs.astral.sh/uv/concepts/resolution/ | 2026-11-12 | 7-day cooldown on new releases, with `nautilus-trader` exempt by name | upstream |
+| ruff | 0.17.3 | https://pypi.org/pypi/ruff/json | 2026-11-12 | lint and format | upstream |
+| pyright (with `nodejs-wheel-binaries` 24.19.0) | 1.1.414 | https://pypi.org/pypi/pyright/json | 2026-11-12 | type check, with no download at run time | upstream |
+| pytest | 9.2.0 | https://pypi.org/pypi/pytest/json | 2026-11-12 | tests | upstream |
+| `actions/checkout` | v7.0.1, commit `3d3c42e5aac5ba805825da76410c181273ba90b1` | https://github.com/actions/checkout/releases/tag/v7.0.1 | 2026-11-12 | CI | upstream |
+| `astral-sh/setup-uv` | v10.3.3, commit `68559e99cc807c1eb7e9238fd43a15bba460eec2` | https://github.com/astral-sh/setup-uv/releases/tag/v10.3.3 | 2026-11-12 | CI | upstream |
+| gitleaks (CI only, not installed in the distro) | 8.30.1, `gitleaks_8.30.1_linux_x64.tar.gz`, sha256 `551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb` | https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_checksums.txt | 2026-11-12 | secret scan of the git history in CI | upstream |
+| Dependabot (`uv` and `github-actions` ecosystems, `cooldown`) | n/a | https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference | 2026-11-12 | weekly update pull requests, 7-day cooldown | upstream |
+| IBKR TWS API: managed accounts | n/a | https://www.interactivebrokers.com/docs/tws-api/doc/accounts/managed-accounts.md | 2026-11-12 | the Gateway sends the list of accounts it manages when a client connects; this is what the allowlist is checked against | upstream |
+| IBKR Python API client source, read as text and not installed | `nautilus-ibapi` 10.45.1: `client.py`, `comm.py`, `message.py`, `server_versions.py` | https://pypi.org/project/nautilus-ibapi/10.45.1/ | 2026-11-12 | the wire constants `meridian/ib_probe.py` uses: `API\0` prefix, length-prefixed NUL-separated fields, `START_API` 71, `MANAGED_ACCTS` 15, text framing below protocol 201 | upstream |
+| IB Gateway (installed and logged in by the owner) | stable channel, 10.50.1g when read; exact build recorded after install | https://www.interactivebrokers.com/en/trading/ibgateway-stable.php | 2026-11-12 | the paper session the lane connects to on 127.0.0.1:4002 | upstream |
+| `meridian/boundary.py` | this repo | n/a | 2026-11-12 | fail-closed check of the Gateway's account against `risk/boundary.contract.json` | own design |
+| `meridian/ib_probe.py` | this repo | n/a | 2026-11-12 | asks the Gateway which accounts it manages; sends only the version handshake and `START_API` | own design |
+| `meridian/ibkr_paper.py` | this repo | n/a | 2026-11-12 | the gate before the engine and again after the run, the owner's typed confirmation, and the scrubbed run record | own design |
+| `meridian/ibkr_node.py` | this repo; it subclasses and calls the two upstream files above | n/a | 2026-11-12 | one DAY LIMIT order through upstream's base strategy, and the calls that feed the run record | own design |
 
 ## Notes on choices
 
@@ -36,3 +62,23 @@ are filled in from the running distro, not from memory.
 - **`gh` from the Ubuntu archive.** It is far behind GitHub's own releases. It is enough for
   sign-in, clone and pull requests. If a newer one is needed, use GitHub's apt repository and add
   a row here.
+- **The engine is a release candidate.** Upstream says release candidates are for testing and
+  not for real capital. That fits a paper-only harness; it also means the API can change between
+  candidates, so the pin is exact.
+- **The adapter does not check the account.** NautilusTrader 2.0.0rc9's Interactive Brokers
+  adapter takes the configured account id on trust and never reads the Gateway's account list.
+  That is why `meridian/ib_probe.py` and `meridian/boundary.py` exist and run first.
+- **Upstream's order-placing examples were read and not used as they are.** `exec_tester.py`
+  opens a futures position on start. The built-in `ExecTester` strategy does not cancel on
+  acceptance, so its order reaches a terminal state only at stop, and it submits again if the
+  order is rejected or cancelled during the run. `IbV2OrderStrategy` submits once and cancels
+  on acceptance, which is what M1 needs.
+- **A fill is a failure in this lane.** The adapter refuses reduce-only orders, so upstream's
+  close-on-stop cannot close a position, and a plain market close would be a second order that
+  M1 does not define. The lane switches close-on-stop off and reports a fill as a failed run.
+- **The account check runs twice.** The adapter opens its own connections after the check, so
+  the lane asks the Gateway again after the run and writes no evidence if the answer changed.
+  It does not hold a connection open during the run.
+- **Dependabot and uv.** `required-version` is not set in `pyproject.toml`, because Dependabot
+  brings its own uv. uv is pinned where it is installed instead.
+- **Upstream example files are LGPL-3.0.** They are kept verbatim with their headers.

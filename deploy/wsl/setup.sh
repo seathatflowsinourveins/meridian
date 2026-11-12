@@ -4,10 +4,10 @@
 #
 #   deploy/wsl/setup.sh check    verify what deploy/wsl/meridian.user-data was meant to do
 #   deploy/wsl/setup.sh uv       install uv (pinned; installer checksum verified first)
-#   deploy/wsl/setup.sh claude   install Claude Code with the native installer (pinned)
+#   deploy/wsl/setup.sh claude   install Claude Code with the native installer
 #   deploy/wsl/setup.sh repo     clone the repo to ~/src/meridian and run `uv sync --locked`
 #
-# Order: check, uv, repo. `claude` comes only after the Sextant harvest is done or skipped.
+# Order: check, uv, repo, then claude last.
 # Versions, checksums and the pages they were read from: UPSTREAM.md.
 set -euo pipefail
 
@@ -43,7 +43,8 @@ cmd_check() {
   ok "node ${NODE_VERSION}"
   jq -e '.disableClaudeAiConnectors == true' "${HOME}/.claude/settings.json" >/dev/null \
     || fail "disableClaudeAiConnectors is not true in ~/.claude/settings.json"
-  ok "claude.ai connectors disabled in ~/.claude/settings.json"
+  ok "claude.ai connectors disabled for Claude Code started in a terminal here"
+  echo "note: that setting does not cover sessions opened from the Claude desktop app"
 }
 
 cmd_uv() {
@@ -57,12 +58,14 @@ cmd_uv() {
 }
 
 cmd_claude() {
-  # The installer checks the binary against the release manifest's SHA256 itself.
+  # Asks the installer for this version. The installer script itself is whatever
+  # claude.ai serves, and Claude Code updates itself afterwards, so this is the version
+  # at install time, not a lasting pin.
   curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_VERSION}"
   "${HOME}/.local/bin/claude" --version
   jq -e '.disableClaudeAiConnectors == true' "${HOME}/.claude/settings.json" >/dev/null \
     || fail "disableClaudeAiConnectors is no longer true after the install"
-  ok "claude.ai connectors still disabled"
+  ok "claude.ai connectors still disabled for terminal sessions"
 }
 
 cmd_repo() {
