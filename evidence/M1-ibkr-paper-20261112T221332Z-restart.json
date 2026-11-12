@@ -1,0 +1,38 @@
+{
+  "at_stop": {
+    "account_open_orders": 0,
+    "account_open_positions": 0,
+    "instrument_open_orders": 0,
+    "instrument_open_positions": 0
+  },
+  "boundary": {
+    "allowlist_contract_present": false,
+    "paper_checks_passed_after_run": true,
+    "paper_checks_passed_before_run": true
+  },
+  "engine": {
+    "nautilus_trader": "2.0.0rc9"
+  },
+  "engine_error": false,
+  "events": [],
+  "gateway": {
+    "port": 4002
+  },
+  "lane": "ibkr-paper",
+  "milestone": "M1",
+  "mode": "restart",
+  "order": null,
+  "problems": [],
+  "result": "pass",
+  "run_ended_utc": "2026-11-12T22:13:32Z",
+  "run_started_utc": "2026-11-12T22:13:02Z",
+  "schema": "meridian.run-record/1",
+  "startup_reconciliation": {
+    "account_open_orders_at_start": 0,
+    "account_open_positions_at_start": 0,
+    "instrument_open_orders_at_start": 0,
+    "instrument_open_positions_at_start": 0,
+    "requested": true,
+    "trader_started": true
+  }
+}

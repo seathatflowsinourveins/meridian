@@ -1,0 +1,79 @@
+{
+  "at_stop": {
+    "account_open_orders": 0,
+    "account_open_positions": 0,
+    "filled_qty": "0",
+    "instrument_open_orders": 0,
+    "instrument_open_positions": 0,
+    "order_status": "CANCELED"
+  },
+  "boundary": {
+    "allowlist_contract_present": false,
+    "paper_checks_passed_after_run": true,
+    "paper_checks_passed_before_run": true
+  },
+  "engine": {
+    "nautilus_trader": "2.0.0rc9"
+  },
+  "engine_error": false,
+  "events": [
+    {
+      "client_order_id": "IBV2-019cb93c-LIMIT",
+      "ts_event_utc": "2026-11-12T22:11:58.535518Z",
+      "type": "OrderInitialized"
+    },
+    {
+      "client_order_id": "IBV2-019cb93c-LIMIT",
+      "ts_event_utc": "2026-11-12T22:11:58.535979Z",
+      "type": "OrderSubmitted"
+    },
+    {
+      "client_order_id": "IBV2-019cb93c-LIMIT",
+      "ts_event_utc": "2026-11-12T22:11:58.923789Z",
+      "type": "OrderPendingCancel"
+    },
+    {
+      "client_order_id": "IBV2-019cb93c-LIMIT",
+      "ts_event_utc": "2026-11-12T22:11:58.922670Z",
+      "type": "OrderAccepted"
+    },
+    {
+      "client_order_id": "IBV2-019cb93c-LIMIT",
+      "ts_event_utc": "2026-11-12T22:11:58.922670Z",
+      "type": "OrderUpdated"
+    },
+    {
+      "client_order_id": "IBV2-019cb93c-LIMIT",
+      "ts_event_utc": "2026-11-12T22:11:59.006704Z",
+      "type": "OrderCanceled"
+    }
+  ],
+  "gateway": {
+    "port": 4002
+  },
+  "lane": "ibkr-paper",
+  "milestone": "M1",
+  "mode": "order",
+  "order": {
+    "client_order_id": "IBV2-019cb93c-LIMIT",
+    "instrument_id": "AAPL.XNAS",
+    "price": "347.41",
+    "quantity": "1",
+    "side": "BUY",
+    "time_in_force": "DAY",
+    "type": "LIMIT"
+  },
+  "problems": [],
+  "result": "pass",
+  "run_ended_utc": "2026-11-12T22:13:01Z",
+  "run_started_utc": "2026-11-12T22:11:56Z",
+  "schema": "meridian.run-record/1",
+  "startup_reconciliation": {
+    "account_open_orders_at_start": 0,
+    "account_open_positions_at_start": 0,
+    "instrument_open_orders_at_start": 0,
+    "instrument_open_positions_at_start": 0,
+    "requested": true,
+    "trader_started": true
+  }
+}
