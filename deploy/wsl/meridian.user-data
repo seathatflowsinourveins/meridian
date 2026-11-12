@@ -1,0 +1,70 @@
+#cloud-config
+# meridian: Ubuntu 26.04 LTS on WSL2. This file is the distro's definition.
+#
+# Before installing, copy it to  %USERPROFILE%\.cloud-init\meridian.user-data  then:
+#   wsl --install Ubuntu-26.04 --name meridian --location Z:\WSL\meridian --vhd-size 200GB --no-launch
+#   wsl -d meridian -u root -- cloud-init status --wait --long     (first boot; must exit 0)
+#   wsl --terminate meridian                                        (so /etc/wsl.conf applies)
+#   wsl --set-default meridian
+# Versions, checksums and the pages they were read from: UPSTREAM.md.
+
+users:
+  # Owner. First regular user, so uid 1000. Passwordless sudo is the owner's choice.
+  - name: apoth
+    gecos: Owner
+    groups: [adm, dialout, cdrom, floppy, sudo, audio, dip, video, plugdev, netdev]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    shell: /bin/bash
+    lock_passwd: true
+  # Service user for the trading nodes. No login, no sudo, no home.
+  - name: paper
+    gecos: Paper trading service user
+    system: true
+    shell: /usr/sbin/nologin
+    lock_passwd: true
+
+write_files:
+  # Whole file, not appended: one definition, no duplicate sections.
+  - path: /etc/wsl.conf
+    permissions: "0644"
+    content: |
+      [boot]
+      systemd=true
+
+      [user]
+      default=apoth
+
+      [interop]
+      appendWindowsPath=false
+
+package_update: true
+packages:
+  - git
+  - gh
+  - build-essential
+  - curl
+  - jq
+  - unzip
+
+runcmd:
+  # Node.js: exact version, checksum from the release's SHASUMS256.txt.
+  - |
+    set -eu
+    NODE_VERSION=v24.22.3
+    NODE_SHA256=4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb
+    NODE_TARBALL="node-${NODE_VERSION}-linux-x64.tar.xz"
+    curl -fsSLo "/var/tmp/${NODE_TARBALL}" "https://nodejs.org/dist/${NODE_VERSION}/${NODE_TARBALL}"
+    echo "${NODE_SHA256}  /var/tmp/${NODE_TARBALL}" | sha256sum -c -
+    install -d "/opt/node-${NODE_VERSION}"
+    tar -xJf "/var/tmp/${NODE_TARBALL}" -C "/opt/node-${NODE_VERSION}" --strip-components=1
+    for bin in node npm npx; do
+      ln -sf "/opt/node-${NODE_VERSION}/bin/${bin}" "/usr/local/bin/${bin}"
+    done
+    rm -f "/var/tmp/${NODE_TARBALL}"
+  # Claude Code user settings: claude.ai connectors never load in this distro.
+  - |
+    set -eu
+    install -d -o apoth -g apoth -m 0700 /home/apoth/.claude
+    printf '{\n  "disableClaudeAiConnectors": true\n}\n' > /home/apoth/.claude/settings.json
+    chown apoth:apoth /home/apoth/.claude/settings.json
+    chmod 0644 /home/apoth/.claude/settings.json
