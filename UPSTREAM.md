@@ -82,20 +82,31 @@ each harvested file is the source but for the import lines listed there.
 
 Notes on the order budget, measured by the soak (`evidence/M2-order-budget-*-soak.json`):
 
-- **It holds the request past the budget; it does not raise.** A request waits in the pacer's
-  queue until the bucket has a token, most urgent kind first. A queued request leaves the queue
-  unsent in three ways: its caller's admission check turns false (the caller withdrew it); it
-  is an entry whose protection reserve would reach the burst (`refuse(reason)` is called, and
-  `request()` raises `PacerRefused` if that is already so when it is made); or it is an entry
-  whose reserve cannot be worked out (reserve rows missing, or a position count that is not a
-  whole number), which is dropped silently, so a caller checks reserve authority in its own
-  admission, as Sextant's Alpaca gateway does. This is the owner's design (Sextant ADR-0009,
-  R6), kept as it is because the Alpaca adapter of M3 relies on it.
+- **It holds the request past the budget; it never refuses it for being over the budget.** A
+  request waits in the pacer's queue until the bucket has a token, most urgent kind first, and
+  neither the queue nor the wait has a limit. An entry also waits until the bucket holds more
+  tokens than its protection reserve. A queued request leaves the queue unsent in three ways:
+  its caller's admission check turns false (the caller withdrew it; in the soak, an entry not
+  sent within 30 s); it is an entry whose reserve would reach the burst (`refuse(reason)` is
+  called, and `request()` raises `PacerRefused` if that is already so when it is made); or it is
+  an entry whose reserve cannot be worked out (reserve rows missing, or a position count that is
+  not a whole number), which is dropped silently, so a caller checks reserve authority in its own
+  admission, as Sextant's Alpaca gateway does. This is the owner's design (Sextant ADR-0009, R6),
+  kept as it is because the Alpaca adapter of M3 relies on it. Whether "refused" may mean "held
+  until the window has room, or withdrawn by its caller" is the owner's to confirm.
 - **The cap is 179, not 180.** The refill interval rounds up (370,370,371 ns for 162 refills a
   minute), so the 162nd refill lands 102 ns after the window: a full burst of 18 plus 161
-  refills. After a quiet spell the bucket is full again, and the window that follows holds 179
-  too. Under steady demand above the budget it sends 161 to 163 a minute, because the burst is
+  refills. That holds for any budget and burst: the cap is always one under the budget.
+  Rounding down instead, `(window_ns - 1) // (limit - burst)`, would give exactly the budget
+  and still never exceed it; that is a change to the owner's arithmetic and is not made here.
+  After a quiet spell the bucket is full again, and the window that follows holds 179 too.
+  Under steady demand above the budget it sends 161 to 163 a minute, because the burst is
   shared with the budget rather than added to it.
+- **The budget holds within one pacer, not across a restart.** A new `AccountPacer` starts with
+  a full burst and no memory of the last 60 s; `to_state()` and `restore()` carry only the wire
+  counters, not the tokens or a 429 pause. Sextant's Alpaca adapter builds a new pacer each time
+  the node connects, so a start within 60 s of the previous run's last request can add up to one
+  burst (18) to that window. The M3 lane has to start a pacer empty, or wait out the window.
 
 ## Notes on choices
 
