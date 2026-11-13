@@ -8,3 +8,6 @@ runs/
 # SHA-256 values can be reversed to the account id, and this repository is public, so none of
 # them is ever committed. A contract meant for the repository would need `git add -f`.
 *.contract.json*
+# Environment files hold keys (DeepSeek Harness reads one from the folder it starts in).
+.env
+.env.*
