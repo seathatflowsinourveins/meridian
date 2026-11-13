@@ -1778,3 +1778,245 @@ def test_an_order_listing_that_gets_no_answer_after_startup_is_not_a_gap(failure
     assert box["error"] is None
     assert box["seen"] == (True, [], 0)
     assert box["first"] == ("APIError" if failure == "http-503" else "ValueError")
+
+
+def report_read(client, row: dict, read: str):
+    """A report the engine can ask for after startup, for the lane's order `row`: its open-order
+    check's listing, a targeted or strategy query, and its position checks and the fills they
+    ask for (when position checks are set)."""
+    scope = SimpleNamespace(
+        open_only=read == "open-orders", start=None, end=None, instrument_id=None
+    )
+    if read == "open-orders":
+        return client._generate_order_status_reports(scope)
+    if read == "one-order":
+        query = SimpleNamespace(venue_order_id=VenueOrderId(row["id"]), client_order_id=None)
+        return client._generate_order_status_report(query)
+    if read == "positions":
+        return client._generate_position_status_reports(scope)
+    return client._generate_fill_reports(scope)
+
+
+UNREADABLE_ANSWERS = {
+    "a row that is not a row": lambda row: lambda query: ["not a row"],
+    "a list": lambda row: lambda query: [dict(row)],
+    "not a list": lambda row: lambda query: {"rows": []},
+    "an unexplained fill": lambda row: (
+        lambda query: [fill_activity(order_row(), when="2026-11-02T15:00:00.000000Z")]
+    ),
+    "an order history without a time": lambda row: lambda query: [{**row, "submitted_at": "?"}],
+}
+
+
+@pytest.mark.parametrize(
+    ("read", "path", "answer", "failure"),
+    [
+        (
+            "open-orders",
+            "/orders",
+            "a row that is not a row",
+            "'str' object has no attribute 'get'",
+        ),
+        ("one-order", "/orders/{id}", "a list", "'list' object has no attribute 'get'"),
+        ("positions", "/positions", "not a list", "Alpaca positions are not a list"),
+        (
+            "positions",
+            "/positions",
+            "a row that is not a row",
+            "'str' object has no attribute 'get'",
+        ),
+        ("fills", "/account/activities/FILL", "not a list", "Alpaca fill page is not a list"),
+        (
+            "fills",
+            "/account/activities/FILL",
+            "an unexplained fill",
+            "historical fill that no order report explains",
+        ),
+        (
+            "fills",
+            "/orders",
+            "an order history without a time",
+            "submitted_at is not a valid timestamp",
+        ),
+    ],
+)
+def test_an_answer_the_lane_cannot_read_after_startup_is_a_gap(read, path, answer, failure):
+    """Each report the engine can ask for after startup, called directly on an answer the lane
+    cannot read or map. Whatever the failure's type (a row that is not a row fails with
+    AttributeError; an order history without a time fails outside any listing), it is a gap at
+    once: new orders stop before the gap's read, which restores coverage once the venue
+    answers again."""
+    rig = Rig()
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, row = rig.clients[0], rig.venue.orders[-1]
+        restore = answering(
+            rig.venue, path.format(id=row["id"]), UNREADABLE_ANSWERS[answer](dict(row))
+        )
+        try:
+            await report_read(client, row, read)
+        except Exception as exc:  # what the engine logs as a failed report
+            box["raised"] = type(exc).__name__
+        box["gap"] = (not client.coverage_complete, [str(error) for _, error in client.failures])
+        restore()
+        await until(lambda: client.coverage_complete)
+        box["recoveries"] = client.recoveries
+
+    box = drive(rig, script)
+    assert box["error"] is None
+    assert "raised" in box
+    assert box["gap"][0] is True and box["gap"][1][-1:] == [failure]
+    assert box["recoveries"] == 1
+
+
+@pytest.mark.parametrize(
+    ("read", "path", "raised"),
+    [
+        ("one-order", "/orders/{id}", "APIError"),
+        ("positions", "/positions", "APIError"),
+        ("fills", "/account/activities/FILL", "APIError"),
+        ("fills", None, "IncompleteCoverage"),  # the budget refuses its first request
+    ],
+)
+def test_a_report_whose_request_gets_no_answer_after_startup_is_not_a_gap(read, path, raised):
+    """The same reads when a request itself fails (a 503, or the budget refusing it before the
+    wire): no answer was read, so it is not a gap, as for an order listing."""
+    rig = Rig()
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, row, pacer = rig.clients[0], rig.venue.orders[-1], rig.pacer
+        assert pacer is not None
+        if path is None:
+            pacer.refuse_kinds.add(ActionKind.QUERY)
+        else:
+            rig.venue.fail("get", path.format(id=row["id"]), api_error(503))
+        try:
+            await report_read(client, row, read)
+        except Exception as exc:
+            box["raised"] = type(exc).__name__
+        box["seen"] = (client.coverage_complete, client.failures, client.recoveries)
+        pacer.refuse_kinds.clear()
+
+    box = drive(rig, script)
+    assert box["error"] is None
+    assert (box["raised"], box["seen"]) == (raised, (True, [], 0))
+
+
+def answered_with(venue, change) -> None:
+    """From now on POST /orders stores the order as before but answers `change(row)`."""
+    post = venue.post
+    venue.post = lambda path, data=None: change(post(path, data))
+
+
+@pytest.mark.parametrize("answer", ["a list", "another order's row"])
+def test_a_submits_answer_the_lane_cannot_read_is_a_gap(answer):
+    """POST /orders stores the order but answers a list, or the row of another order. Either
+    answer is a gap: the next order is denied until a full read, which shows the engine the
+    order as the venue holds it."""
+    rig = Rig()
+    other = {"client_order_id": f"{PREFIX}other"}
+    answered_with(
+        rig.venue, (lambda row: [row]) if answer == "a list" else (lambda row: row | other)
+    )
+
+    def on_start(running, box):
+        box["order"], box["second"] = limit_order(running), limit_order(running, 2)
+
+    async def script(box, status):
+        client = rig.clients[0]
+        rig.venue.fail("get", "/positions", api_error(503))  # the gap's read waits
+        box["strategy"].submit_order(box["order"])
+        await until(lambda: not client.coverage_complete, timeout=5.0)
+        box["strategy"].submit_order(box["second"])
+        await until(lambda: status(2) == OrderStatus.DENIED)
+        rig.venue.failures.clear()
+        await until(lambda: status() == OrderStatus.ACCEPTED)  # shown by the gap's read
+
+    box = drive(rig, script, on_start=on_start)
+    assert box["error"] is None
+    assert rig.venue.last_post["client_order_id"] == f"{PREFIX}1"  # the second was never sent
+
+
+@pytest.mark.parametrize(
+    ("answer", "deletes"),
+    [
+        ("another order's row", 0),
+        ("a row without a venue id", 0),
+        ("an ended row it cannot map", 0),
+        ("a working row in an unclassified status", 1),
+    ],
+)
+def test_a_cancels_read_the_lane_cannot_read_is_a_gap(answer, deletes):
+    """The cancel's read of the lane's order answers what the lane cannot read or map: another
+    order's row, or a row without a venue id (the cancel is refused unsent); an ended row it
+    cannot map (nothing to delete); a working row in a status it has not classified (the DELETE
+    still goes to the lane's own order). Each is a gap."""
+    rig = Rig()
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, row = rig.clients[0], rig.venue.orders[-1]
+        rig.venue.fail("get", "/positions", api_error(503))  # the gap's read waits
+        if answer == "another order's row":
+            row["client_order_id"] = f"{PREFIX}another"
+        elif answer == "a row without a venue id":
+            answering(rig.venue, f"/orders/{row['id']}", lambda query: {**row, "id": None})
+        elif answer == "an ended row it cannot map":
+            row.update(status="canceled", qty="many")
+        else:
+            row["status"] = "pending_review_v2"
+        box["strategy"].cancel_order(box["order"].client_order_id)
+        await until(lambda: not client.coverage_complete, timeout=5.0)
+        await asyncio.sleep(0.3)  # long enough for a DELETE to go out, if one were sent
+        box["deletes"] = [method for method, _ in rig.venue.calls].count("delete")
+
+    box = drive(rig, script)
+    assert box["error"] is None
+    assert box["deletes"] == deletes
+
+
+@pytest.mark.parametrize("read", ["query", "second cancel"])
+def test_a_row_the_lane_cannot_map_settles_no_earlier_cancel(read):
+    """A cancel's DELETE got no answer (500), so it waits for a read issued after its call
+    ended. That read, an order query or a second cancel's, finds the order in a status the
+    lane has not classified. Such a row settles nothing: the engine is told of no refusal, the
+    cancel stays unresolved and no second DELETE goes out; the read is a gap. Once the venue
+    shows a status the lane knows, the gap's read settles the cancel."""
+    rig = Rig()
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, row = rig.clients[0], rig.venue.orders[-1]
+        target = f"/orders/{row['id']}"
+        rig.venue.fail("delete", target, api_error(500))
+        box["strategy"].cancel_order(box["order"].client_order_id)
+        await until(lambda: row["id"] in client._pending and client._pending[row["id"]].ended > 0)
+        row["status"] = "pending_review_v2"
+        reads = rig.venue.calls.count(("get", target))
+        if read == "query":
+            box["strategy"].query_order(box["order"])
+        else:
+            await client._cancel_order(
+                SimpleNamespace(
+                    client_order_id=box["order"].client_order_id,
+                    venue_order_id=None,
+                    command_id=None,
+                )
+            )
+        await until(lambda: rig.venue.calls.count(("get", target)) > reads)
+        await asyncio.sleep(0.3)  # long enough for a refusal or a DELETE, if either came
+        pending = row["id"] in client._pending
+        box["unsettled"] = (cancel_refusals(box), pending, client.coverage_complete)
+        row["status"] = "new"  # a status the lane knows: the gap's read settles the cancel
+        await until(lambda: bool(cancel_refusals(box)))
+        box["settled"] = cancel_refusals(box)
+
+    box = drive(rig, script)
+    assert box["error"] is None
+    assert box["unsettled"] == ([], True, False)
+    assert [method for method, _ in rig.venue.calls].count("delete") == 1
+    assert box["settled"] == [
+        ("OrderCancelRejected", "venue order still working after an unanswered cancel")
+    ]

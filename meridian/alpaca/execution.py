@@ -722,12 +722,18 @@ class AlpacaPaperExecutionClient(ExecutionClient):
             if self._submissions.get(root) is token:
                 self._submissions.pop(root)
         token.settled = True
-        try:
-            self._volunteer(self._order_report(row))
-        except ValueError as exc:
-            self._incomplete(exc)
+        # An answer the lane cannot read or map, or another order's row, is a gap (`_reading`);
+        # the stream or the gap's read then shows the engine this order.
+        with contextlib.suppress(Exception), self._reading():
+            report = self._order_report(row)
+            if report.client_order_id != native.client_order_id:
+                raise ValueError("venue answered with another order")
+            self._volunteer(report)
 
-    async def _current(self, command: Any) -> dict:
+    async def _current(self, command: Any) -> tuple[dict, Any]:
+        """The venue's row of the order a cancel targets, and its report. A row of another
+        order, or one without a venue id, is a gap that refuses the cancel; a row the lane
+        cannot map is a gap with no report (None), and settles no earlier cancel."""
         issued = self._now()
         root = house_id(str(command.client_order_id), self.house_prefix)
         venue = command.venue_order_id or self.cache.venue_order_id(command.client_order_id)
@@ -737,10 +743,18 @@ class AlpacaPaperExecutionClient(ExecutionClient):
             row = await self._call(
                 ActionKind.QUERY, "get", "/orders:by_client_order_id", {"client_order_id": root}
             )
-        if not isinstance(row, dict) or row.get("client_order_id") != root:
-            raise ValueError("venue order is outside the requested namespace")
+        with self._reading():
+            if not isinstance(row, dict) or row.get("client_order_id") != root:
+                raise ValueError("venue order is outside the requested namespace")
+            if not isinstance(row.get("id"), str) or not row["id"]:
+                raise ValueError("Alpaca order report requires its venue and client order ids")
+        try:
+            with self._reading():
+                report = self._order_report(row)
+        except Exception:
+            return row, None
         self._settle(row, issued)
-        return row
+        return row, report
 
     async def _do_cancel_order(self, command: Any, token: _Command) -> None:
         native = token.native
@@ -753,12 +767,15 @@ class AlpacaPaperExecutionClient(ExecutionClient):
                 if native is not None:
                     self.generate_order_canceled(native, None, self.clock.timestamp_ns())
                 return
-            row = await self._current(command)
+            row, report = await self._current(command)
             token.row_id, token.venue_order_id = row["id"], VenueOrderId(row["id"])
             if row.get("status") in TERMINAL:
                 token.settled = True
-                self._volunteer(self._order_report(row))
+                if report is not None:
+                    self._volunteer(report)
                 return
+            # A working row the lane cannot map is a gap (`_current`); the DELETE still goes
+            # to the lane's own order, by the venue id its read returned.
             if row["id"] in self._pending or row["id"] in self._cancelling:
                 token.settled = True  # one unresolved cancel per order; never re-cancel
                 return
@@ -834,21 +851,19 @@ class AlpacaPaperExecutionClient(ExecutionClient):
             if exc.status_code == 404:
                 return None
             raise
-        try:
+        # As for a listing's row: an answer the lane cannot read or map is a gap. A row settles
+        # an earlier cancel only once it maps, as this order's.
+        with self._reading():
             check_one_writer(row, self.house_prefix)
             if withheld_unloaded(row, self._is_loaded) or unmappable_history(row):
                 return None
-            self._settle(row, issued)
             report = self._order_report(row)
             if (
                 command.client_order_id is not None
                 and report.client_order_id != command.client_order_id
             ):
                 raise ValueError("venue answered with another order")
-        except Exception as exc:
-            # As for a listing's row: one the lane's rules or mappers refuse is a gap.
-            self._note_failures([(None, exc)])
-            raise
+            self._settle(row, issued)
         return report
 
     async def _generate_order_status_reports(self, command: Any) -> list:
@@ -879,8 +894,9 @@ class AlpacaPaperExecutionClient(ExecutionClient):
                         if unmappable_history(row):
                             trace.withheld_unmapped += 1
                             continue
-                        self._settle(row, issued)
-                        reports.append(self._order_report(row))
+                        report = self._order_report(row)
+                        self._settle(row, issued)  # only a row that maps settles a cancel
+                        reports.append(report)
                     except Exception as exc:
                         failures.append((None, exc))
                 if failures:
@@ -895,24 +911,27 @@ class AlpacaPaperExecutionClient(ExecutionClient):
 
     async def _generate_fill_reports(self, command: Any) -> list:
         await self._subscribed()
+        requests: list[BaseException] = []
         with traced(self.report_trace, "fills") as trace:
-            call, pages = self._traced_call(trace, []), self._max_pages()
+            call, pages = self._traced_call(trace, requests), self._max_pages()
             params = _bounds(command)
             params.pop("symbols", None)
             if getattr(command, "instrument_id", None) is not None:
                 params["symbol"] = command.instrument_id.symbol.value
-            # The whole order history first: a fill in the window may be an older order's, and
-            # its oldest submission bounds how far back the FILL pages need reading.
-            orders = await list_orders(call, {"status": "all", "nested": True}, max_pages=pages)
-            fills = await list_fill_activities(
-                call,
-                params,
-                max_pages=pages,
-                horizon_ns=oldest_submission(orders),
-                trace=trace,
-            )
-            trace.rows = len(fills)
-            explain_fills(fills, orders, trace, self._is_loaded)
+            # After startup the engine asks for fills only in its position checks, if set.
+            with self._reading(requests):
+                # The whole order history first: a fill in the window may be an older order's,
+                # and its oldest submission bounds how far back the FILL pages need reading.
+                orders = await list_orders(call, {"status": "all", "nested": True}, max_pages=pages)
+                fills = await list_fill_activities(
+                    call,
+                    params,
+                    max_pages=pages,
+                    horizon_ns=oldest_submission(orders),
+                    trace=trace,
+                )
+                trace.rows = len(fills)
+                explain_fills(fills, orders, trace, self._is_loaded)
         return []
 
     async def _generate_position_status_reports(self, command: Any) -> list:
@@ -921,32 +940,32 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         with traced(self.report_trace, "positions") as trace:
             trace.count_request("get", "/positions")
             rows = await self._call(ActionKind.QUERY, "get", "/positions")
-            if not isinstance(rows, list):
-                raise IncompleteCoverage(
-                    [], [(None, ValueError("Alpaca positions are not a list"))]
-                )
-            trace.rows = len(rows)
-            reports, failures = [], []
-            for row in rows:
-                try:
-                    if not self._is_loaded(str(row.get("symbol"))):
-                        trace.withheld_unloaded += 1
-                        self.withheld_symbols.add(str(row.get("symbol")))
-                        continue
-                    reports.append(
-                        position_status_report(
-                            row,
-                            account_id=self.account_id,
-                            instrument=self._instrument(row.get("symbol")),
-                            ts_init=self.clock.timestamp_ns(),
-                        )
+            with self._reading():
+                if not isinstance(rows, list):
+                    raise IncompleteCoverage(
+                        [], [(None, ValueError("Alpaca positions are not a list"))]
                     )
-                except Exception as exc:
-                    failures.append((None, exc))
-            if failures:
-                self.failures.extend(failures)
-                self._note_failures(failures)
-                raise IncompleteCoverage(reports, failures)
+                trace.rows = len(rows)
+                reports, failures = [], []
+                for row in rows:
+                    try:
+                        if not self._is_loaded(str(row.get("symbol"))):
+                            trace.withheld_unloaded += 1
+                            self.withheld_symbols.add(str(row.get("symbol")))
+                            continue
+                        reports.append(
+                            position_status_report(
+                                row,
+                                account_id=self.account_id,
+                                instrument=self._instrument(row.get("symbol")),
+                                ts_init=self.clock.timestamp_ns(),
+                            )
+                        )
+                    except Exception as exc:
+                        failures.append((None, exc))
+                if failures:
+                    self.failures.extend(failures)
+                    raise IncompleteCoverage(reports, failures)
         self._startup_stage_done("positions", gen)
         return reports
 
