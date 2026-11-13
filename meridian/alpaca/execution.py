@@ -19,15 +19,17 @@ Rules carried from the earlier line, each with a test (docs/m3-alpaca.md, sectio
 - One unresolved cancel per order; a terminal event, a refusal, or a read issued after the
   DELETE's own call ended answers it.
 - Every trade update is classified before it acts. An unclassified one, a lost stream or a
-  read that cannot be mapped is a gap: new orders are denied until a full read of orders and
-  positions, issued after the latest gap, has been handed to the engine. Another writer's
-  activity stops new orders until a restart.
+  venue answer the lane cannot read or map (a listing's shape or pages, a row, a single
+  order's answer) is a gap: new orders are denied until a full read of orders and positions,
+  issued after the latest gap, has been handed to the engine. A request that gets no answer
+  is not a gap. Another writer's activity stops new orders until a restart.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Mapping, Sequence
+import contextlib
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from types import SimpleNamespace
@@ -255,13 +257,31 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         self._schedule_recovery()
 
     def _note_failures(self, failures: list[tuple[object, BaseException]]) -> None:
-        """After startup, a read that our own rules or mappers refuse is a gap; a transport
-        failure is not (the stream still carries the account's changes)."""
+        """After startup, a venue answer the lane cannot read or map is a gap. The caller
+        (`_reading`) passes only such failures: a request that got no answer is not one (the
+        stream still carries the account's changes)."""
         if any(ANOTHER_WRITER in str(error) for _, error in failures):
             self.foreign_writer_seen = True
-        ours = [error for _, error in failures if isinstance(error, ValueError)]
-        if ours and self._started:
-            self._incomplete(ours[0])
+        if failures and self._started:
+            self._incomplete(failures[0][1])
+
+    @contextlib.contextmanager
+    def _reading(self, requests: Sequence[BaseException] = ()) -> Iterator[None]:
+        """Around the code that reads a venue answer: whatever fails in there, of any type (a
+        listing that is not a list or whose pages do not join, a row that is not a row, a row
+        our rules or mappers refuse), goes through `_note_failures`. A request's own failure is
+        not the answer's: each one raised by a request, as `_traced_call` records it in
+        `requests` (an HTTP error, a timeout, the budget refusing it before the wire), stays out
+        of it, wrapped in `IncompleteCoverage` or not. Everything propagates unchanged."""
+        try:
+            yield
+        except Exception as exc:
+            wrapped = exc.failures if isinstance(exc, IncompleteCoverage) else None
+            failures = wrapped or [(None, exc)]
+            self._note_failures(
+                [(o, e) for o, e in failures if not any(e is request for request in requests)]
+            )
+            raise
 
     def _position_counts(self) -> tuple[int, int]:
         opened = len(self.cache.positions_open(venue=self.venue, account_id=self.account_id))
@@ -279,10 +299,16 @@ class AlpacaPaperExecutionClient(ExecutionClient):
             raise RuntimeError("account gateway is disconnected")
         return await self.gateway.call(kind, method, path, data, **kwargs)
 
-    def _traced_call(self, trace: StageTrace) -> Callable:
+    def _traced_call(self, trace: StageTrace, requests: list[BaseException]) -> Callable:
+        """A paced request counted in `trace`; what it raises is recorded in `requests`."""
+
         async def call(kind: ActionKind, method: str, path: str, data=None, **kwargs) -> Any:
             trace.count_request(method, path)
-            return await self._call(kind, method, path, data, **kwargs)
+            try:
+                return await self._call(kind, method, path, data, **kwargs)
+            except Exception as exc:
+                requests.append(exc)
+                raise
 
         return call
 
@@ -828,37 +854,38 @@ class AlpacaPaperExecutionClient(ExecutionClient):
     async def _generate_order_status_reports(self, command: Any) -> list:
         await self._subscribed()
         issued, gen, full = self._now(), self._gap, _is_full_listing(command)
-        startup = not self._started
+        startup, bounds = not self._started, _bounds(command)
+        requests: list[BaseException] = []
         with traced(self.report_trace, "orders") as trace:
-            call, pages = self._traced_call(trace), self._max_pages()
-            params = {"status": "open" if command.open_only else "all", "nested": True}
-            rows = await list_orders(call, {**params, **_bounds(command)}, max_pages=pages)
-            if getattr(command, "start", None) is not None:
-                # A submission-time window cannot cover older orders still working.
-                opened = await list_orders(
-                    call, {"status": "open", "nested": True}, max_pages=pages
-                )
-                rows = merge_listings(rows, opened)
-            trace.rows = len(rows)
-            reports, failures, withheld = [], [], set()
-            for row in rows:
-                try:
-                    check_one_writer(row, self.house_prefix)
-                    if withheld_unloaded(row, self._is_loaded):
-                        trace.withheld_unloaded += 1
-                        withheld.add(str(row.get("symbol")))
-                        continue
-                    if unmappable_history(row):
-                        trace.withheld_unmapped += 1
-                        continue
-                    self._settle(row, issued)
-                    reports.append(self._order_report(row))
-                except Exception as exc:
-                    failures.append((None, exc))
-            if failures:
-                self.failures.extend(failures)
-                self._note_failures(failures)
-                raise IncompleteCoverage(reports, failures)
+            call, pages = self._traced_call(trace, requests), self._max_pages()
+            with self._reading(requests):
+                params = {"status": "open" if command.open_only else "all", "nested": True}
+                rows = await list_orders(call, {**params, **bounds}, max_pages=pages)
+                if getattr(command, "start", None) is not None:
+                    # A submission-time window cannot cover older orders still working.
+                    opened = await list_orders(
+                        call, {"status": "open", "nested": True}, max_pages=pages
+                    )
+                    rows = merge_listings(rows, opened)
+                trace.rows = len(rows)
+                reports, failures, withheld = [], [], set()
+                for row in rows:
+                    try:
+                        check_one_writer(row, self.house_prefix)
+                        if withheld_unloaded(row, self._is_loaded):
+                            trace.withheld_unloaded += 1
+                            withheld.add(str(row.get("symbol")))
+                            continue
+                        if unmappable_history(row):
+                            trace.withheld_unmapped += 1
+                            continue
+                        self._settle(row, issued)
+                        reports.append(self._order_report(row))
+                    except Exception as exc:
+                        failures.append((None, exc))
+                if failures:
+                    self.failures.extend(failures)
+                    raise IncompleteCoverage(reports, failures)
         self.withheld_symbols |= withheld
         if startup:
             self._know_fills(reports)
@@ -869,7 +896,7 @@ class AlpacaPaperExecutionClient(ExecutionClient):
     async def _generate_fill_reports(self, command: Any) -> list:
         await self._subscribed()
         with traced(self.report_trace, "fills") as trace:
-            call, pages = self._traced_call(trace), self._max_pages()
+            call, pages = self._traced_call(trace, []), self._max_pages()
             params = _bounds(command)
             params.pop("symbols", None)
             if getattr(command, "instrument_id", None) is not None:

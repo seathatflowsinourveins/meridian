@@ -1669,3 +1669,112 @@ def test_a_replace_event_for_the_lanes_order_is_a_gap(event, row_status):
 
     box = drive(rig, script)
     assert box["error"] is None
+
+
+# ---------------------------------------------------------------- venue answers after startup
+
+
+def answering(venue, path: str, answer):
+    """From now on GET `path` answers `answer(query)`, whatever the venue holds. Returns what
+    restores the venue's own answer."""
+    get = venue.get
+
+    def patched(asked: str, data: dict | None = None, **kwargs):
+        if asked != path:
+            return get(asked, data, **kwargs)
+        venue.calls.append(("get", asked))
+        return answer(data or {})
+
+    venue.get = patched
+    return lambda: setattr(venue, "get", get)
+
+
+# One full page of the order listing: 500 working rows, all submitted at one instant.
+FULL_PAGE = [order_row(status="new", filled_qty="0") for _ in range(500)]
+UNREADABLE_LISTINGS = {
+    "not-a-list": (lambda query: {"orders": FULL_PAGE}, "Alpaca order page is not a list"),
+    "no-progress": (lambda query: list(FULL_PAGE), "order page made no progress"),
+    "not-contiguous": (
+        lambda query: [] if "until" in query else list(FULL_PAGE),
+        "order pages are not contiguous",
+    ),
+    "over-budget": (
+        lambda query: list(FULL_PAGE),
+        "order listing needs more pages than its budget",
+    ),
+}
+
+
+@pytest.mark.parametrize("shape", list(UNREADABLE_LISTINGS))
+def test_an_order_listing_the_lane_cannot_read_after_startup_denies_new_orders(shape):
+    """The engine's routine open-order check (every 0.2 s here) meets an order listing whose
+    shape or pages the lane cannot read: not a list; a full page, then the same page again; a
+    full page, then one without its edge rows; more pages than the read's budget (one page
+    here). After startup that is a gap, as a row the lane cannot map is: new orders are denied
+    until a full read succeeds."""
+    rig = Rig()
+    answer, reason = UNREADABLE_LISTINGS[shape]
+
+    def on_start(running, box):
+        box["order"] = limit_order(running)
+        running.submit_order(box["order"])
+        box["second"], box["third"] = limit_order(running, 2), limit_order(running, 3)
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, pacer = rig.clients[0], rig.pacer
+        assert pacer is not None
+        budget = pacer.controls["request_budget"]
+        restore = answering(rig.venue, "/orders", answer)
+        if shape == "over-budget":
+            pacer.controls["request_budget"] = 1
+        await until(lambda: not client.coverage_complete, timeout=5.0)
+        box["strategy"].submit_order(box["second"])
+        await until(lambda: status(2) == OrderStatus.DENIED)
+        box["reason"] = str(client.failures[0][1])
+        restore()
+        pacer.controls["request_budget"] = budget
+        await until(lambda: client.coverage_complete)
+        box["strategy"].submit_order(box["third"])
+        await until(lambda: status(3) == OrderStatus.ACCEPTED)
+
+    box = drive(rig, script, on_start=on_start, engine=FAST_OPEN_CHECKS)
+    assert box["error"] is None
+    assert box["reason"] == reason
+    assert rig.venue.last_post["client_order_id"] == f"{PREFIX}3"  # the second was never sent
+
+
+@pytest.mark.parametrize("failure", ["http-503", "budget-refusal"])
+def test_an_order_listing_that_gets_no_answer_after_startup_is_not_a_gap(failure):
+    """The open-order check's request itself fails: the venue answers 503, or the budget
+    refuses the read before the wire. No answer was read, so it is not a gap: the stream still
+    carries the account's changes and the next check reads again. New orders pass."""
+    rig = Rig()
+
+    def on_start(running, box):
+        box["order"] = limit_order(running)
+        running.submit_order(box["order"])
+        box["second"] = limit_order(running, 2)
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, pacer = rig.clients[0], rig.pacer
+        assert pacer is not None
+        if failure == "http-503":
+            rig.venue.fail("get", "/orders", api_error(503))
+        else:
+            pacer.refuse_kinds.add(ActionKind.QUERY)
+        before = client.report_trace["orders"]
+        await until(lambda: client.report_trace["orders"] is not before)
+        await until(lambda: client.report_trace["orders"].failures == 1)
+        await asyncio.sleep(0.5)  # a few more failed checks
+        box["seen"] = (client.coverage_complete, client.failures, client.recoveries)
+        box["first"] = client.report_trace["orders"].first
+        pacer.refuse_kinds.clear()
+        box["strategy"].submit_order(box["second"])
+        await until(lambda: status(2) == OrderStatus.ACCEPTED)
+
+    box = drive(rig, script, on_start=on_start, engine=FAST_OPEN_CHECKS)
+    assert box["error"] is None
+    assert box["seen"] == (True, [], 0)
+    assert box["first"] == ("APIError" if failure == "http-503" else "ValueError")
