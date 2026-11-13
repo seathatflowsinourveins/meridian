@@ -97,14 +97,11 @@ no execution the engine already holds is handed on (one out of sequence is a gap
 
 ## 5. The order budget
 
-M2 harvests the old pacer and keeps its interface (`meridian/order_budget/`, branch
-`m2/order-budget`, its own pull request). This pull request does not build on it: it stays
-independent, against main, and `meridian/alpaca/budget.py` states the part used here as a
-`Protocol`, exactly as sextant-paper@a991b73:src/sextant/execution/pacer.py has it (blob `49a30e9`,
-same in sextant). Once the order-budget pull request is merged, a follow-up makes `budget.py` import
-`ActionKind` and `PacerRefused` from `meridian.order_budget.pacer`: names, signatures and enum
-values are the same there, but as separate classes pyright rejects M2's pacer for the `Protocol` and
-the gateway would not catch M2's `PacerRefused`. The lane should start its pacer empty: a new one
+M2 harvests the old pacer and keeps its interface (`meridian/order_budget/`, #3, merged).
+`meridian/alpaca/budget.py` imports `ActionKind` and `PacerRefused` from
+`meridian.order_budget.pacer`, so the gateway's `except PacerRefused` catches M2's refusal, and
+states the part of the pacer used here as a `Protocol`; `tests/test_alpaca_budget.py` has
+pyright check that M2's `AccountPacer` still fits it. The lane should start its pacer empty: a new one
 starts with a full burst. Rows: 180 requests per 60 s of Alpaca's 200, burst 18, 429 backoff 1 s
 doubling to 30 s. Tests use a stand-in; connect refuses until a pacer is wired. A cancel costs two
 requests (read, DELETE); readers stop at the budget's page count (90,000 orders).
