@@ -27,7 +27,7 @@ max_lines_each = 60 # plan 8.6
 max_count = 20 # 13 now: 0001 to 0013
 
 [totals]
-agent_instruction_lines = 121 # every AGENTS.md and CLAUDE.md, at any depth: 118 now
+agent_instruction_lines = 121 # every AGENTS.md and CLAUDE.md, at any depth: 120 now
 prose_lines = 1900 # Markdown outside docs/adr/data/: 1,859 now, ADRs 0001 to 0013 included; M3 adds 162 (docs/m3-alpaca.md 150, its UPSTREAM.md section 10, two AGENTS.md rows); was 1,800, raised as the owner asked on 2026-11-13 for #5 to land with the limits it needs
 config_lines = 450 # 392 now, this file included; M3 adds 53 (its systemd unit 52, one pyproject.toml line); was 360, raised as the owner asked on 2026-11-13 for #5 to land with the limits it needs
 workflows = 1
