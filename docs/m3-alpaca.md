@@ -56,8 +56,8 @@ Carried, each with offline tests (`tests/test_alpaca_{wire,trade_updates,reconci
   documented refusal, POST 403/422 or DELETE 422/429, by the stream, or by a later read; any other
   answer is a gap). A DELETE 204 is an attempt; one unresolved cancel per order. Decimal text.
 - Startup reads wait for the stream's subscription acknowledgement. A lost stream, a frame the SDK
-  cannot decode, an update that cannot be classified (20 events are; `restated` and anything new are
-  not) or an answer that cannot be read or mapped (a body not JSON, a listing, its pages, a row, its
+  cannot decode or route, an update none of the 20 classified events covers (`restated`, anything
+  new) or an answer that cannot be read or mapped (a body not JSON, a listing, its pages, a row, its
   symbol) is a gap, a failed read is not: no new order until a full read issued after it reaches the
   engine; an open-order check can stop new orders, not resume them. Executions go on once each, none
   the engine holds (it infers one a read or check shows first); a read below its fills is reread.
