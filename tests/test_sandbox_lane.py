@@ -10,6 +10,7 @@ another test builds a real IBKR node, so the real sandbox node runs in a subproc
 
 import ast
 import json
+import os
 import subprocess
 import sys
 import textwrap
@@ -176,7 +177,18 @@ class RecordingBuilder:
         return [args for called, args in self.calls if called == name]
 
 
-def test_the_node_has_ib_data_and_the_sandbox_as_its_only_execution_client(monkeypatch):
+@pytest.fixture
+def clean_environ():
+    """ib_data_client() clears IB_V2_* variables, as the IBKR lane does; restore them after."""
+    saved = dict(os.environ)
+    yield
+    os.environ.clear()
+    os.environ.update(saved)
+
+
+def test_the_node_has_ib_data_and_the_sandbox_as_its_only_execution_client(
+    monkeypatch, clean_environ
+):
     from nautilus_trader.adapters import interactive_brokers as ib
     from nautilus_trader.adapters.sandbox import SandboxExecutionClientFactory
     from nautilus_trader.common import Environment
@@ -191,7 +203,9 @@ def test_the_node_has_ib_data_and_the_sandbox_as_its_only_execution_client(monke
         return builder
 
     monkeypatch.setattr(sandbox_node, "LiveNode", SimpleNamespace(builder=start))
+    os.environ["IB_V2_MARKET_DATA_TYPE"] = "realtime"  # must not survive into the run
     sandbox_node.build(sandbox_node.ib_data_client("127.0.0.1", 4002))
+    assert not [n for n in os.environ if n.startswith(("IB_V2_", "IB_PYO3_"))]
 
     assert started == [Environment.SANDBOX]
     assert {name for name, _ in builder.calls} <= BUILDER_CALLS
