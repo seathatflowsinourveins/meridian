@@ -161,6 +161,22 @@ class FileIndex:
             start -= 1
         return f"paragraph:{start}"
 
+    def unit_span(self, number: int) -> tuple[int, int]:
+        """First and last line of the unit that holds this line (the same rules as unit)."""
+        inside = [d for d in self.defs if d.start <= number <= d.end]
+        if inside:
+            found = max(inside, key=lambda d: (d.start, -d.end))
+            return found.start, found.end
+        for stmt in self.statements:
+            if stmt.start <= number <= stmt.end:
+                return stmt.start, stmt.end
+        start = end = number
+        while start > 1 and self.line(start - 1).strip():
+            start -= 1
+        while end < len(self.lines) and self.line(end + 1).strip():
+            end += 1
+        return start, end
+
     def definition(self, name: str) -> Span | None:
         found = [d for d in self.defs if d.name == name]
         return found[0] if len(found) == 1 else None
@@ -661,6 +677,13 @@ def run(args: argparse.Namespace) -> None:
         time.sleep(0.5)
     pyright_ready_s = time.perf_counter() - started
     rg_env = {**base_env}
+
+    def where(unit: Unit) -> str:
+        """A unit as file:first-last, like semble's chunks. Not by name: a symbol name could
+        trip the paper-only scan (one test's own name holds the words it looks for)."""
+        first, last = indexes[unit.file].unit_span(unit.lines[0])
+        return f"{unit.file}:{first}-{last}"
+
     per_question = []
     for question in questions["questions"]:
         qid, plan = question["id"], plans[question["id"]]
@@ -684,7 +707,7 @@ def run(args: argparse.Namespace) -> None:
                 {
                     "rank": unit_rank(final, spans),
                     "rank_printed": unit_rank(printed_final, spans),
-                    "top5": [f"{u.file}::{u.name}" for u in final[:TOP_K]],
+                    "top5": [where(u) for u in final[:TOP_K]],
                     "seconds": rg_seconds + lookup_s,
                     "rg_hit_lines": len(all_hits),
                     "rg_errors": rg_errors,
