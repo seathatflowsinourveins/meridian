@@ -14,6 +14,7 @@ order history. A failed start must also say why.
 
 import asyncio
 import gc
+import json
 import time
 from types import SimpleNamespace
 
@@ -47,7 +48,9 @@ from nautilus_trader.model import (
 )
 
 from meridian.alpaca.budget import ActionKind
+from meridian.alpaca.execution import NOT_A_TRADE_UPDATE
 from meridian.alpaca.parsing import parse_equity
+from meridian.alpaca.reconcile import OTHER_INSTRUMENT
 from meridian.alpaca.reports import timestamp_ns
 
 
@@ -417,8 +420,9 @@ def limit_order(running, number: int = 1, side=OrderSide.BUY, price: str = "100.
     )
 
 
-def drive(rig: Rig, script, *, on_start=None, engine: dict | None = None):
-    """Run a node whose strategy submits on start; `script` drives the stream meanwhile."""
+def drive(rig: Rig, script, *, on_start=None, engine: dict | None = None, **config):
+    """Run a node whose strategy submits on start; `script` drives the stream meanwhile.
+    `config` overrides the client's settings."""
     box: dict = {}
 
     def submit(running):
@@ -429,7 +433,7 @@ def drive(rig: Rig, script, *, on_start=None, engine: dict | None = None):
             box["order"] = limit_order(running)
             running.submit_order(box["order"])
 
-    node = build_node(rig, strategy(on_start=submit), engine=engine)
+    node = build_node(rig, strategy(on_start=submit), engine=engine, **config)
     # A running node's state is read through the cache taken before the run.
     held = {"node": node, "cache": node.cache}
     del node
@@ -2449,4 +2453,96 @@ def test_a_stream_frame_the_sdk_cannot_decode_is_a_gap(frame):
     assert box["after_frame"] == (False, True, 0)  # the socket stays open, as in the SDK
     assert box["second_status"] == OrderStatus.DENIED
     assert box["first_status"] == OrderStatus.FILLED
+    assert box["holding"] == [("AAPL.ALPACA", "1")]
+
+
+def fills_of(client, number: int = 1) -> tuple[str, int]:
+    """The engine's filled quantity of the lane's order and how many fills it counted."""
+    order = client.cache.order(ClientOrderId(f"{PREFIX}{number}"))
+    return str(order.filled_qty), len(order.trade_ids)
+
+
+@pytest.mark.parametrize("stream", [None, "trade_update"], ids=["no-stream", "other-stream"])
+def test_a_decoded_frame_that_is_not_a_trade_update_is_a_gap(stream):
+    """alpaca-py 0.45.0's dispatcher (`TradingStream._dispatch`) acts only on stream
+    "trade_updates", and the authorisation answer never reaches it (`_auth` reads that). A
+    fill's update that decodes to an object without that stream (its key missing, or another
+    name) would be dropped there with the fill. It is a gap: new orders are denied until a
+    full read, and the read shows the engine the fill, counted once."""
+    rig = Rig()
+
+    def on_start(running, box):
+        box["order"] = limit_order(running)
+        running.submit_order(box["order"])
+        box["second"] = limit_order(running, 2)
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, row = rig.clients[0], rig.venue.orders[-1]
+        rig.venue.fail("get", "/positions", api_error(503))  # hold the gap's read back
+        row.update(status="filled", filled_qty="1", filled_avg_price=row["limit_price"])
+        rig.venue.positions.append(position_row())
+        message = update("fill", row)
+        if stream is None:
+            del message["stream"]
+        else:
+            message["stream"] = stream
+        rig.stream.push(Frame(json.dumps(message)))  # the fill's update, as no handler sees it
+        await until(lambda: rig.stream.queue is not None and rig.stream.queue.empty())
+        await asyncio.sleep(0.3)  # long enough for the receive loop to have handled it
+        box["after_frame"] = (client.coverage_complete, client.stream_live, rig.stream.closed)
+        box["strategy"].submit_order(box["second"])
+        await until(lambda: status(2) in (OrderStatus.DENIED, OrderStatus.ACCEPTED))
+        box["second_status"] = status(2)
+        rig.venue.failures.clear()
+        await until(lambda: client.coverage_complete)
+        await asyncio.sleep(0.3)  # long enough for a second count to reach the engine
+        box["first_status"], box["fills"] = status(), fills_of(client)
+        box["failures"] = {str(error) for _, error in client.failures}
+
+    box = drive(rig, script, on_start=on_start)
+    assert box["error"] is None
+    assert box["after_frame"] == (False, True, 0)
+    assert box["second_status"] == OrderStatus.DENIED
+    assert box["first_status"] == OrderStatus.FILLED
+    assert box["fills"] == ("1", 1)
+    assert NOT_A_TRADE_UPDATE in box["failures"]
+    assert box["holding"] == [("AAPL.ALPACA", "1")]
+
+
+def test_a_stream_update_for_the_lanes_order_in_another_loaded_instrument_is_a_gap():
+    """Both AAPL and MSFT are in the universe. The stream reports the lane's AAPL order filled
+    with the symbol MSFT: it is the lane's order and its symbol is loaded, but the engine's
+    order is in AAPL. Handed on, it would be a fill in the wrong instrument. It is a gap: new
+    orders are denied until a full read, which shows the engine the fill in AAPL, once."""
+    rig = Rig()
+
+    def on_start(running, box):
+        box["order"] = limit_order(running)
+        running.submit_order(box["order"])
+        box["second"] = limit_order(running, 2)
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, row = rig.clients[0], rig.venue.orders[-1]
+        rig.venue.fail("get", "/positions", api_error(503))  # hold the gap's read back
+        row.update(status="filled", filled_qty="1", filled_avg_price=row["limit_price"])
+        rig.venue.positions.append(position_row())
+        rig.stream.push(update("fill", {**row, "symbol": "MSFT"}))
+        await until(lambda: not client.coverage_complete)
+        box["strategy"].submit_order(box["second"])
+        await until(lambda: status(2) in (OrderStatus.DENIED, OrderStatus.ACCEPTED))
+        box["second_status"] = status(2)
+        rig.venue.failures.clear()
+        await until(lambda: client.coverage_complete)
+        await asyncio.sleep(0.3)  # long enough for a second count to reach the engine
+        box["first_status"], box["fills"] = status(), fills_of(client)
+        box["failures"] = {str(error) for _, error in client.failures}
+
+    box = drive(rig, script, on_start=on_start, universe=["AAPL.ALPACA", "MSFT.ALPACA"])
+    assert box["error"] is None
+    assert box["second_status"] == OrderStatus.DENIED
+    assert box["first_status"] == OrderStatus.FILLED
+    assert box["fills"] == ("1", 1)
+    assert OTHER_INSTRUMENT in box["failures"]
     assert box["holding"] == [("AAPL.ALPACA", "1")]

@@ -95,6 +95,8 @@ RECOVERY_RETRY_SECS = (1.0, 30.0)
 # client hands it on, so an execution handed on this long before a recovery read began is
 # treated as one the engine may stamp later than the read.
 SNAPSHOT_MARGIN_NS = 1_000_000_000
+# A decoded stream frame that is neither the subscription acknowledgement nor a trade update.
+NOT_A_TRADE_UPDATE = "Alpaca trade stream frame is not a trade update"
 
 
 @dataclass(frozen=True)
@@ -549,6 +551,10 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         frame that is not JSON or not an object is dropped there, with the update it carried,
         before any handler sees it. So whatever leaves the receive loop is a gap, except a
         socket error, which closes the socket (`closed` counts that loss).
+
+        Its dispatcher acts only on stream "trade_updates". The authorisation answer is read by
+        `_auth` and never reaches it, so any other object frame (a fill without its stream key,
+        or under another name) would be dropped there with its update: that is a gap too.
         """
         dispatch, start, close = stream._dispatch, stream._start_ws, stream.close
         consume = stream._consume
@@ -567,6 +573,8 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         async def observed_dispatch(message: dict) -> None:
             if is_listening_ack(message):
                 self._on_stream("listening")
+            elif message.get("stream") != "trade_updates":
+                self._incomplete(ValueError(NOT_A_TRADE_UPDATE))
             await dispatch(message)
 
         async def observed_start() -> None:
