@@ -59,7 +59,8 @@ Carried, each with offline tests (`tests/test_alpaca_{wire,trade_updates,reconci
   cannot be classified (20 events are; `restated`, corrections, anything new are not) or a read that
   cannot be mapped is a gap: no new order until a full read of orders and positions issued after it
   reaches the engine, retried with backoff. Open-order checks never move the gate. The adapter hands
-  on stream executions once each; the engine infers a fill a startup or recovery read shows first.
+  on stream executions once each, none the engine holds (it infers a fill that a read or its own
+  open-order check shows first); a recovery read with fewer fills than the engine has is read again.
 - Reconciliation reads the whole order history, fails closed on any gap, withholds and counts
   ended history in unloaded symbols, counts fills older than the order history, and names the
   failing stage with reasons from a fixed, value-free list (`reconcile.py`). Engine settings: no
@@ -80,9 +81,8 @@ pager refused the exclusive case); FILL paging stops once it passes the oldest l
 history no simple report carries (`replaced`, brackets) is counted without fills and refuses with
 them; a cancel's slot is taken before the budget; a cancel refused unsent names its command, so the
 engine puts the order back; another writer's working order refuses the start and its activity stops
-new orders; no report is volunteered ahead of the stream's fills (one from the stream is a gap) and
-no execution a startup or recovery read showed the engine is handed on (one out of sequence is a
-gap). Open defect: a fill the engine first sees in a routine open-order check is counted twice.
+new orders; no report is volunteered ahead of the stream's fills (one from the stream is a gap), and
+no execution the engine already holds is handed on (one out of sequence is a gap).
 
 ## 4. How the port answers each failure
 
