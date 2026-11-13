@@ -91,7 +91,11 @@ Notes on the order budget, measured by the soak (`evidence/M2-order-budget-*-soa
   called, and `request()` raises `PacerRefused` if that is already so when it is made); or it is
   an entry whose reserve cannot be worked out (reserve rows missing, or a position count that is
   not a whole number), which is dropped silently, so a caller checks reserve authority in its own
-  admission, as Sextant's Alpaca gateway does. This is the owner's design (Sextant ADR-0009, R6),
+  admission, as Sextant's Alpaca gateway does. A fourth way is in the send itself: the pacer
+  spends the token and takes the request off the queue before it calls `send`, so a `send` that
+  never calls its wire hook, or whose hook raises (admission false by then, or called after
+  `send` returned), sends nothing; the hook's `ValueError` comes out of whichever `request()` or
+  `drain()` call started that drain. This is the owner's design (Sextant ADR-0009, R6),
   kept as it is because the Alpaca adapter of M3 relies on it. Whether "refused" may mean "held
   until the window has room, or withdrawn by its caller" is the owner's to confirm.
 - **The cap is 179, not 180.** The refill interval rounds up (370,370,371 ns for 162 refills a

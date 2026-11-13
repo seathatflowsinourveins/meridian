@@ -71,7 +71,14 @@ def test_withdrawn_entries_never_reach_the_venue():
     unsent = [a for a in run.actions if not a.sends]
     assert unsent, "the run should still go past the budget"
     assert all(a.kind == pacer_module.ActionKind.SUBMIT for a in unsent)
-    assert received.isdisjoint(a.ident for a in unsent)
+    # Withdrawn: past its caller's deadline before it was sent, worked out without `sends`.
+    withdrawn = {
+        a.ident
+        for a in run.actions
+        if a.deadline_ns is not None and (a.sent_ns is None or a.sent_ns >= a.deadline_ns)
+    }
+    assert withdrawn and received.isdisjoint(withdrawn)
+    assert all(a.withdrawn_ns is not None for a in unsent)  # each one its caller withdrew
     for a in run.actions:
         if a.sent_ns is not None and a.deadline_ns is not None:
             assert a.sent_ns < a.deadline_ns
@@ -308,3 +315,19 @@ def test_the_package_itself_builds_controls_from_fixture_rows_only_in_the_soak()
     assert fixture_true_calls("Controls.from_rows(rows, fixture=True)") == 1
     assert fixture_true_calls("Controls.from_rows(rows, fixture=flag)") == 1
     assert fixture_true_calls("Controls.from_rows(rows)") == 0
+
+
+def test_the_soak_fails_a_pacer_that_drops_a_wanted_entry(monkeypatch):
+    # Drops every eleventh entry at request time, while its caller still wants it.
+    request, seen = pacer_module.AccountPacer.request, [0]
+
+    def dropping(self, kind, send, **kwargs):
+        if kind == pacer_module.ActionKind.SUBMIT:
+            seen[0] += 1
+            if seen[0] % 11 == 0:
+                return None
+        return request(self, kind, send, **kwargs)
+
+    monkeypatch.setattr(pacer_module.AccountPacer, "request", dropping)
+    found = soak.run_soak(seconds=1200)["problems"]
+    assert "an action was neither sent nor withdrawn by its caller" in found

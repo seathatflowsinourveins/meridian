@@ -118,6 +118,7 @@ class Action:
     requested_ns: int
     deadline_ns: int | None  # an entry's caller withdraws it at this time if still unsent
     sent_ns: int | None = None
+    withdrawn_ns: int | None = None  # when the pacer first asked and its caller said no
     sends: int = 0
 
 
@@ -209,6 +210,15 @@ def simulate(seed: int = SEED, seconds: int = SOAK_SECONDS) -> Soak:
     def admissible(action: Action) -> bool:
         return action.deadline_ns is None or clock.now() < action.deadline_ns
 
+    def asks(action: Action) -> bool:
+        """The admission the pacer calls: it notes when the caller first withdraws the action,
+        so an action the pacer drops while its caller still wants it counts as lost."""
+        if admissible(action):
+            return True
+        if action.withdrawn_ns is None:
+            action.withdrawn_ns = clock.now()
+        return False
+
     def oldest_waiting(name: str) -> Action | None:
         queue = waiting[name]
         while queue and not admissible(queue[0]):  # its caller has withdrawn it
@@ -276,7 +286,7 @@ def simulate(seed: int = SEED, seconds: int = SOAK_SECONDS) -> Soak:
             action = Action(len(soak.actions), kind, arrival, deadline)
             soak.actions.append(action)
             waiting[kind.name].append(action)
-            pacer.request(kind, make_send(action), admission=lambda a=action: admissible(a))
+            pacer.request(kind, make_send(action), admission=lambda a=action: asks(a))
         else:
             assert due is not None
             clock.t = due
@@ -333,9 +343,7 @@ def record_data(soak: Soak) -> dict[str, Any]:
     requested = Counter(a.kind.name for a in soak.actions)
     sent = Counter(a.kind.name for a in soak.actions if a.sends)
     withdrawn = Counter(
-        a.kind.name
-        for a in soak.actions
-        if not a.sends and a.deadline_ns is not None and a.deadline_ns <= soak.ended_ns
+        a.kind.name for a in soak.actions if not a.sends and a.withdrawn_ns is not None
     )
     longest: dict[str, int] = {}
     for a in soak.actions:
