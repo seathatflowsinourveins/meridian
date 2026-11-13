@@ -1,19 +1,18 @@
 """
-The order budget's control rows for the soak and the tests.
+The order budget's fixture control rows, for the soak and the tests.
 
 The values are the owner's own fixture values from Sextant (``control_rows`` in
 ``tests/proofs/custody/conftest.py``, see UPSTREAM.md): a request budget of 180 per 60 s window
 against Alpaca's limit of 200 requests per minute per account, with a burst of a tenth of the
-budget. Every row is ``FIXTURE_ONLY`` and ``UNCALIBRATED``: ``Controls.from_rows`` accepts them
-only with ``fixture=True``, so they can never become a lane's runtime authority by accident.
-A lane that places orders needs rows the owner has reviewed.
+budget. Every row is ``FIXTURE_ONLY`` and ``UNCALIBRATED``. ``Controls.from_rows`` refuses
+them unless it is called with ``fixture=True``, which only the soak and the tests do; a lane
+builds its controls with ``Controls.from_rows(rows)``, as Sextant's Alpaca execution factory
+does, and needs rows the owner has reviewed.
 """
 
 from __future__ import annotations
 
 from typing import Any
-
-from meridian.order_budget.controls import Controls
 
 FIXTURE_VALUES: dict[str, Any] = {
     "request_budget": 180,
@@ -50,8 +49,3 @@ def control_rows(**changes: Any) -> list[dict[str, Any]]:
         }
         for name, value in (FIXTURE_VALUES | changes).items()
     ]
-
-
-def controls(*, slots: int | None = None, **changes: Any) -> Controls:
-    """Validated controls built from the fixture rows (``fixture=True``)."""
-    return Controls.from_rows(control_rows(**changes), fixture=True, slots=slots)

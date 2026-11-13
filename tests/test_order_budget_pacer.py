@@ -3,10 +3,9 @@
 from decimal import Decimal as D
 
 import pytest
+from order_budget_fixtures import SEC, controls
 
-from meridian.order_budget.controls import SEC
 from meridian.order_budget.pacer import AccountPacer, ActionKind, PacerRefused
-from meridian.order_budget.rows import controls
 
 
 def test_cancel_reduce_modify_query_submit_priority_and_fifo():

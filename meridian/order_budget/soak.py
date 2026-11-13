@@ -10,23 +10,28 @@ so the run takes seconds and gives the same counts every time (the demand is see
 
 The simulated venue stands for one account at Alpaca: it answers 429 to a request past 200 in
 any rolling 60 s window. The demand asks for more than the budget: a backlog of 240 actions at
-the start, then about 210 a minute for an hour, mixed over the five kinds. An entry (SUBMIT)
-is withdrawn by its caller if it has not been sent 30 s after it was requested, as a strategy
-gives up on a stale entry; the other kinds wait until they are sent.
+the start, then about 210 a minute, mixed over the five kinds, broken by three quiet spells of
+two to five minutes, in which the bucket fills up again, each ending in another backlog of 240.
+An entry (SUBMIT) is withdrawn by its caller if it has not been sent 30 s after it was
+requested, as a strategy gives up on a stale entry; the other kinds wait until they are sent.
 
 A run passes when:
-  - no rolling 60 s window holds more paced requests than the budget (180), and some window
-    comes within one of it, so the budget was used to the full;
-  - the action past the budget is refused: when a window is full, the next action is not sent
-    until the window has room, and every withdrawn entry is dropped without reaching the venue;
-  - every send follows CANCEL > REDUCE > MODIFY > QUERY > SUBMIT, first in first out within a kind;
+  - no rolling 60 s window holds more paced requests than the budget (180), after a quiet
+    spell as at any other time, and windows reach 179, so the budget is used;
+  - under steady demand above the budget, every whole minute sends at least 161;
+  - the action past the budget is refused: when a window first holds the bucket's cap, an
+    action is waiting, and nothing more is sent until the window's oldest send has left it;
+    and no withdrawn entry ever reaches the venue;
+  - every send follows CANCEL > REDUCE > MODIFY > QUERY > SUBMIT, first in first out within a
+    kind, judged from the soak's own record of what is waiting, not from the pacer's;
   - the venue never answers 429;
-  - every action is either sent exactly once or refused unsent, and every CANCEL and REDUCE is
-    sent.
+  - every action is either sent exactly once or withdrawn by its caller; nothing else is lost.
 
 What the budget counts: every request it lets through, of all five kinds, because Alpaca's
-200 a minute counts queries too. The pacer raises ``PacerRefused`` only for an entry that would
-eat the protection reserve; the harvested tests cover that path.
+200 a minute counts queries too. The pacer's other refusals (an entry that would eat the
+protection reserve, or whose reserve cannot be worked out) are covered by the harvested tests.
+The soak keeps one record in ``evidence/``: a passing run replaces the earlier one, and git
+keeps the history.
 
 This module is own design (see UPSTREAM.md) and uses only the standard library and the pacer.
 """
@@ -51,12 +56,15 @@ from meridian.order_budget.pacer import AccountPacer, ActionKind
 
 RECORD_SCHEMA = "meridian.run-record/1"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+RECORD_GLOB = "M2-order-budget-*-soak.json"
 SEED = 20261112
 SOAK_SECONDS = 3600
-BACKLOG_AT_START = 240
+BACKLOG = 240
 DEMAND_PER_MINUTE = 210
 ENTRY_PATIENCE_S = 30
-# Shares of the demand after the start, by kind; the backlog at the start is split evenly.
+QUIET_EVERY_S = 1200  # one quiet spell in each 20 minutes of the run
+QUIET_S = (120, 300)  # its length, seeded within this range
+# Shares of the steady demand, by kind; each backlog is split evenly.
 DEMAND_MIX = {
     ActionKind.CANCEL: 0.10,
     ActionKind.REDUCE: 0.10,
@@ -64,7 +72,9 @@ DEMAND_MIX = {
     ActionKind.QUERY: 0.25,
     ActionKind.SUBMIT: 0.40,
 }
-PROTECTIVE = (ActionKind.CANCEL, ActionKind.REDUCE)
+# The required order, by name: what the soak judges against, not the pacer's own numbering.
+PRIORITY = ("CANCEL", "REDUCE", "MODIFY", "QUERY", "SUBMIT")
+RANK = {name: rank for rank, name in enumerate(PRIORITY)}
 OK, RATE_LIMITED = 200, 429
 # Wall-clock fields: the only part of a record that differs between two runs.
 WALL_CLOCK_FIELDS = ("run_started_utc", "run_ended_utc")
@@ -110,6 +120,13 @@ class Action:
     sends: int = 0
 
 
+@dataclass(frozen=True)
+class Demand:
+    script: list[tuple[int, ActionKind]]  # (request time ns, kind), in time order
+    quiet: list[tuple[int, int]]  # (start ns, end ns) of each quiet spell
+    backlogs: list[int]  # when each backlog arrives: at 0 and at the end of each quiet spell
+
+
 @dataclass
 class Soak:
     """Everything one simulated run leaves behind, for the record and for the tests."""
@@ -117,47 +134,85 @@ class Soak:
     seed: int
     seconds: int
     controls: Controls
+    cap: int
     pacer: AccountPacer
     venue: SimulatedVenue
+    plan: Demand
     actions: list[Action] = field(default_factory=list)
     sends: list[int] = field(default_factory=list)  # send times, in order
     priority_violations: int = 0
-    # When the trailing window first held the run's largest count: its oldest send, and the
-    # action that was waiting at that moment.
-    full_at_ns: int | None = None
-    full_count: int = 0
-    full_oldest_ns: int | None = None
-    waiting_when_full: Action | None = None
+    sent_after_withdrawal: int = 0
+    # The first time a window held the bucket's cap: its oldest send, what was waiting, and
+    # (through the index into sends) the send that came next.
+    cap_at_send: int | None = None
+    cap_oldest_ns: int | None = None
+    waiting_at_cap: Action | None = None
+    ended_ns: int = 0  # the simulated time when the last action was sent or dropped
 
 
-def demand(seed: int = SEED, seconds: int = SOAK_SECONDS) -> list[tuple[int, ActionKind]]:
-    """The seeded demand script: (request time in ns, kind), in time order."""
+def demand(seed: int = SEED, seconds: int = SOAK_SECONDS) -> Demand:
+    """The seeded demand script, its quiet spells and its backlogs."""
     rng = random.Random(seed)
-    backlog = [kind for kind in ActionKind for _ in range(BACKLOG_AT_START // len(ActionKind))]
-    rng.shuffle(backlog)
-    script = [(0, kind) for kind in backlog]
+    slot = QUIET_EVERY_S * SEC
+    quiet = []
+    for n in range(seconds // QUIET_EVERY_S):
+        length = rng.randint(*QUIET_S) * SEC
+        start = rng.randint(n * slot + slot // 4, (n + 1) * slot - slot // 4 - length)
+        quiet.append((start, start + length))
+
+    def backlog(at: int) -> list[tuple[int, ActionKind]]:
+        kinds = [kind for kind in ActionKind for _ in range(BACKLOG // len(ActionKind))]
+        rng.shuffle(kinds)
+        return [(at, kind) for kind in kinds]
+
+    script, backlogs = backlog(0), [0]
     kinds, weights = list(DEMAND_MIX), list(DEMAND_MIX.values())
-    rate_per_s = DEMAND_PER_MINUTE / 60
+    spells = iter(quiet)
+    spell = next(spells, None)
     t = 0
     while True:
-        t += max(1, int(rng.expovariate(rate_per_s) * SEC))
+        t += max(1, int(rng.expovariate(DEMAND_PER_MINUTE / 60) * SEC))
+        if spell is not None and t >= spell[0]:
+            t = spell[1]  # nothing during the spell; a backlog at its end
+            script += backlog(t)
+            backlogs.append(t)
+            spell = next(spells, None)
+            continue
         if t >= seconds * SEC:
-            return script
+            return Demand(script, quiet, backlogs)
         script.append((t, rng.choices(kinds, weights)[0]))
 
 
+def cap_per_window(controls: Controls) -> int:
+    """The most the harvested bucket admits in any 60 s window, worked out from the controls
+    with its own refill formula: a full burst, then one refill per interval. 179 for 180 and
+    a burst of 18, because the interval rounds up."""
+    window = controls.ns("window_s")
+    interval = window // (controls["request_budget"] - controls.burst) + 1
+    return controls.burst + (window - 1) // interval
+
+
 def simulate(seed: int = SEED, seconds: int = SOAK_SECONDS) -> Soak:
-    """Drive the pacer with the demand script until every action is sent or refused."""
+    """Drive the pacer with the demand script until every action is sent or withdrawn."""
     clock = SimClock()
-    controls = rows.controls()
+    # Fixture rows: the soak is a simulation (see rows.py).
+    controls = Controls.from_rows(rows.control_rows(), fixture=True)
     pacer = AccountPacer(controls, clock.now)
     window_ns = controls.ns("window_s")
-    soak = Soak(seed, seconds, controls, pacer, SimulatedVenue(controls["broker_limit"], window_ns))
-    by_send: dict[Callable[..., Any], Action] = {}
+    venue = SimulatedVenue(controls["broker_limit"], window_ns)
+    plan = demand(seed, seconds)
+    soak = Soak(seed, seconds, controls, cap_per_window(controls), pacer, venue, plan)
+    waiting: dict[str, deque[Action]] = {name: deque() for name in PRIORITY}
     trailing: deque[int] = deque()
 
     def admissible(action: Action) -> bool:
         return action.deadline_ns is None or clock.now() < action.deadline_ns
+
+    def oldest_waiting(name: str) -> Action | None:
+        queue = waiting[name]
+        while queue and not admissible(queue[0]):  # its caller has withdrawn it
+            queue.popleft()
+        return queue[0] if queue else None
 
     def make_send(action: Action) -> Callable[[Callable[[], None]], None]:
         def send(mark: Callable[[], None]) -> None:
@@ -166,34 +221,46 @@ def simulate(seed: int = SEED, seconds: int = SOAK_SECONDS) -> Soak:
             action.sends += 1
             action.sent_ns = now
             soak.sends.append(now)
-            head = pacer.queue[0] if pacer.queue else None
-            # Checked against every waiting action, not trusted to the pacer's heap.
-            if any(
-                (q.kind, q.sequence) < (int(action.kind), action.ident)
-                and admissible(by_send[q.send])
-                for q in pacer.queue
-            ):
-                soak.priority_violations += 1  # something more urgent was still waiting
-            if soak.venue.receive(action.ident, now) == RATE_LIMITED:
+            if not admissible(action):
+                soak.sent_after_withdrawal += 1
+            # Judged from the soak's own waiting lists: a more urgent kind, or an older
+            # action of the same kind, still waiting is a violation.
+            mine = action.kind.name
+            for name in PRIORITY[: RANK[mine] + 1]:
+                first = oldest_waiting(name)
+                if (
+                    first is not None
+                    and first is not action
+                    and (name != mine or first.ident < action.ident)
+                ):
+                    soak.priority_violations += 1
+                    break
+            if action in waiting[mine]:
+                waiting[mine].remove(action)
+            if venue.receive(action.ident, now) == RATE_LIMITED:
                 pacer.on_rate_limited()
             else:
                 pacer.on_success()
             trailing.append(now)
             while trailing[0] <= now - window_ns:
                 trailing.popleft()
-            if len(trailing) > soak.full_count:
-                soak.full_at_ns, soak.full_count = now, len(trailing)
-                soak.full_oldest_ns = trailing[0]
-                waiting = None if head is None else by_send.get(head.send)
-                soak.waiting_when_full = (
-                    waiting if waiting is not None and admissible(waiting) else None
+            if soak.cap_at_send is None and len(trailing) >= soak.cap:
+                soak.cap_at_send, soak.cap_oldest_ns = len(soak.sends) - 1, trailing[0]
+                soak.waiting_at_cap = next(
+                    (a for a in map(oldest_waiting, PRIORITY) if a is not None), None
                 )
 
         return send
 
-    script = demand(seed, seconds)
+    script = plan.script
+    steps, step_limit = 0, 50 * (len(script) + 100)
     i = 0
     while i < len(script) or pacer.queue:
+        steps += 1
+        if steps > step_limit or clock.t > (seconds + 3600) * SEC:
+            raise RuntimeError(
+                "the soak stopped making progress: the pacer neither sent nor dropped"
+            )
         # The next event: a request from the script, or the moment the bucket can admit again.
         due = None
         if pacer.queue:
@@ -207,26 +274,14 @@ def simulate(seed: int = SEED, seconds: int = SOAK_SECONDS) -> Soak:
             deadline = arrival + ENTRY_PATIENCE_S * SEC if kind == ActionKind.SUBMIT else None
             action = Action(len(soak.actions), kind, arrival, deadline)
             soak.actions.append(action)
-            send = make_send(action)
-            by_send[send] = action
-            pacer.request(kind, send, admission=lambda a=action: admissible(a))
+            waiting[kind.name].append(action)
+            pacer.request(kind, make_send(action), admission=lambda a=action: admissible(a))
         else:
             assert due is not None
             clock.t = due
             pacer.drain()
-        if clock.t > (seconds + 3600) * SEC:
-            raise RuntimeError("the soak did not drain within an hour after its demand stopped")
+    soak.ended_ns = clock.t
     return soak
-
-
-def _seconds(ns: int) -> float:
-    return round(ns / SEC, 6)
-
-
-def cap_per_window(controls: Controls, interval_ns: int) -> int:
-    """The most the bucket can admit in any 60 s window: a full burst, then one refill per
-    interval. With 180 and a burst of 18 this is 179, because the interval rounds up."""
-    return controls.burst + (controls.ns("window_s") - 1) // interval_ns
 
 
 def window_counts(times: list[int], window_ns: int) -> list[int]:
@@ -234,28 +289,58 @@ def window_counts(times: list[int], window_ns: int) -> list[int]:
     return [i - bisect.bisect_right(times, t - window_ns) + 1 for i, t in enumerate(times)]
 
 
+def _seconds(ns: int) -> float:
+    return round(ns / SEC, 6)
+
+
+def _steady_minutes(soak: Soak) -> list[int]:
+    """Sends in each whole minute of steady demand: at least a minute after a backlog, before
+    the next quiet spell, and before the demand stops."""
+    window_ns = soak.controls.ns("window_s")
+    quiet_starts = [start for start, _ in soak.plan.quiet] + [soak.seconds * SEC]
+    counts = []
+    for m in range(soak.seconds // 60):
+        lo, hi = m * window_ns, (m + 1) * window_ns
+        last_backlog = max(b for b in soak.plan.backlogs if b <= lo)
+        next_quiet = min(q for q in quiet_starts if q > last_backlog)
+        if lo >= last_backlog + window_ns and hi <= next_quiet:
+            counts.append(bisect.bisect_left(soak.sends, hi) - bisect.bisect_left(soak.sends, lo))
+    return counts
+
+
 def record_data(soak: Soak) -> dict[str, Any]:
     """The run record's fields, all from the simulation (no wall-clock field)."""
     controls, pacer, venue = soak.controls, soak.pacer, soak.venue
     window_ns = controls.ns("window_s")
+    counts = window_counts(soak.sends, window_ns)
     venue_times = [t for t, _ in venue.received]
-    per_minute = [
-        bisect.bisect_left(soak.sends, (m + 1) * 60 * SEC)
-        - bisect.bisect_left(soak.sends, m * 60 * SEC)
-        for m in range(soak.seconds // 60)
-    ]
-    names = [kind.name for kind in ActionKind]
-    actions_only = [
+    order_actions = sorted(
         a.sent_ns for a in soak.actions if a.sent_ns is not None and a.kind != ActionKind.QUERY
-    ]
+    )
+    after_quiet = []
+    for start, end in soak.plan.quiet:
+        lo = bisect.bisect_left(soak.sends, end)
+        hi = bisect.bisect_left(soak.sends, end + 2 * window_ns)
+        after_quiet.append(
+            {
+                "quiet_from_s": _seconds(start),
+                "quiet_to_s": _seconds(end),
+                "most_sent_in_a_window_after": max(counts[lo:hi], default=0),
+            }
+        )
+    steady = _steady_minutes(soak)
     requested = Counter(a.kind.name for a in soak.actions)
     sent = Counter(a.kind.name for a in soak.actions if a.sends)
-    refused = Counter(a.kind.name for a in soak.actions if not a.sends)
-    waits: dict[str, int] = {}
+    withdrawn = Counter(
+        a.kind.name
+        for a in soak.actions
+        if not a.sends and a.deadline_ns is not None and a.deadline_ns <= soak.ended_ns
+    )
+    longest: dict[str, int] = {}
     for a in soak.actions:
         if a.sent_ns is not None:
-            waits[a.kind.name] = max(waits.get(a.kind.name, 0), a.sent_ns - a.requested_ns)
-    waiting = soak.waiting_when_full
+            longest[a.kind.name] = max(longest.get(a.kind.name, 0), a.sent_ns - a.requested_ns)
+    cap_at, waiting = soak.cap_at_send, soak.waiting_at_cap
     return {
         "schema": RECORD_SCHEMA,
         "milestone": "M2",
@@ -273,10 +358,8 @@ def record_data(soak: Soak) -> dict[str, Any]:
             "window_ns": window_ns,
             "burst": controls.burst,
             "refill_interval_ns": pacer.bucket.interval_ns,
-            "cap_per_window_from_the_refill_arithmetic": cap_per_window(
-                controls, pacer.bucket.interval_ns
-            ),
-            "priority": "CANCEL > REDUCE > MODIFY > QUERY > SUBMIT, FIFO within a kind",
+            "cap_per_window_from_the_refill_arithmetic": soak.cap,
+            "priority": " > ".join(PRIORITY) + ", first in first out within a kind",
         },
         "simulated_venue": {
             "limit_per_window": venue.limit,
@@ -288,42 +371,43 @@ def record_data(soak: Soak) -> dict[str, Any]:
         "demand": {
             "seed": soak.seed,
             "simulated_seconds": soak.seconds,
-            "backlog_at_start": BACKLOG_AT_START,
-            "per_minute_after_start": DEMAND_PER_MINUTE,
-            "mix_after_start": {kind.name: share for kind, share in DEMAND_MIX.items()},
+            "backlog_size": BACKLOG,
+            "backlogs_at_s": [_seconds(b) for b in soak.plan.backlogs],
+            "quiet_spells_s": [[_seconds(s), _seconds(e)] for s, e in soak.plan.quiet],
+            "steady_per_minute": DEMAND_PER_MINUTE,
+            "steady_mix": {kind.name: share for kind, share in DEMAND_MIX.items()},
             "entry_withdrawn_if_unsent_after_s": ENTRY_PATIENCE_S,
-            "requested": {name: requested[name] for name in names},
+            "requested": {name: requested[name] for name in PRIORITY},
         },
         "observed": {
-            "sent": {name: sent[name] for name in names},
-            "refused_unsent": {name: refused[name] for name in names},
-            "most_sent_in_any_window": max(window_counts(soak.sends, window_ns), default=0),
-            "most_order_actions_in_any_window": max(
-                window_counts(sorted(actions_only), window_ns), default=0
-            ),
-            "sent_per_minute": {
-                "first_minute": per_minute[0] if per_minute else 0,
-                "later_minutes_min": min(per_minute[1:], default=0),
-                "later_minutes_max": max(per_minute[1:], default=0),
-            },
-            "when_a_window_was_first_full": None
-            if soak.full_at_ns is None
-            else {
-                "at_ns": soak.full_at_ns,
-                "sent_in_window": soak.full_count,
-                "oldest_send_in_window_ns": soak.full_oldest_ns,
-                "next_action": None
-                if waiting is None
-                else {
-                    "kind": waiting.kind.name,
-                    "requested_at_ns": waiting.requested_ns,
-                    "sent_at_ns": waiting.sent_ns,
-                },
-            },
-            "longest_wait_s": {name: _seconds(waits[name]) for name in names if name in waits},
-            "priority_violations": soak.priority_violations,
+            "sent": {name: sent[name] for name in PRIORITY},
+            "withdrawn_by_caller": {name: withdrawn[name] for name in PRIORITY},
+            "lost": len(soak.actions) - sum(sent.values()) - sum(withdrawn.values()),
+            "sent_after_withdrawal": soak.sent_after_withdrawal,
             "sent_twice": sum(1 for a in soak.actions if a.sends > 1),
-            "left_in_queue": len(pacer.queue),
+            "priority_violations": soak.priority_violations,
+            "most_sent_in_any_window": max(counts, default=0),
+            "most_order_actions_in_any_window": max(
+                window_counts(order_actions, window_ns), default=0
+            ),
+            "sent_in_the_first_minute": bisect.bisect_left(soak.sends, window_ns),
+            "after_each_quiet_spell": after_quiet,
+            "steady_minutes": {
+                "count": len(steady),
+                "fewest_sent": min(steady, default=0),
+                "most_sent": max(steady, default=0),
+            },
+            "when_a_window_first_held_the_cap": None
+            if cap_at is None
+            else {
+                "at_ns": soak.sends[cap_at],
+                "oldest_send_in_window_ns": soak.cap_oldest_ns,
+                "waiting": None
+                if waiting is None
+                else {"kind": waiting.kind.name, "requested_at_ns": waiting.requested_ns},
+                "next_send_at_ns": soak.sends[cap_at + 1] if cap_at + 1 < len(soak.sends) else None,
+            },
+            "longest_wait_s": {n: _seconds(longest[n]) for n in PRIORITY if n in longest},
             "wire_counters": pacer.to_state("simulated"),
         },
     }
@@ -333,13 +417,25 @@ def problems(data: dict[str, Any]) -> list[str]:
     """What, if anything, makes this soak a failure."""
     found: list[str] = []
     budget = data["budget"]["request_budget_per_window"]
-    seen, venue = data["observed"], data["simulated_venue"]
+    burst = data["budget"]["burst"]
     cap = data["budget"]["cap_per_window_from_the_refill_arithmetic"]
+    seen, venue = data["observed"], data["simulated_venue"]
     most = seen["most_sent_in_any_window"]
-    if most > budget or cap > budget:
-        found.append(f"a 60 s window can hold {max(most, cap)} requests, over the budget {budget}")
+    if most > budget:
+        found.append(f"a 60 s window held {most} requests, over the budget of {budget}")
+    if most < budget - 1:
+        found.append(f"no window came within one of the budget (most {most} of {budget})")
     if most != cap:
         found.append(f"the busiest window held {most} requests, not the bucket's cap of {cap}")
+    for spell in seen["after_each_quiet_spell"]:
+        after = spell["most_sent_in_a_window_after"]
+        if not budget - 1 <= after <= budget:
+            found.append(f"after the quiet spell to {spell['quiet_to_s']} s a window held {after}")
+    steady = seen["steady_minutes"]
+    if not steady["count"]:
+        found.append("no whole minute of steady demand to measure")
+    elif steady["fewest_sent"] < budget - burst - 1:
+        found.append(f"a minute of steady demand sent only {steady['fewest_sent']}")
     if venue["rate_limited_answers"]:
         found.append("the simulated venue answered 429")
     if venue["most_requests_in_any_window"] > budget:
@@ -347,27 +443,23 @@ def problems(data: dict[str, Any]) -> list[str]:
     if venue["requests_received"] != seen["wire_counters"]["requests"]:
         found.append("the pacer's wire count differs from what the venue received")
     if seen["priority_violations"]:
-        found.append("an action was sent while a more urgent one was still waiting")
+        found.append("an action was sent while a more urgent or older one was still waiting")
     if seen["sent_twice"]:
         found.append("an action was sent more than once")
-    if seen["left_in_queue"]:
-        found.append("actions were left in the queue at the end")
-    for name, count in data["demand"]["requested"].items():
-        if seen["sent"][name] + seen["refused_unsent"][name] != count:
-            found.append(f"{name}: requested, sent and refused do not add up")
-    for kind in PROTECTIVE:
-        if seen["refused_unsent"][kind.name]:
-            found.append(f"a {kind.name} was refused; protective actions must always be sent")
-    if not seen["refused_unsent"][ActionKind.SUBMIT.name]:
-        found.append("no entry was refused: the demand never went past the budget")
-    full = seen["when_a_window_was_first_full"]
-    if full is None or full["next_action"] is None:
-        found.append("no action was waiting when a window was first full")
+    if seen["sent_after_withdrawal"]:
+        found.append("an entry reached the venue after its caller had withdrawn it")
+    if seen["lost"]:
+        found.append("an action was neither sent nor withdrawn by its caller")
+    if not seen["withdrawn_by_caller"][ActionKind.SUBMIT.name]:
+        found.append("no entry was withdrawn: the demand never went past the budget")
+    full = seen["when_a_window_first_held_the_cap"]
+    if full is None:
+        found.append("no window ever held the bucket's cap")
     else:
-        # The waiting action may go out only once the window's oldest send has left it.
+        if full["waiting"] is None:
+            found.append("nothing was waiting when a window first held the cap")
         room_at = full["oldest_send_in_window_ns"] + data["budget"]["window_ns"]
-        sent_at = full["next_action"]["sent_at_ns"]
-        if sent_at is not None and sent_at < room_at:
+        if full["next_send_at_ns"] is not None and full["next_send_at_ns"] < room_at:
             found.append("the action past the budget was sent while the window was full")
     return found
 
@@ -380,13 +472,19 @@ def run_soak(seed: int = SEED, seconds: int = SOAK_SECONDS) -> dict[str, Any]:
 
 
 def write_record(record: dict[str, Any], root: Path | None = None) -> tuple[bool, Path]:
-    """Write the record: to evidence/ on a pass, to the ignored runs/ folder on a failure."""
+    """A pass goes to evidence/ and replaces the earlier soak record; a failure goes to the
+    ignored runs/ folder."""
     root = REPO_ROOT if root is None else root
     passed = record["result"] == "pass" and not record["problems"]
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    path = root / ("evidence" if passed else "runs") / f"M2-order-budget-{stamp}-soak.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
+    folder = root / ("evidence" if passed else "runs")
+    path = folder / RECORD_GLOB.replace("*", stamp)
+    folder.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if passed:
+        for older in folder.glob(RECORD_GLOB):
+            if older != path:
+                older.unlink()
     return passed, path
 
 
@@ -409,7 +507,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"{'PASS' if passed else 'FAIL'}: at most {seen['most_sent_in_any_window']} requests in "
         f"any 60 s window (budget {record['budget']['request_budget_per_window']}); "
-        f"{sum(seen['refused_unsent'].values())} refused unsent; "
+        f"{sum(seen['withdrawn_by_caller'].values())} stale entries withdrawn unsent; "
         f"{record['simulated_venue']['rate_limited_answers']} answered 429. "
         f"Record: {path.relative_to(REPO_ROOT)}"
     )
