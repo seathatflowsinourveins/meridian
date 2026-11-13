@@ -166,6 +166,12 @@ def engine_config(universe: Sequence[InstrumentId], **kwargs: Any) -> LiveExecut
     `check_inflight_orders` turns an order still pending cancel after its retries into a local
     cancel, though the venue may not have acted; its open-order check reads the venue instead.
     `RetainUnresolved` keeps a submission whose outcome is unknown rather than rejecting it.
+
+    The settings returned are checked whatever was passed: in-flight checks off, open-order
+    checks on at a positive cadence. The node runs a periodic check only for an interval above
+    zero (`crates/live/src/node/mod.rs`, its run loop), so with neither, nothing would read an
+    order whose answer or update was lost. The in-flight interval passed only sets the cadence
+    when none is given; passing 0 for it needs an explicit one.
     """
     scope = [str(instrument_id) for instrument_id in universe]
     if not scope:
@@ -178,15 +184,13 @@ def engine_config(universe: Sequence[InstrumentId], **kwargs: Any) -> LiveExecut
     interval = LiveExecutionEngineConfig(**kwargs).inflight_check_interval_ms
     kwargs["inflight_check_interval_ms"] = 0
     if interval:
-        cadence = kwargs.setdefault("open_check_interval_secs", interval / 1000)
-        if cadence is None or not 0 < cadence < float("inf"):
-            raise ValueError("open-order checks must replace in-flight checks")
+        kwargs.setdefault("open_check_interval_secs", interval / 1000)
     for name in ("generate_missing_orders", "filter_position_reports"):
         if kwargs.pop(name, False):
             raise ValueError(f"{name} would hide a holding no order explains")
     if kwargs.pop("filter_unclaimed_external_orders", True) is not True:
         raise ValueError("unclaimed external orders must stay filtered")
-    return LiveExecutionEngineConfig(
+    config = LiveExecutionEngineConfig(
         reconciliation=True,
         generate_missing_orders=False,
         filter_position_reports=False,
@@ -194,6 +198,10 @@ def engine_config(universe: Sequence[InstrumentId], **kwargs: Any) -> LiveExecut
         reconciliation_instrument_ids=scope,
         **kwargs,
     )
+    cadence = config.open_check_interval_secs
+    if config.inflight_check_interval_ms != 0 or cadence is None or not 0 < cadence < float("inf"):
+        raise ValueError("open-order checks must replace in-flight checks")
+    return config
 
 
 def parts(row: Mapping[str, Any]) -> Iterable[Mapping[str, Any]]:

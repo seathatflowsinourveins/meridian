@@ -269,3 +269,35 @@ def test_the_engine_settings_cannot_hide_a_gap():
             engine_config([AAPL], **bad)
     with pytest.raises(ValueError):
         engine_config([])
+
+
+@pytest.mark.parametrize(
+    ("settings", "cadence"),
+    [
+        ({}, 2.0),  # rc9's in-flight default, 2000 ms, as the open-order cadence
+        ({"inflight_check_interval_ms": 500}, 0.5),
+        ({"inflight_check_interval_ms": 0, "open_check_interval_secs": 1.0}, 1.0),
+        ({"inflight_check_interval_ms": 2000, "open_check_interval_secs": 0.2}, 0.2),
+        ({"position_check_interval_secs": 30.0}, 2.0),
+    ],
+)
+def test_the_engine_settings_returned_check_open_orders_and_never_in_flight(settings, cadence):
+    config = engine_config([AAPL], **settings)
+    assert config.inflight_check_interval_ms == 0
+    assert config.open_check_interval_secs == cadence
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"inflight_check_interval_ms": 0},
+        {"inflight_check_interval_ms": 0, "open_check_interval_secs": None},
+        {"open_check_interval_secs": None},
+    ],
+)
+def test_engine_settings_that_leave_no_order_check_are_refused(settings):
+    """In-flight checks are always off here, so settings without an open-order cadence would
+    leave no periodic check of the venue at all: refused, whatever in-flight interval was
+    passed."""
+    with pytest.raises(ValueError, match="open-order checks must replace in-flight checks"):
+        engine_config([AAPL], **settings)
