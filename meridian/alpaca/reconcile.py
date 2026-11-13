@@ -9,7 +9,8 @@ earlier line's attended starts failed (docs/m3-alpaca.md, section 2):
   stage records its requests, rows and first failure (class, HTTP status, our own reason; never
   a venue body, an id, a price or a quantity) in `StageTrace`.
 - Terminal history in a symbol outside the lane's universe is withheld and counted, not
-  refused; a working order there (any leg, at any depth) refuses the start by symbol.
+  refused; a working order there (any leg, at any depth) refuses the start by symbol. A row
+  whose symbol cannot be read is not known to be outside: it refuses.
 - A working order outside the lane's client-order-id namespace means another writer is active:
   the start refuses. Its ended orders are history and count for nothing.
 - The order listing is read whole (newest first, paged by `until` past the 500-row cap); a
@@ -46,6 +47,7 @@ OUTSIDE_UNIVERSE = "working order outside the lane's universe"
 ANOTHER_WRITER = "working order of another writer"
 UNMAPPABLE_WORKING = "working order the lane cannot map"
 UNMAPPABLE_FILLED = "ended order the lane cannot map holds fills"
+UNREADABLE_SYMBOL = "Alpaca row requires its symbol"
 
 # The only texts a trace keeps, exactly: each is ours and names no symbol, id, price, quantity
 # or venue word (the earlier line's prefix rule let a venue status word through, sextant#688).
@@ -61,6 +63,7 @@ _REASONS = frozenset(
         ANOTHER_WRITER,
         UNMAPPABLE_WORKING,
         UNMAPPABLE_FILLED,
+        UNREADABLE_SYMBOL,
         "Alpaca order page is not a list",
         "Alpaca fill page is not a list",
         "Alpaca positions are not a list",
@@ -221,10 +224,22 @@ def is_working(row: Mapping[str, Any]) -> bool:
     return any(part.get("status") not in TERMINAL for part in parts(row))
 
 
-def withheld_unloaded(row: Mapping[str, Any], loaded: Callable[[str], bool]) -> bool:
-    """True for ended history in a symbol outside the universe; refuses a working one."""
+def row_symbol(row: Mapping[str, Any]) -> str:
+    """An order or position row's symbol, or ValueError. A row without one in text is not
+    known to be outside the universe, so it is never withheld as such: it refuses, and after
+    startup it is a gap. (alpaca-py 0.45.0 types `Order.symbol` as optional: an `mleg` order
+    omits it at the top level, so such an order in the history refuses too.)"""
     symbol = row.get("symbol")
-    if isinstance(symbol, str) and loaded(symbol):
+    if not isinstance(symbol, str) or not symbol:
+        raise ValueError(UNREADABLE_SYMBOL)
+    return symbol
+
+
+def withheld_unloaded(row: Mapping[str, Any], loaded: Callable[[str], bool]) -> bool:
+    """True for ended history in a symbol outside the universe; refuses a working one, and a
+    row whose symbol cannot be read (`row_symbol`)."""
+    symbol = row_symbol(row)
+    if loaded(symbol):
         return False
     if is_working(row):
         raise ValueError(f"{OUTSIDE_UNIVERSE}: {symbol}")

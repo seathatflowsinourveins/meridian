@@ -199,6 +199,25 @@ def test_failure_case_2_a_working_order_in_an_unloaded_symbol_refuses_by_symbol(
     assert any("universe: TSLA" in str(error) for _, error in client.failures)  # named
 
 
+def test_a_start_refuses_rows_whose_symbol_it_cannot_read():
+    """The venue holds one AAPL share from the lane's earlier filled order, and both the order's
+    row and the position's come without a symbol. Neither is known to be outside the universe,
+    so neither is withheld as history there: the start refuses. (Withheld, both rows left the
+    engine flat against the venue's share, and the start passed.)"""
+    rig = Rig()
+    earlier = order_row(client_order_id=f"{PREFIX}earlier-1", submitted_at=stamp(1))
+    position = position_row(qty="1")
+    del earlier["symbol"], position["symbol"]
+    rig.venue.orders.append(earlier)
+    rig.venue.positions.append(position)
+    error, seen = start(rig)
+    assert isinstance(error, RuntimeError) and "coverage_complete" not in seen
+    client = rig.clients[0]
+    reasons = {stage.reason for stage in client.report_trace.values()}
+    assert "Alpaca row requires its symbol" in reasons
+    assert client.withheld_symbols == set()
+
+
 def test_failure_case_3_fills_older_than_the_venues_order_history_are_counted():
     rig = Rig()
     listed = order_row(client_order_id=f"{PREFIX}late", submitted_at=stamp(30), qty="1")
@@ -1689,6 +1708,20 @@ def answering(venue, path: str, answer):
     return lambda: setattr(venue, "get", get)
 
 
+def reshaped(venue, path: str, change):
+    """From now on GET `path` answers `change(answer)`, `answer` being the venue's own; `change`
+    runs where the venue does, in the request's worker thread. Returns what restores the venue's
+    own answer."""
+    get = venue.get
+
+    def patched(asked: str, data: dict | None = None, **kwargs):
+        answer = get(asked, data, **kwargs)
+        return change(answer) if asked == path else answer
+
+    venue.get = patched
+    return lambda: setattr(venue, "get", get)
+
+
 # One full page of the order listing: 500 working rows, all submitted at one instant.
 FULL_PAGE = [order_row(status="new", filled_qty="0") for _ in range(500)]
 UNREADABLE_LISTINGS = {
@@ -1798,10 +1831,23 @@ def report_read(client, row: dict, read: str):
     return client._generate_fill_reports(scope)
 
 
+def symbol_dropped(row: dict) -> dict:
+    return {key: value for key, value in row.items() if key != "symbol"}
+
+
+def ended_without_symbol(row: dict) -> dict:
+    """The lane's order, filled, in a row without its symbol: it can only be withheld as history
+    outside the universe if the lane takes it for such."""
+    return symbol_dropped({**row, "status": "filled", "filled_qty": row["qty"]})
+
+
 UNREADABLE_ANSWERS = {
     "a row that is not a row": lambda row: lambda query: ["not a row"],
     "a list": lambda row: lambda query: [dict(row)],
     "not a list": lambda row: lambda query: {"rows": []},
+    "its ended row without a symbol": lambda row: lambda query: ended_without_symbol(row),
+    "a listing of that row": lambda row: lambda query: [ended_without_symbol(row)],
+    "a position without a symbol": lambda row: lambda query: [symbol_dropped(position_row())],
     "an unexplained fill": lambda row: (
         lambda query: [fill_activity(order_row(), when="2026-11-02T15:00:00.000000Z")]
     ),
@@ -1818,8 +1864,21 @@ UNREADABLE_ANSWERS = {
             "a row that is not a row",
             "'str' object has no attribute 'get'",
         ),
+        ("open-orders", "/orders", "a listing of that row", "Alpaca row requires its symbol"),
         ("one-order", "/orders/{id}", "a list", "'list' object has no attribute 'get'"),
+        (
+            "one-order",
+            "/orders/{id}",
+            "its ended row without a symbol",
+            "Alpaca row requires its symbol",
+        ),
         ("positions", "/positions", "not a list", "Alpaca positions are not a list"),
+        (
+            "positions",
+            "/positions",
+            "a position without a symbol",
+            "Alpaca row requires its symbol",
+        ),
         (
             "positions",
             "/positions",
@@ -1846,7 +1905,8 @@ def test_an_answer_the_lane_cannot_read_after_startup_is_a_gap(read, path, answe
     cannot read or map. Whatever the failure's type (a row that is not a row fails with
     AttributeError; an order history without a time fails outside any listing), it is a gap at
     once: new orders stop before the gap's read, which restores coverage once the venue
-    answers again."""
+    answers again. A row without its symbol is one: it is not known to be outside the universe,
+    so it is never withheld as history there."""
     rig = Rig()
 
     async def script(box, status):
@@ -1869,6 +1929,64 @@ def test_an_answer_the_lane_cannot_read_after_startup_is_a_gap(read, path, answe
     assert "raised" in box
     assert box["gap"][0] is True and box["gap"][1][-1:] == [failure]
     assert box["recoveries"] == 1
+
+
+@pytest.mark.parametrize("read", ["order row", "position row"])
+def test_a_gaps_read_meeting_a_row_without_its_symbol_withholds_nothing(read):
+    """The lane's order fills at the venue behind an update the lane cannot classify (a gap).
+    The gap's read gets the order's row, or the position's, without a symbol. That row is not
+    history outside the universe: the read fails, new orders stay denied and nothing is
+    withheld. Once the venue answers with the symbol, the read shows the engine the fill and the
+    share. (Withheld, the row left the engine without the fill, or let it take the venue for
+    flat, while the account was called covered.)"""
+    rig = Rig()
+
+    def on_start(running, box):
+        box["order"] = limit_order(running)
+        running.submit_order(box["order"])
+        box["second"], box["third"] = limit_order(running, 2), limit_order(running, 3)
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, row = rig.clients[0], rig.venue.orders[-1]
+        if read == "order row":
+            mine = row["id"]
+            restore = reshaped(
+                rig.venue,
+                "/orders",
+                lambda rows: [symbol_dropped(r) if r["id"] == mine else r for r in rows],
+            )
+        else:
+            restore = reshaped(
+                rig.venue, "/positions", lambda rows: list(map(symbol_dropped, rows))
+            )
+        row.update(status="filled", filled_qty="1", filled_avg_price=row["limit_price"])
+        rig.venue.positions.append(position_row())
+        rig.stream.push(update("trade_bust", row))  # unclassified: a gap
+        await until(
+            lambda: (
+                client.recoveries > 0
+                or any(
+                    str(error) == "Alpaca row requires its symbol" for _, error in client.failures
+                )
+            )
+        )
+        box["read"] = (client.coverage_complete, sorted(client.withheld_symbols))
+        box["strategy"].submit_order(box["second"])
+        await until(lambda: status(2) in (OrderStatus.DENIED, OrderStatus.ACCEPTED))
+        box["second_status"] = status(2)
+        restore()
+        await until(lambda: client.coverage_complete)
+        box["strategy"].submit_order(box["third"])
+        await until(lambda: status(3) == OrderStatus.ACCEPTED)
+        box["first_status"] = status()
+
+    box = drive(rig, script, on_start=on_start)
+    assert box["error"] is None
+    assert box["read"] == (False, [])
+    assert box["second_status"] == OrderStatus.DENIED
+    assert box["first_status"] == OrderStatus.FILLED
+    assert box["holding"] == [("AAPL.ALPACA", "1")]
 
 
 @pytest.mark.parametrize(

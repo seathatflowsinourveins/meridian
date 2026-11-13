@@ -154,6 +154,30 @@ def test_a_working_leg_behind_an_ended_parent_refuses_at_any_depth():
         withheld_unloaded(missing, loaded)
 
 
+NO_SYMBOL = object()  # the row has no symbol field at all
+
+
+@pytest.mark.parametrize(
+    "symbol",
+    [NO_SYMBOL, None, "", 123, ["TSLA"]],
+    ids=["absent", "null", "empty", "number", "list"],
+)
+def test_a_row_whose_symbol_cannot_be_read_is_never_withheld(symbol):
+    """An ended row without a symbol in text is not known to be outside the universe: it may be
+    the lane's own order. It refuses, as its own failure, and so does a fill it would explain."""
+    row = order_row(status="filled", submitted_at=stamp(1))
+    fill = fill_activity(row)
+    if symbol is NO_SYMBOL:
+        del row["symbol"]
+    else:
+        row["symbol"] = symbol
+    with pytest.raises(ValueError, match="^Alpaca row requires its symbol$"):
+        withheld_unloaded(row, loaded)
+    with pytest.raises(IncompleteCoverage) as info:
+        explain([fill], [row])
+    assert reason_of(info.value.failures[0][1]) == "Alpaca row requires its symbol"
+
+
 def test_another_writers_working_order_refuses_and_its_ended_orders_do_not():
     check_one_writer(order_row(client_order_id="M3-7", status="new"), "M3-")
     check_one_writer(order_row(client_order_id="OLDWRITER-1", status="filled"), "M3-")

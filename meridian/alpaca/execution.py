@@ -65,6 +65,7 @@ from .reconcile import (
     list_orders,
     merge_listings,
     oldest_submission,
+    row_symbol,
     traced,
     unmappable_history,
     withheld_unloaded,
@@ -889,7 +890,7 @@ class AlpacaPaperExecutionClient(ExecutionClient):
                         check_one_writer(row, self.house_prefix)
                         if withheld_unloaded(row, self._is_loaded):
                             trace.withheld_unloaded += 1
-                            withheld.add(str(row.get("symbol")))
+                            withheld.add(row["symbol"])  # text: `withheld_unloaded` read it
                             continue
                         if unmappable_history(row):
                             trace.withheld_unmapped += 1
@@ -949,15 +950,16 @@ class AlpacaPaperExecutionClient(ExecutionClient):
                 reports, failures = [], []
                 for row in rows:
                     try:
-                        if not self._is_loaded(str(row.get("symbol"))):
+                        symbol = row_symbol(row)  # unreadable: refused, never withheld
+                        if not self._is_loaded(symbol):
                             trace.withheld_unloaded += 1
-                            self.withheld_symbols.add(str(row.get("symbol")))
+                            self.withheld_symbols.add(symbol)
                             continue
                         reports.append(
                             position_status_report(
                                 row,
                                 account_id=self.account_id,
-                                instrument=self._instrument(row.get("symbol")),
+                                instrument=self._instrument(symbol),
                                 ts_init=self.clock.timestamp_ns(),
                             )
                         )
