@@ -1,8 +1,8 @@
 """
 The sandbox lane cannot send an order to IBKR: its node has one data client and the engine's
 sandbox as its only execution client. The build fails if an Interactive Brokers execution
-client, or any other way to add an execution client, appears in the lane's code, or if the node
-the lane builds has anything but the sandbox for execution.
+client, any other way to add an execution client, or a way to the IBKR lane's own run appears
+in the lane's code, or if the node the lane builds has anything but the sandbox for execution.
 
 It also runs, offline, on a fake data feed: the strategy's orders reach the simulated venue
 and only it, nothing is left open at stop, only the lane's own lines reach the terminal, and a
@@ -15,6 +15,7 @@ empty network namespace where the machine allows one.
 import ast
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -30,7 +31,10 @@ import pytest
 from meridian import boundary, ib_probe, sandbox_lane
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-LANE_FILES = ["meridian/sandbox_lane.py", "meridian/sandbox_node.py"]
+# Every module of the lane, so that a new one is read without being listed here.
+LANE_FILES = sorted(
+    path.relative_to(REPO_ROOT).as_posix() for path in (REPO_ROOT / "meridian").glob("sandbox_*.py")
+)
 # Names that build or add an execution client other than the sandbox. In the lane's code each
 # fails the build as an identifier, an attribute, an import or a keyword argument, and inside a
 # string too (``getattr(builder, "add_exec_client")``).
@@ -67,52 +71,241 @@ BUILDER_CALLS = {
     "add_simulated_exec_client",
     "build",
 }
-# Ways around a name check: dynamic code (as calls of the builtins), and IB's client libraries.
-DYNAMIC_BUILTINS = {"eval", "exec", "compile", "__import__"}
-FORBIDDEN_MODULES = {"importlib", "ibapi", "ib_async", "ib_insync"}
 # What the lane may use from the IBKR lane's gate module, which imports no engine, and the
-# only meridian modules it may import.
+# only meridian modules it may import. The module comes in only as ``from meridian import
+# ibkr_paper``, under that name, and is used only to read ``ibkr_paper.<one of these>``; or
+# these names are imported from it. Among the rest are the IBKR lane's own run (``_run_node``:
+# IB's execution client and an order on the paper account) and its entry point (``main``).
 FROM_IBKR_PAPER = {"gate", "scrubbed_json", "bind_note", "RECORD_SCHEMA", "GATEWAY_HINT"}
 MERIDIAN_MODULES = {"boundary", "ib_probe", "ibkr_paper", "sandbox_lane", "sandbox_node"}
+# The only top-level modules a lane file imports; any other import fails the build until it is
+# added here.
+LANE_IMPORTS = {
+    "__future__",
+    "_common",  # upstream's IB helper, vendored and unmodified
+    "argparse",
+    "collections",
+    "contextlib",
+    "datetime",
+    "decimal",
+    "gc",
+    "json",
+    "meridian",
+    "nautilus_trader",
+    "os",
+    "pathlib",
+    "re",
+    "sys",
+    "threading",
+    "time",
+    "traceback",
+    "typing",
+}
+# Ways around a name check, flagged wherever the lane's code names them:
+# builtins that run a string as code, read a namespace, or import and call what a string names
+# (breakpoint, through PYTHONBREAKPOINT), as names only (re.compile is the lane's own);
+DYNAMIC_BUILTINS = {
+    "eval",
+    "exec",
+    "compile",
+    "__import__",
+    "globals",
+    "locals",
+    "vars",
+    "breakpoint",
+}
+# a module or attribute found from a string at run time (importlib's import, the engine's
+# import by path in nautilus_trader.live.config and its plugin loader, sys.modules, the import
+# system's finders, sys.breakpointhook, typing's forward references, which evaluate a string
+# in a named module or the module that owns them), the namespace behind a frame, the
+# collector's object lists, and asyncio's and concurrent.futures' ways to start another
+# process;
+RUN_TIME_LOOKUPS = {
+    "import_module",
+    "resolve_path",
+    "add_plugin",
+    "modules",
+    "meta_path",
+    "path_hooks",
+    "path_importer_cache",
+    "breakpointhook",
+    "ForwardRef",
+    "evaluate",
+    "evaluate_forward_ref",
+    "get_type_hints",
+    "get_annotations",
+    "_eval_type",
+    "_type_check",
+    "_type_convert",
+    "_getframe",
+    "f_globals",
+    "f_locals",
+    "f_builtins",
+    "get_objects",
+    "get_referrers",
+    "get_referents",
+    "create_subprocess_exec",
+    "create_subprocess_shell",
+    "ProcessPoolExecutor",
+}
+# os's ways to start another program, on whatever object or under whatever name they are
+# reached (``_common.os.system``);
+OS_PROCESS = {
+    n for n in dir(os) if re.fullmatch(r"system|popen|(exec|spawn|posix_spawn|fork)\w*", n)
+} | {"startfile"}  # Windows only
+# modules that import, unpickle, evaluate or start code by other routes, a socket of the lane's
+# own, and IB's client libraries (also when another module hands them over: ``from _common
+# import subprocess``);
+FORBIDDEN_MODULES = {
+    "importlib",
+    "annotationlib",
+    "builtins",
+    "runpy",
+    "pkgutil",
+    "pydoc",
+    "inspect",
+    "pickle",
+    "marshal",
+    "ctypes",
+    "subprocess",
+    "multiprocessing",
+    "pty",
+    "posix",
+    "socket",
+    "ibapi",
+    "ib_async",
+    "ib_insync",
+}
+# and any dunder name but these (``__globals__``, ``__dict__``, ``__builtins__``, ``__spec__``
+# and the rest lead from an allowed object to the namespace behind it).
+DUNDERS_ALLOWED = {"__name__", "__doc__", "__init__", "__version__"}
+LOOKUP_NAMES = EXECUTION_CLIENT_NAMES | RUN_TIME_LOOKUPS | OS_PROCESS | FORBIDDEN_MODULES
+# ibkr_paper in a string, other than as ibkr_paper.<allowed name> (a module path for
+# subprocess, runpy or a resolver, or code for ``python -c``).
+IBKR_PAPER_TEXT = re.compile(r"ibkr_paper(?![.:](?:" + "|".join(sorted(FROM_IBKR_PAPER)) + r")\b)")
+GETATTR_FAMILY = {"getattr", "setattr", "delattr", "hasattr"}
 IB_VARIABLES = ("IB_V2_", "IB_PYO3_")
 FAKE = "DUFAKE0001"
 
 
 def execution_client_hits(source: str) -> list[str]:
-    """Every use of a name that could add an execution client, as name@line."""
+    """Every use of a name that could add an execution client or reach the IBKR lane's run,
+    and every way around such a check that the lane's code spells out, as name@line."""
+    tree = ast.parse(source)
+    # The name ibkr_paper is allowed only where it is read as ibkr_paper.<allowed name>, and
+    # getattr and its family only where they are called with the name as a string constant:
+    # getattr(x, "name") is x.name, and with a name computed at run time nothing can tell.
+    reads = {
+        id(node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "ibkr_paper"
+        and node.attr in FROM_IBKR_PAPER
+        and isinstance(node.ctx, ast.Load)
+    }
+    named_calls = {
+        id(node.func): named
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and (named := _constant_name(node))
+    }
     hits = []
-    for node in ast.walk(ast.parse(source)):
+    for node in ast.walk(tree):
         found: list[str] = []
         if isinstance(node, ast.Name):
-            found = [node.id] if node.id in EXECUTION_CLIENT_NAMES | DYNAMIC_BUILTINS else []
+            if node.id in LOOKUP_NAMES | DYNAMIC_BUILTINS or _is_dunder(node.id):
+                found = [node.id]
+            if node.id == "ibkr_paper" and id(node) not in reads:
+                found.append("ibkr_paper, not as ibkr_paper.<allowed name>")
+            if node.id in GETATTR_FAMILY:
+                if (named := named_calls.get(id(node))) is None:
+                    found.append(f"{node.id}, not with a constant name")
+                else:
+                    found += _attribute_hits(*named, node.id in ("getattr", "hasattr"))
         elif isinstance(node, ast.Attribute):
-            found = [node.attr] if node.attr in EXECUTION_CLIENT_NAMES else []
-            if (
-                isinstance(node.value, ast.Name)
-                and node.value.id == "ibkr_paper"
-                and node.attr not in FROM_IBKR_PAPER
-            ):
-                found.append(f"ibkr_paper.{node.attr}")
+            found = _attribute_hits(node.attr, node.value, isinstance(node.ctx, ast.Load))
+        elif isinstance(node, ast.MatchClass):  # case object(attr=x) reads the subject's attr
+            found = [h for a in node.kwd_attrs for h in _attribute_hits(a, node.cls, True)]
         elif isinstance(node, ast.alias):
             parts = {node.name.split(".")[0], node.name.rsplit(".", 1)[-1], node.asname}
-            found = [p for p in parts if p in EXECUTION_CLIENT_NAMES | FORBIDDEN_MODULES]
+            found = [p for p in parts if p in LOOKUP_NAMES]
         elif isinstance(node, ast.keyword) and node.arg in EXECUTION_CLIENT_NAMES:
             found = [node.arg]
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             found = [w for w in EXECUTION_CLIENT_NAMES if w in node.value]
-        if isinstance(node, ast.ImportFrom):
-            module = node.module or ""
-            if module.split(".")[0] in FORBIDDEN_MODULES:
-                found.append(module)
-            if module == "meridian":
-                found += [
-                    f"meridian.{a.name}" for a in node.names if a.name not in MERIDIAN_MODULES
-                ]
-            elif module.startswith("meridian.") and module.split(".")[1] not in MERIDIAN_MODULES:
-                found.append(module)
-        found += [n for n in _names(node) if n.startswith("Importable")]
+            found += [f"'{m.group()}' in a string" for m in IBKR_PAPER_TEXT.finditer(node.value)]
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            found += _import_hits(node)
+        found += [
+            n for n in _names(node) if n.startswith("Importable") or n.endswith("from_config")
+        ]
         hits += [f"{n}@{getattr(node, 'lineno', '?')}" for n in found]
     return hits
+
+
+def _constant_name(call: ast.Call) -> tuple[str, ast.expr] | None:
+    """For ``getattr(x, "name")`` and its family, ``("name", x)``."""
+    if isinstance(call.func, ast.Name) and call.func.id in GETATTR_FAMILY and len(call.args) > 1:
+        target, name = call.args[0], call.args[1]
+        if isinstance(name, ast.Constant) and isinstance(name.value, str):
+            return name.value, target
+    return None
+
+
+def _is_dunder(name: str) -> bool:
+    return name.startswith("__") and name.endswith("__") and name not in DUNDERS_ALLOWED
+
+
+def _attribute_hits(attr: str, value: ast.expr, load: bool) -> list[str]:
+    """What is wrong with reading (or, without ``load``, setting) ``value.attr``."""
+    found = [attr] if attr in LOOKUP_NAMES or _is_dunder(attr) else []
+    if attr == "ibkr_paper":  # reached through a package or another module
+        found.append("ibkr_paper as an attribute")
+    if (
+        isinstance(value, ast.Name)
+        and value.id == "ibkr_paper"
+        and (attr not in FROM_IBKR_PAPER or not load)
+    ):
+        found.append(f"ibkr_paper.{attr}")
+    return found
+
+
+def _import_hits(node: ast.Import | ast.ImportFrom) -> list[str]:
+    """What an import statement brings in that the lane may not have."""
+    found: list[str] = []
+    if isinstance(node, ast.Import):
+        modules = [a.name for a in node.names]
+        # Meridian modules come in by from-imports only, which is what this check reads.
+        found += [f"import {m}" for m in modules if m.split(".")[0] == "meridian"]
+    else:
+        module, names = node.module or "", [a.name for a in node.names]
+        modules = [module]
+        if node.level:
+            found.append(f"relative import from {'.' * node.level}{module}")
+        if "*" in names:  # binds names this check cannot see
+            found.append(f"from {module} import *")
+        if module == "meridian":
+            found += [f"meridian.{n}" for n in names if n not in MERIDIAN_MODULES]
+        elif module.startswith("meridian."):
+            if (sub := module.split(".")[1]) not in MERIDIAN_MODULES:
+                found.append(module)
+            elif sub == "ibkr_paper":
+                found += [f"ibkr_paper.{n}" for n in names if n not in FROM_IBKR_PAPER]
+    for m in modules:
+        top = m.split(".")[0]
+        if top in FORBIDDEN_MODULES:
+            found.append(m)
+        elif top and top not in LANE_IMPORTS:
+            found.append(f"{m}, not a module the lane imports")
+    for a in node.names:
+        # ibkr_paper comes in as ``from meridian import ibkr_paper`` and under no other name.
+        if "ibkr_paper" in (a.name.rsplit(".", 1)[-1], a.asname) and not (
+            isinstance(node, ast.ImportFrom)
+            and (node.level, node.module, a.name) == (0, "meridian", "ibkr_paper")
+            and a.asname in (None, "ibkr_paper")
+        ):
+            found.append(f"ibkr_paper imported as {a.asname or a.name}")
+    return found
 
 
 def _names(node: ast.AST) -> list[str]:
@@ -129,6 +322,7 @@ def _names(node: ast.AST) -> list[str]:
 
 
 def test_no_lane_file_can_add_an_execution_client_other_than_the_sandbox():
+    assert {"meridian/sandbox_lane.py", "meridian/sandbox_node.py"} <= set(LANE_FILES)
     for name in LANE_FILES:
         source = (REPO_ROOT / name).read_text(encoding="utf-8")
         assert execution_client_hits(source) == [], name
@@ -159,6 +353,103 @@ def test_no_lane_file_can_add_an_execution_client_other_than_the_sandbox():
 )
 def test_the_source_check_catches_an_added_execution_client(planted):
     assert execution_client_hits(planted)
+
+
+@pytest.mark.parametrize(
+    "planted",
+    [
+        # The IBKR lane's own run and its entry point, imported by name or with the module
+        # under another name.
+        "from meridian.ibkr_paper import _run_node\n_run_node(bounds, account)",
+        "from meridian.ibkr_paper import _run_node as ibkr_lane_run\nOTHER_RUN = ibkr_lane_run",
+        "from meridian.ibkr_paper import main as other_main",
+        "from meridian.ibkr_paper import *",
+        "import meridian.ibkr_paper as p\np._run_node(bounds, account)",
+        "import meridian.ibkr_paper\nmeridian.ibkr_paper._run_node(bounds, account)",
+        "import meridian\nlane = meridian.ibkr_paper",
+        "from meridian import ibkr_paper as p\np._run_node(b, a)",
+        "from meridian import *",
+        "from meridian.sandbox_lane import ibkr_paper as p",
+        "from . import ibkr_paper as p",
+        "from .ibkr_paper import _run_node",
+        # ibkr_paper other than read as ibkr_paper.<allowed name>.
+        "lane = ibkr_paper\nlane._run_node(b, a)",
+        "getattr(ibkr_paper, '_run_node')(b, a)",
+        "vars(ibkr_paper)['_run_node'](b, a)",
+        "ibkr_paper.gate = lambda: (bounds, account)",
+        "sandbox_lane.ibkr_paper._run_node(b, a)",
+        "ibkr_paper.gate.__globals__['_run_node'](b, a)",
+        "globals()['ibkr_paper']",
+        "match sandbox_lane:\n    case object(ibkr_paper=lane):\n        lane._run_node(b, a)",
+        # A module or an attribute found from a string at run time, or behind an object.
+        "sys.modules['meridian.ibkr_paper']",
+        "from sys import modules",
+        "getattr(sys, 'modules')",
+        "getattr(sys, name)",
+        "list(map(getattr, [sandbox_lane], [name]))",
+        "match sys:\n    case object(modules=found):\n        pass",
+        "typing.ForwardRef(name, module=path).evaluate()",
+        "typing.get_args(typing.List[name])[0].evaluate(owner=sandbox_lane)",
+        "typing._eval_type(typing._type_check(name, '', module=path), None, None)",
+        "typing.evaluate_forward_ref(ref)",
+        "from typing import get_type_hints",
+        "os.environ['PYTHONBREAKPOINT'] = path\nbreakpoint(bounds, account)",
+        "sys.breakpointhook(bounds, account)",
+        "node.add_plugin(path, 'Plugin')",
+        "__import__('meridian.ibkr_paper')",
+        "builtins.__import__(name)",
+        "__builtins__['__import__'](name)",
+        "from importlib import import_module",
+        "config.import_module(name)",
+        "from nautilus_trader.live.config import resolve_path",
+        "live_config.resolve_path(path)(bounds, account)",
+        "node.add_strategy_from_config(config)",
+        "from _common import add_strategy_from_config",
+        "import operator",
+        "sys.meta_path[0].find_spec(name, None)",
+        "__spec__.loader",
+        "().__class__.__base__.__subclasses__()",
+        "sys._getframe().f_back",
+        "frame.f_globals",
+        "gc.get_referrers(boundary)",
+        "path = 'meridian.ibkr_paper:_run_node'",
+        # Another process running the IBKR lane.
+        "subprocess.run(command)",
+        "from _common import subprocess",
+        "os.execv(sys.executable, args)",
+        "os.system(command)",
+        "_common.os.system(command)",
+        "import os as o\no.posix_spawn(path, args, env)",
+        "from os import posix_spawn",
+        "asyncio.create_subprocess_exec(*command)",
+        "concurrent.futures.ProcessPoolExecutor()",
+        "command = [sys.executable, '-m', 'meridian.ibkr_paper', 'order']",
+        # IB's API spoken over a socket of the lane's own.
+        "ib_probe.socket.create_connection((host, port))",
+        "from _common import socket",
+    ],
+)
+def test_the_source_check_catches_a_way_to_the_ibkr_lanes_run(planted):
+    assert execution_client_hits(planted)
+
+
+@pytest.mark.parametrize(
+    "allowed",
+    [
+        "from meridian import boundary, ib_probe, ibkr_paper\nbounds, account = ibkr_paper.gate()",
+        "from meridian.ibkr_paper import bind_note, gate as paper_gate",
+        "text = ibkr_paper.scrubbed_json(data, [account]) + ibkr_paper.GATEWAY_HINT",
+        "'the paper checks (``meridian.ibkr_paper.gate``)'",
+        "REGISTERED = re.compile(r'Registered')",
+        "name, version = type(event).__name__, nautilus_trader.__version__",
+        "reason = getattr(event, 'reason', None)",
+        "os.dup2(log, 1)\nos.environ.pop('IB_V2_X', None)",
+        "super().__init__()",
+        "if __name__ == '__main__':\n    raise SystemExit(main())",
+    ],
+)
+def test_the_source_check_passes_what_the_lane_uses(allowed):
+    assert execution_client_hits(allowed) == []
 
 
 class RecordingBuilder:
