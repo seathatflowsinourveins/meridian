@@ -28,6 +28,7 @@ or the lockfile, not from memory. Transitive Python packages are pinned with has
 | apt packages for the IB Gateway window | libgtk-3-0t64 3.24.52-0ubuntu1, libnss3 2:3.120-1ubuntu2.2, libnspr4 2:4.38.2-1ubuntu1, libasound2t64 1.2.15.3-1ubuntu1.1, libatk1.0-0t64 2.60.4-0ubuntu0.1, libatk-bridge2.0-0t64 2.60.4-0ubuntu0.1, libatspi2.0-0t64 2.60.4-0ubuntu0.1, libcups2t64 2.4.16-1ubuntu1.3, xdg-utils 1.2.1-2ubuntu2 | https://teamdev.com/jxbrowser/docs/guides/introduction/requirements/ (the browser component on the Gateway's classpath); https://packages.ubuntu.com/resolute/ | 2026-11-12 | IBKR publishes no Linux package list, so this list is an inference from that component's requirements. Checked by starting the installed Gateway under WSLg: it was still running after 35 seconds, with no error in its output (not logged in) | upstream |
 | Ubuntu Insights consent (in the image, not installed by this repo) | ubuntu-insights 0.9.3ubuntu | `ubuntu-insights --help` and `ubuntu-insights consent --help` in the distro; `/usr/lib/wsl/ubuntu-insights.sh` in the image; https://raw.githubusercontent.com/ubuntu/ubuntu-insights/main/README.md | 2026-11-12 | recorded as "no" for the owner user, the way Ubuntu's own WSL script records a "no". Per the README, a declined client sends only `{"OptOut": true}`. The Windows registry value that script can also write is left alone | upstream |
 | Ubuntu Insights timers (in the image) | `ubuntu-insights-collect.timer`, `ubuntu-insights-upload.timer`, ubuntu-insights 0.9.3ubuntu | `/usr/lib/systemd/user/` in the image; `systemctl --user cat` of both | 2026-11-12 | the image enables both for every user by preset; the definition disables them with `systemctl --global disable`, and `setup.sh check` verifies it | upstream |
+| Ubuntu Pro for WSL bridge `wsl-pro.service` (in the image, not installed by this repo) | wsl-pro-service 0.1.19ubuntu2; 0.1.19ubuntu2.1 is among the pending upgrades | `systemctl cat wsl-pro.service` and its journal in the distro; `/var/lib/dpkg/info/wsl-pro-service.postinst` and `.postrm`; `/usr/bin/deb-systemd-helper` and its state file `/var/lib/systemd/deb-systemd-helper-enabled/wsl-pro.service.dsh-also`; `/usr/bin/deb-systemd-invoke` (init-system-helpers 1.69). The package's `copyright` file names the upstream project, `ubuntu-pro-for-wsl` at https://github.com/canonical/ubuntu-pro-for-wsl (not read) | 2026-11-12 | nothing here: it connects the distro to the Ubuntu Pro for WSL agent on Windows, which is not installed, so it retries for about ten minutes, exits, and is started again 20 minutes later (`Restart=always`, `RestartSec=20min`). The definition switches it off with `systemctl disable --now` (an image without the unit is left as it is), and `setup.sh check` verifies it. A package upgrade or a plain reinstall leaves it off: the maintainer script enables the unit again only while every link in that state file exists, and does not start a disabled unit. A purge deletes the state file, so a purge followed by a reinstall turns it back on | upstream |
 | cloud-init `users` keys `homedir`, `no_create_home`; `package_upgrade` | cloud-init 26.1 | checked with `cloud-init schema --config-file` on the installed cloud-init; https://cloudinit.readthedocs.io/en/latest/reference/modules.html | 2026-11-12 | the `paper` service user has no home (`/nonexistent`); packages are brought up to date on first boot | upstream |
 | systemd lingering for the owner (`loginctl enable-linger apoth`) | systemd 259 (259.5-0ubuntu3.4, in the image) | `orca-ide serve service install --help` in the distro ("the service stops at logout unless lingering is on") | 2026-11-12 | the Orca server, a user service, starts at boot without a login session. It does not keep the distro running (next row) | upstream |
 | WSL idle shutdown, `[general] instanceIdleTimeout` in `%USERPROFILE%\.wslconfig` (Windows; not set by this repo) | WSL 3.0.3.0: default 15000 ms, `-1` switches it off | https://learn.microsoft.com/windows/wsl/wsl-config#wslconfig | 2026-11-12 | WSL stops the distro about 15 s after its last WSL session ends, the Orca server with it. To keep the server reachable from the Windows app without a terminal open, the owner either sets `instanceIdleTimeout=-1` (applies after the next `wsl --shutdown`) or keeps a session open (a logon task running `wsl.exe -d meridian --exec sleep infinity`). The owner's choice; not made yet | upstream |
@@ -145,7 +146,7 @@ evidence record can reopen one.
 | `meridian/boundary.py` | this repo | n/a | 2026-11-12 | fail-closed paper checks: jts.ini `tradingMode=p`, the Gateway listening on port 4002 only, exactly one account of the paper form, and the owner's optional allowlist in `risk/boundary.contract.json` on top; plus the owner's `contract` command, which prints a contract for the reported account after the owner types PAPER | own design |
 | `meridian/ib_probe.py` | this repo | n/a | 2026-11-12 | asks the Gateway which accounts it manages; sends only the version handshake and `START_API` | own design |
 | `meridian/ibkr_paper.py` | this repo | n/a | 2026-11-12 | the gate before the engine and again after the run, the owner's typed confirmation, and the scrubbed run record | own design |
-| `meridian/ibkr_node.py` | this repo; it subclasses and calls the two upstream files above | n/a | 2026-11-12 | one DAY LIMIT order through upstream's base strategy, and the calls that feed the run record | own design |
+| `meridian/ibkr_node.py` | this repo; it subclasses and calls the two upstream files above | n/a | 2026-11-12 | order mode: one DAY LIMIT order through upstream's base strategy; fill mode: one BUY and its one closing SELL, both DAY LIMIT priced past the quote; and the calls that feed the run record | own design |
 
 ## Notes on choices
 
@@ -171,9 +172,18 @@ evidence record can reopen one.
   acceptance, so its order reaches a terminal state only at stop, and it submits again if the
   order is rejected or cancelled during the run. `IbV2OrderStrategy` submits once and cancels
   on acceptance, which is what M1 needs.
-- **A fill is a failure in this lane.** The adapter refuses reduce-only orders, so upstream's
-  close-on-stop cannot close a position, and a plain market close would be a second order that
-  M1 does not define. The lane switches close-on-stop off and reports a fill as a failed run.
+- **A fill is a failure in order mode.** The adapter refuses reduce-only orders, so upstream's
+  close-on-stop cannot close a position. The lane switches close-on-stop off and reports a fill
+  in order mode as a failed run.
+- **Fill mode closes the way upstream's `SpreadOrderStrategy` does.** That example, in the same
+  vendored file, answers a fill with one opposite order of the filled quantity
+  (`event.last_qty`). Fill mode does the same, with DAY LIMIT orders priced 2% past the quote
+  instead of market orders, so neither order can fill at an unbounded price, and it places at
+  most these two orders. The quote is delayed data: the BUY is priced from it (crossed quotes
+  are skipped), the SELL from the lower of the delayed bid and the BUY's live fill price. A move
+  of more than 2% can still leave an order working at stop; the run then fails and says so
+  rather than chase the price. The engine's `cache.orders_inflight` (read in the installed
+  2.0.0rc9 stubs) is counted at stop as well as open orders.
 - **The account check runs twice.** The adapter opens its own connections after the check, so
   the lane asks the Gateway again after the run and writes no evidence if the answer changed.
   It does not hold a connection open during the run.
@@ -186,7 +196,12 @@ evidence record can reopen one.
   installed from an earlier version of `deploy/wsl/meridian.user-data`. Each later change to the
   definition was applied to it by hand on 2026-11-12: New York time, the machine-wide connector
   setting, the Gateway libraries, Ubuntu Insights consent and timers, the `paper` user's home
-  entry, and undoing the uv installer's shell edits (backed up under `~/.cache/meridian/`). It has
-  not been rebuilt from the definition since. `package_upgrade` has not been applied to it: 133
-  package upgrades are pending until the Gateway session can be interrupted, and Ubuntu's
-  unattended security upgrades stay on as the image ships them.
+  entry, undoing the uv installer's shell edits (backed up under `~/.cache/meridian/`), and
+  switching off `wsl-pro.service`. The definition itself was proven from scratch the same
+  evening: a throwaway distro installed from commit `5d51c9c` finished cloud-init without
+  errors, passed every line of `setup.sh check`, came up with systemd `running` and only 5
+  upgrades left, and was then unregistered. The `wsl-pro.service` line came after that proof:
+  it has been through cloud-init's schema check and this instance, not a fresh install.
+  `package_upgrade` has not been applied to the running instance: 133 package upgrades wait
+  until the Gateway session can be interrupted, and Ubuntu's unattended security upgrades stay
+  on as the image ships them.

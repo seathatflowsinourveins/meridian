@@ -94,20 +94,26 @@ Before a run:
 - Optional, stricter: an allowlist in `risk/boundary.contract.json`. To create it, the owner
   runs this; it shows the reported account and prints the contract only after PAPER is typed:
   `mkdir -p risk && C="$(uv run python -m meridian.boundary contract)" && printf '%s\n' "$C" > risk/boundary.contract.json`
-- The paper account has no open order or position in AAPL. The lane refuses to submit if it does.
+- The paper account has no open order or position in AAPL. The lane refuses to submit if it sees one.
 
 ```bash
 uv run python -m meridian.ibkr_paper order      # reconcile, one DAY LIMIT order, stop
+uv run python -m meridian.ibkr_paper fill       # regular hours: buy 1 that fills, close it
 uv run python -m meridian.ibkr_paper restart    # reconcile only; places nothing
 ```
 
 `order` places one DAY LIMIT BUY of 1 share, 2% under the bid, and cancels it once the venue
 accepts it. A pass is "accepted, then cancelled, nothing filled". If the order ever fills, the
 run fails, the lane sends no second order, and the owner closes the share by hand.
+`fill` runs only on weekdays from 09:30 to 15:55 New York time. It places one DAY LIMIT BUY of
+1 share 2% above the ask, so it fills, and on that fill one DAY LIMIT SELL of the filled
+quantity 2% under the lower of the bid and the fill price, so the run ends flat. A pass is
+"both filled, flat at stop". If an order is still working when the run stops, the run fails and
+says so: run `restart` (its record shows any open order or share) before closing anything by hand.
 The engine's own output goes to `runs/…-engine.log`, which can show the account id and stays on
 this machine; the terminal shows only the lane's lines, and `evidence/` is scrubbed. In order
-mode every check runs again after PAPER is typed, and a change to the Gateway in the meantime
-(a restart, a re-login, another port) refuses.
+and fill mode every check runs again after PAPER is typed, and a change to the Gateway in the
+meantime (a restart, a re-login, another port) refuses.
 
 ## Dependencies
 

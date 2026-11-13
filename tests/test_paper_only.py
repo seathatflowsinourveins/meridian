@@ -27,6 +27,13 @@ LIVE_PATTERNS = {
     "live trading mode (IB adapter)": re.compile(
         r"TradingMode\s*(?:\.|::)\s*LIVE|trading_mode[\"']?\s*[:=]\s*[\"']?live", re.IGNORECASE
     ),
+    # The Gateway's own form in jts.ini: tradingMode=l is a live login (p is paper). Also the
+    # ways Python writes it (a configparser subscript, ConfigParser.set). Horizontal space only,
+    # so a key on one line never joins a word on the next.
+    "live login mode (IB Gateway jts.ini)": re.compile(
+        r"tradingMode[\"']?[^\S\r\n]*(?:[:=]|\][^\S\r\n]*=|,)[^\S\r\n]*[\"']?l(?:ive)?\b",
+        re.IGNORECASE,
+    ),
 }
 _NAME = re.compile(r"[A-Za-z0-9_\-]+(?:\.[A-Za-z0-9_\-]+)*")
 _NAME_PART = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+")
@@ -128,6 +135,15 @@ def test_no_live_endpoint_port_mode_or_key_name_in_the_repo():
         "TradingMode::Live",
         "TRADING_MODE=live",
         'trading_mode: "live"',
+        "[Logon]\ntradingMode=l\n",
+        "TradingMode = l",
+        "tradingMode='l'",
+        '"tradingMode": "live"',
+        "[Logon]\r\ntradingMode=l\r\n",
+        "tradingMode=l ; set by hand",
+        "tradingMode=L",
+        'parser["Logon"]["tradingMode"] = "l"',
+        'parser.set("Logon", "tradingMode", "l")',
         "ALPACA_LIVE_API_KEY",
         "ibkr_live_password",
         "SECRET_KEY_LIVE",
@@ -150,6 +166,12 @@ def test_the_scan_catches_live_markers(text):
         "LiveRiskEngineConfig(bypass=True)",
         "TradingMode.PAPER",
         "TRADING_MODE=paper",
+        "[Logon]\ntradingMode=p\n",
+        "tradingMode=lane",
+        "jts.ini tradingMode is not p",
+        "tradingMode=lively",
+        "tradingMode:\n  live: false",
+        'parser.get("Logon", "tradingMode", fallback=None)',
         "ts = 1794001000000000000",
         "sha256 = 'a40017496b'",
         "version 1.4001.2",
