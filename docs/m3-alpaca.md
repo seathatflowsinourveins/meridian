@@ -51,21 +51,21 @@ every earlier order as external and drops it unless a strategy claims the instru
 Carried, each with offline tests (`tests/test_alpaca_{wire,trade_updates,reconcile,node,paper}.py`):
 - One gateway sends every REST call, reads and asset loads included, through one budget,
   CANCEL > REDUCE > MODIFY > QUERY > SUBMIT (a sell is REDUCE); SDK retries off; a 429 pauses.
-- Commands run as tasks, never awaited in the engine's command queue. One on-wire mark splits
-  "not sent" (refused once) from "sent" (settled only by a documented refusal, POST 403/422 or
-  DELETE 422/429, by the stream, or by a later read). A DELETE 204 is an attempt; one
-  unresolved cancel per order. Decimal text end to end, whole shares, prices on tick.
-- Startup reads wait for the stream's subscription acknowledgement. A lost stream, an update that
-  cannot be classified (20 events are; `restated`, corrections, anything new are not) or an answer
-  that cannot be read or mapped (a body not JSON, a listing, its pages, a row, its symbol) is a gap,
-  a failed request is not: no new order until a full read issued after it reaches the engine; an
-  open-order check can stop new orders, not resume them. Executions go on once each, none the engine
-  holds (it infers one a read or check shows first); a recovery read below its fills is reread.
+- Commands run as tasks, never awaited in the engine's command queue; an order outside the universe
+  is denied unsent. One on-wire mark splits "not sent" (refused once) from "sent" (settled only by a
+  documented refusal, POST 403/422 or DELETE 422/429, by the stream, or by a later read; any other
+  answer is a gap). A DELETE 204 is an attempt; one unresolved cancel per order. Decimal text.
+- Startup reads wait for the stream's subscription acknowledgement. A lost stream, a frame the SDK
+  cannot decode, an update that cannot be classified (20 events are; `restated` and anything new are
+  not) or an answer that cannot be read or mapped (a body not JSON, a listing, its pages, a row, its
+  symbol) is a gap, a failed read is not: no new order until a full read issued after it reaches the
+  engine; an open-order check can stop new orders, not resume them. Executions go on once each, none
+  the engine holds (it infers one a read or check shows first); a read below its fills is reread.
 - Reconciliation reads the whole order history, fails closed on any gap, withholds and counts ended
-  history in unloaded symbols (a row without one refuses), counts fills older than the order
-  history, and names the failing stage with reasons from a fixed, value-free list. Engine settings:
-  no missing-order generation, unbounded lookback, unresolved submissions retained, open-order
-  checks, not in-flight (the old node had neither), none waiting over a minute; re-checked on rc9.
+  history in unloaded symbols (a symbol missing, not in the venue's form or not its engine order's
+  refuses), counts pre-history fills, and names the failing stage with fixed, value-free reasons. Engine
+  settings: no missing-order generation, unbounded lookback, unresolved submissions retained,
+  open-order checks, not in-flight (the old node had neither), none over a minute; checked on rc9.
 - No invented fee: connect refuses without a sourced per-fill commission (the old line's was a
   sourced zero, sextant@33cdee7:lanes/paper/shared-node.params.json:L26-47).
 

@@ -10,7 +10,8 @@ earlier line's attended starts failed (docs/m3-alpaca.md, section 2):
   a venue body, an id, a price or a quantity) in `StageTrace`.
 - Terminal history in a symbol outside the lane's universe is withheld and counted, not
   refused; a working order there (any leg, at any depth) refuses the start by symbol. A row
-  whose symbol cannot be read is not known to be outside: it refuses.
+  whose symbol cannot be read, or is not in the venue's form, is not known to be outside: it
+  refuses.
 - A working order outside the lane's client-order-id namespace means another writer is active:
   the start refuses. Its ended orders are history and count for nothing.
 - The order listing is read whole (newest first, paged by `until` past the 500-row cap); a
@@ -53,6 +54,8 @@ ANOTHER_WRITER = "working order of another writer"
 UNMAPPABLE_WORKING = "working order the lane cannot map"
 UNMAPPABLE_FILLED = "ended order the lane cannot map holds fills"
 UNREADABLE_SYMBOL = "Alpaca row requires its symbol"
+SYMBOL_FORM = "Alpaca row symbol is not in the venue's form"
+OTHER_INSTRUMENT = "Alpaca row is in another instrument than its engine order"
 
 # The only texts a trace keeps, exactly: each is ours and names no symbol, id, price, quantity
 # or venue word (the earlier line's prefix rule let a venue status word through, sextant#688).
@@ -69,6 +72,8 @@ _REASONS = frozenset(
         UNMAPPABLE_WORKING,
         UNMAPPABLE_FILLED,
         UNREADABLE_SYMBOL,
+        SYMBOL_FORM,
+        OTHER_INSTRUMENT,
         NOT_JSON,
         "Alpaca order page is not a list",
         "Alpaca fill page is not a list",
@@ -258,10 +263,16 @@ def row_symbol(row: Mapping[str, Any]) -> str:
     """An order or position row's symbol, or ValueError. A row without one in text is not
     known to be outside the universe, so it is never withheld as such: it refuses, and after
     startup it is a gap. (alpaca-py 0.45.0 types `Order.symbol` as optional: an `mleg` order
-    omits it at the top level, so such an order in the history refuses too.)"""
+    omits it at the top level, so such an order in the history refuses too.)
+
+    Nor is a symbol outside the venue's own form, upper case with no space anywhere: "aapl" or
+    " AAPL" would be withheld as another symbol than the universe's AAPL, though the venue may
+    mean it. Such a row refuses the same way."""
     symbol = row.get("symbol")
     if not isinstance(symbol, str) or not symbol:
         raise ValueError(UNREADABLE_SYMBOL)
+    if symbol != symbol.upper() or any(char.isspace() for char in symbol):
+        raise ValueError(SYMBOL_FORM)
     return symbol
 
 

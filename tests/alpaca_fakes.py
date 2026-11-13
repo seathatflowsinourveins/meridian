@@ -12,6 +12,7 @@ import asyncio
 import heapq
 import inspect
 import itertools
+import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -290,6 +291,14 @@ class FakeVenue:
         raise api_error(404)
 
 
+@dataclass(frozen=True)
+class Frame:
+    """A websocket frame's text, pushed undecoded: the stand-in stream decodes it as the SDK
+    does."""
+
+    text: str
+
+
 class FakeStream:
     """alpaca-py's TradingStream surface the client uses, driven by the test."""
 
@@ -315,11 +324,10 @@ class FakeStream:
     async def close(self) -> None:
         self.closed += 1
 
-    async def _run_forever(self) -> None:
-        self.queue = asyncio.Queue()
-        await self._start_ws()
-        if self.ack:
-            await self._dispatch({"stream": "listening", "data": {"streams": ["trade_updates"]}})
+    async def _consume(self) -> None:
+        """alpaca-py 0.45.0 `TradingStream._consume`: receive a frame, decode it, read its
+        stream name and dispatch it. A `Frame` is decoded here, as the SDK decodes each one."""
+        assert self.queue is not None
         while not self.stopped:
             try:
                 message = await asyncio.wait_for(self.queue.get(), 0.05)
@@ -332,7 +340,23 @@ class FakeStream:
                     {"stream": "listening", "data": {"streams": ["trade_updates"]}}
                 )
                 continue
+            if isinstance(message, Frame):
+                message = json.loads(message.text)
+            message.get("stream")
             await self._dispatch(message)
+
+    async def _run_forever(self) -> None:
+        self.queue = asyncio.Queue()
+        await self._start_ws()
+        if self.ack:
+            await self._dispatch({"stream": "listening", "data": {"streams": ["trade_updates"]}})
+        while not self.stopped:
+            try:
+                await self._consume()
+            except Exception:
+                # alpaca-py's `_drive_run` logs what the receive loop raised once the session is
+                # up, and carries on with the socket open.
+                continue
 
     def stop(self) -> None:
         self.stopped = True

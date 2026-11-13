@@ -23,6 +23,7 @@ from alpaca_fakes import (
     AAPL,
     PREFIX,
     FakeVenue,
+    Frame,
     Rig,
     api_error,
     build_node,
@@ -46,6 +47,7 @@ from nautilus_trader.model import (
 )
 
 from meridian.alpaca.budget import ActionKind
+from meridian.alpaca.parsing import parse_equity
 from meridian.alpaca.reports import timestamp_ns
 
 
@@ -877,6 +879,13 @@ def test_another_writers_order_reaches_the_engine_and_the_lane_never_cancels_it(
     assert not any(method == "delete" for method, _ in rig.venue.calls)
 
 
+def hold_the_gaps_read(rig: Rig) -> None:
+    """An unknown outcome after send is a gap; failing the order listing (503, no answer, so
+    no gap of its own) keeps the gap's full read from settling the cancel first, so a test can
+    see what the DELETE's answer, or an explicit read, settles."""
+    rig.venue.fail("get", "/orders", api_error(503))
+
+
 @pytest.mark.parametrize(
     ("failure", "expected"),
     [
@@ -895,6 +904,7 @@ def test_a_deletes_answer_settles_the_cancel_only_when_it_is_a_documented_refusa
         await until(lambda: status() == OrderStatus.ACCEPTED)
         target = f"/orders/{rig.venue.orders[-1]['id']}"
         rig.venue.fail("delete", target, failure)
+        hold_the_gaps_read(rig)
         box["strategy"].cancel_order(box["order"].client_order_id)
         await until(lambda: ("delete", target) in rig.venue.calls)
         await asyncio.sleep(0.3)
@@ -941,6 +951,7 @@ def test_the_venues_refusal_after_a_read_already_settled_the_cancel_emits_nothin
         client, row = rig.clients[0], rig.venue.orders[-1]
         target = f"/orders/{row['id']}"
         rig.venue.fail("delete", target, api_error(500))
+        hold_the_gaps_read(rig)
         box["strategy"].cancel_order(box["order"].client_order_id)
         await until(lambda: ("delete", target) in rig.venue.calls)
         await until(lambda: row["id"] in client._pending and client._pending[row["id"]].ended > 0)
@@ -2174,6 +2185,7 @@ def test_a_row_the_lane_cannot_map_settles_no_earlier_cancel(read):
         client, row = rig.clients[0], rig.venue.orders[-1]
         target = f"/orders/{row['id']}"
         rig.venue.fail("delete", target, api_error(500))
+        hold_the_gaps_read(rig)
         box["strategy"].cancel_order(box["order"].client_order_id)
         await until(lambda: row["id"] in client._pending and client._pending[row["id"]].ended > 0)
         row["status"] = "pending_review_v2"
@@ -2193,6 +2205,7 @@ def test_a_row_the_lane_cannot_map_settles_no_earlier_cancel(read):
         pending = row["id"] in client._pending
         box["unsettled"] = (cancel_refusals(box), pending, client.coverage_complete)
         row["status"] = "new"  # a status the lane knows: the gap's read settles the cancel
+        del rig.venue.failures[("get", "/orders")]
         await until(lambda: bool(cancel_refusals(box)))
         box["settled"] = cancel_refusals(box)
 
@@ -2203,3 +2216,237 @@ def test_a_row_the_lane_cannot_map_settles_no_earlier_cancel(read):
     assert box["settled"] == [
         ("OrderCancelRejected", "venue order still working after an unanswered cancel")
     ]
+
+
+# ---------------------------------------------------------------- the eighth round's sequences
+
+
+def answer_lost(venue, method: str, act) -> None:
+    """From now on the venue carries out each `method` request, then `act(row)` changes the
+    order's row as the venue would, and the answer is lost (a timeout): the outcome is unknown
+    to the lane. No trade update follows."""
+    perform = getattr(venue, method)
+
+    def lost(path: str, data: dict | None = None, **kwargs):
+        perform(path, data, **kwargs)
+        target = path.removeprefix("/orders/") if method == "delete" else None
+        for row in venue.orders:
+            if target is None and row is venue.orders[-1] or row["id"] == target:
+                act(row)
+        raise TimeoutError("synthetic: the answer was lost")
+
+    setattr(venue, method, lost)
+
+
+def test_a_cancel_whose_answer_was_lost_is_read_back_under_the_default_settings():
+    """The DELETE's answer is lost and the venue cancels the order; no update follows. Under
+    `engine_config`'s default settings the engine's open-order checks list open orders only, and
+    rc9 only logs an order it holds that is missing there, so no check settles this cancel (the
+    engine held it PENDING_CANCEL with coverage declared). An unknown outcome after send is a
+    gap: its full read shows the engine the order cancelled, and new orders pass again."""
+    rig = Rig()
+
+    def on_start(running, box):
+        box["order"] = limit_order(running)
+        running.submit_order(box["order"])
+        box["second"] = limit_order(running, 2)
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client = rig.clients[0]
+        answer_lost(rig.venue, "delete", lambda row: row.update(status="canceled"))
+        box["strategy"].cancel_order(box["order"].client_order_id)
+        await until(lambda: ("delete", f"/orders/{rig.venue.orders[-1]['id']}") in rig.venue.calls)
+        await until(lambda: status() == OrderStatus.CANCELED, timeout=8)
+        await until(lambda: client.coverage_complete)
+        box["pending"] = list(client._pending)
+        box["strategy"].submit_order(box["second"])
+        await until(lambda: status(2) == OrderStatus.ACCEPTED)
+
+    box = drive(rig, script, on_start=on_start)
+    assert box["error"] is None
+    assert box["pending"] == []
+    client = rig.clients[0]
+    assert client.recoveries == 1  # the unknown outcome was a gap, closed by one full read
+    assert [str(error) for _, error in client.failures] == [
+        "cancel outcome unknown after send: TimeoutError"
+    ]
+
+
+def test_a_submission_whose_answer_was_lost_is_read_back_under_the_default_settings():
+    """The POST's answer is lost and the order fills at once; no update follows in time. Under
+    the default settings no check reads an order that has left the open listing. The unknown
+    outcome is a gap: its read shows the engine the fill. The stream's late fill update is then
+    known, not counted again."""
+    rig = Rig()
+
+    def on_start(running, box):
+        answer_lost(
+            rig.venue,
+            "post",
+            lambda row: row.update(status="filled", filled_qty="1", filled_avg_price="100.00"),
+        )
+        box["order"] = limit_order(running)
+        running.submit_order(box["order"])
+
+    async def script(box, status):
+        client = rig.clients[0]
+        await until(lambda: ("post", "/orders") in rig.venue.calls)
+        await until(lambda: status() == OrderStatus.FILLED, timeout=8)
+        await until(lambda: client.coverage_complete)
+        rig.stream.push(update("fill", rig.venue.orders[-1]))
+        await until(lambda: client.known_executions == 1)
+
+    box = drive(rig, script, on_start=on_start)
+    assert box["error"] is None
+    client = rig.clients[0]
+    assert client.recoveries == 1
+    assert [str(error) for _, error in client.failures] == [
+        "submit outcome unknown after send: TimeoutError"
+    ]
+    assert box["holding"] == [("AAPL.ALPACA", "1")]
+
+
+def test_an_order_in_an_instrument_outside_the_universe_is_denied_unsent():
+    """Another instrument of the venue is loaded in the node (as a data client would load it),
+    and the engine routes an order in it to this AAPL-only client. It is denied before
+    OrderSubmitted and before any request: posted, it would be an order whose reports and
+    executions the client then refuses."""
+    rig = Rig()
+    msft = InstrumentId.from_str("MSFT.ALPACA")
+
+    def on_start(running, box):
+        box["order"] = None
+
+    async def script(box, status):
+        client = rig.clients[0]
+        client._handle_instrument(
+            parse_equity(
+                {"id": "x", "class": "us_equity", "symbol": "MSFT", "tradable": True},
+                ts_init=0,
+            )
+        )
+        await until(lambda: client.cache.instrument(msft) is not None)
+        order = box["strategy"].order_factory.limit(
+            msft,
+            OrderSide.BUY,
+            Quantity.from_str("1"),
+            Price.from_str("100.00"),
+            time_in_force=TimeInForce.DAY,
+            client_order_id=ClientOrderId(f"{PREFIX}1"),
+        )
+        box["strategy"].submit_order(order)
+        await until(
+            lambda: status() not in (None, OrderStatus.INITIALIZED, OrderStatus.SUBMITTED), 5
+        )
+        await asyncio.sleep(0.3)  # long enough for a POST to go out, if one were sent
+        box["status"] = status()
+        box["covered"] = client.coverage_complete
+
+    box = drive(rig, script, on_start=on_start)
+    assert box["error"] is None
+    assert box["status"] == OrderStatus.DENIED
+    assert ("post", "/orders") not in rig.venue.calls
+    assert box["covered"] is True  # a refusal before send is no gap
+
+
+@pytest.mark.parametrize(
+    ("read", "symbol"),
+    [
+        ("order row", "aapl"),
+        ("order row", " AAPL"),
+        ("order row", "AAPL "),
+        ("order row", "MSFT"),  # the engine's order is in AAPL
+        ("position row", "aapl"),
+        ("position row", "AAPL\n"),
+    ],
+)
+def test_a_gaps_read_meeting_a_row_in_another_symbol_form_withholds_nothing(read, symbol):
+    """As for a row without its symbol: the lane's order fills behind a gap, and the gap's read
+    gets its row, or the position's, with a symbol that differs from the universe's only in
+    case or surrounding space, or (the order's row) another instrument than the engine's order.
+    Neither is history outside the universe: the read fails, new orders stay denied and nothing
+    is withheld, until the venue answers in its own form."""
+    rig = Rig()
+
+    def on_start(running, box):
+        box["order"] = limit_order(running)
+        running.submit_order(box["order"])
+        box["second"], box["third"] = limit_order(running, 2), limit_order(running, 3)
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, row = rig.clients[0], rig.venue.orders[-1]
+        if read == "order row":
+            mine = row["id"]
+            restore = reshaped(
+                rig.venue,
+                "/orders",
+                lambda rows: [{**r, "symbol": symbol} if r["id"] == mine else r for r in rows],
+            )
+        else:
+            restore = reshaped(
+                rig.venue, "/positions", lambda rows: [{**r, "symbol": symbol} for r in rows]
+            )
+        row.update(status="filled", filled_qty="1", filled_avg_price=row["limit_price"])
+        rig.venue.positions.append(position_row())
+        failures = len(client.failures)
+        rig.stream.push(update("trade_bust", row))  # unclassified: a gap
+        await until(lambda: client.recoveries > 0 or len(client.failures) > failures + 1)
+        box["read"] = (client.coverage_complete, sorted(client.withheld_symbols))
+        box["strategy"].submit_order(box["second"])
+        await until(lambda: status(2) in (OrderStatus.DENIED, OrderStatus.ACCEPTED))
+        box["second_status"] = status(2)
+        restore()
+        await until(lambda: client.coverage_complete)
+        box["strategy"].submit_order(box["third"])
+        await until(lambda: status(3) == OrderStatus.ACCEPTED)
+        box["first_status"] = status()
+
+    box = drive(rig, script, on_start=on_start)
+    assert box["error"] is None
+    assert box["read"] == (False, [])
+    assert box["second_status"] == OrderStatus.DENIED
+    assert box["first_status"] == OrderStatus.FILLED
+    assert box["holding"] == [("AAPL.ALPACA", "1")]
+
+
+@pytest.mark.parametrize(
+    "frame", ['{"stream": "trade_updates", "data": ', "[]", '"trade_updates"', "null"]
+)
+def test_a_stream_frame_the_sdk_cannot_decode_is_a_gap(frame):
+    """In alpaca-py 0.45.0 the receive loop decodes each frame before dispatching it
+    (`TradingStream._consume`), and its run loop logs what that raises and carries on with the
+    socket open (`_drive_run`). A frame that is not JSON, or not an object, never reaches the
+    lane's handler, so the update it carried is lost without a socket loss. It is a gap: new
+    orders are denied until a full read, and the read shows the engine what the frame held."""
+    rig = Rig()
+
+    def on_start(running, box):
+        box["order"] = limit_order(running)
+        running.submit_order(box["order"])
+        box["second"] = limit_order(running, 2)
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, row = rig.clients[0], rig.venue.orders[-1]
+        rig.venue.fail("get", "/positions", api_error(503))  # hold the gap's read back
+        row.update(status="filled", filled_qty="1", filled_avg_price=row["limit_price"])
+        rig.venue.positions.append(position_row())
+        rig.stream.push(Frame(frame))  # the fill's update, as the SDK cannot decode it
+        await until(lambda: rig.stream.queue is not None and rig.stream.queue.empty())
+        await asyncio.sleep(0.3)  # long enough for the receive loop to have handled it
+        box["after_frame"] = (client.coverage_complete, client.stream_live, rig.stream.closed)
+        box["strategy"].submit_order(box["second"])
+        await until(lambda: status(2) in (OrderStatus.DENIED, OrderStatus.ACCEPTED))
+        box["second_status"] = status(2)
+        rig.venue.failures.clear()
+        await until(lambda: client.coverage_complete)
+        box["first_status"] = status()
+
+    box = drive(rig, script, on_start=on_start)
+    assert box["error"] is None
+    assert box["after_frame"] == (False, True, 0)  # the socket stays open, as in the SDK
+    assert box["second_status"] == OrderStatus.DENIED
+    assert box["first_status"] == OrderStatus.FILLED
+    assert box["holding"] == [("AAPL.ALPACA", "1")]

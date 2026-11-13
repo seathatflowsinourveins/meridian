@@ -178,6 +178,20 @@ def test_a_row_whose_symbol_cannot_be_read_is_never_withheld(symbol):
     assert reason_of(info.value.failures[0][1]) == "Alpaca row requires its symbol"
 
 
+@pytest.mark.parametrize("symbol", ["aapl", "Aapl", " AAPL", "AAPL ", "AAPL\n", "AA PL", "tsla"])
+def test_a_symbol_outside_the_venues_form_is_never_withheld(symbol):
+    """A text symbol that is not upper case, or holds a space anywhere, may be the universe's
+    symbol in another form (the lane's own order): it refuses as such a row does, never withheld
+    as history outside the universe. A symbol in the venue's form outside the universe still is."""
+    row = order_row(symbol=symbol, status="filled", submitted_at=stamp(1))
+    with pytest.raises(ValueError, match="^Alpaca row symbol is not in the venue's form$"):
+        withheld_unloaded(row, loaded)
+    with pytest.raises(IncompleteCoverage) as info:
+        explain([fill_activity(row)], [row])
+    assert reason_of(info.value.failures[0][1]) == "Alpaca row symbol is not in the venue's form"
+    assert withheld_unloaded(order_row(symbol="BRK.B", status="filled"), loaded) is True
+
+
 def test_another_writers_working_order_refuses_and_its_ended_orders_do_not():
     check_one_writer(order_row(client_order_id="M3-7", status="new"), "M3-")
     check_one_writer(order_row(client_order_id="OLDWRITER-1", status="filled"), "M3-")

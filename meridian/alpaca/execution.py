@@ -15,14 +15,16 @@ wire call never blocks the client's command queue.
 Rules carried from the earlier line, each with a test (docs/m3-alpaca.md, section 3):
 - The send boundary: `_mark_sent` (the pacer's on-wire hook) is the one place a command
   becomes "sent". Before it, any refusal is "not sent"; after it, only a documented venue
-  refusal or a later read settles the command, and the order is never rejected locally.
+  refusal or a later read settles the command, and the order is never rejected locally. A
+  command sent with no answer the lane can act on is a gap. An order outside the universe is
+  denied before it is submitted.
 - One unresolved cancel per order; a terminal event, a refusal, or a read issued after the
   DELETE's own call ended answers it.
-- Every trade update is classified before it acts. An unclassified one, a lost stream or a
-  venue answer the lane cannot read or map (a listing's shape or pages, a row, a single
-  order's answer) is a gap: new orders are denied until a full read of orders and positions,
-  issued after the latest gap, has been handed to the engine. A request that gets no answer
-  is not a gap. Another writer's activity stops new orders until a restart.
+- Every trade update is classified before it acts. An unclassified one, a lost stream, a frame
+  the SDK cannot decode or a venue answer the lane cannot read or map (a listing's shape or
+  pages, a row, a single order's answer) is a gap: new orders are denied until a full read of
+  orders and positions, issued after the latest gap, has been handed to the engine. A request
+  that gets no answer is not a gap. Another writer's activity stops new orders until a restart.
 """
 
 from __future__ import annotations
@@ -50,6 +52,7 @@ from nautilus_trader.model import (
     OrderStatus,
     VenueOrderId,
 )
+from websockets.exceptions import WebSocketException
 
 from .budget import AccountPacer, ActionKind
 from .constants import NOT_SUPPORTED, VENUE
@@ -57,6 +60,7 @@ from .credentials import PaperKeys
 from .parsing import instrument_id, parse_equity
 from .reconcile import (
     ANOTHER_WRITER,
+    OTHER_INSTRUMENT,
     IncompleteCoverage,
     StageTrace,
     check_one_writer,
@@ -249,6 +253,26 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         if not isinstance(symbol, str) or not self._is_loaded(symbol):
             raise ValueError("Alpaca row instrument is not loaded")
         return self.cache.instrument(instrument_id(symbol))
+
+    def _same_instrument(self, row: Mapping[str, Any]) -> None:
+        """A row whose client order id names one of the engine's orders is that order, so it is
+        in that order's instrument; in another symbol it refuses (a gap after startup), never
+        withheld as history outside the universe nor reported in another instrument."""
+        client_order_id = row.get("client_order_id")
+        if not isinstance(client_order_id, str) or not self._is_house(client_order_id):
+            return
+        order = self.cache.order(ClientOrderId(client_order_id))
+        if order is not None and order.instrument_id != instrument_id(row_symbol(row)):
+            raise ValueError(OTHER_INSTRUMENT)
+
+    def _unknown_outcome(self, kind: str, exc: BaseException) -> None:
+        """A submit or cancel sent with no answer the lane can act on: what the venue did is not
+        known, and under the default engine settings no open-order check reads an order that
+        has left the open listing (rc9 only logs an order it holds that is missing there). It is
+        a gap: new orders stop until a full read, issued after the call ended, shows the engine
+        the order. The stream may settle it first; the read then finds it settled."""
+        self._log().warning(f"Alpaca {kind} outcome unknown ({type(exc).__name__})")
+        self._incomplete(ValueError(f"{kind} outcome unknown after send: {_why(exc)}"))
 
     def _incomplete(self, error: BaseException) -> None:
         """A gap: new orders stop until a full read issued after it has been handed over."""
@@ -519,8 +543,26 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         the venue's acknowledgement, drops that acknowledgement in its dispatcher, and
         reconnects without telling its caller. Wrapping these three methods is how the earlier
         line learned of them; this client runs the stream on the node's own loop.
+
+        Its receive loop (`_consume`) decodes each frame before dispatching it, and its run loop
+        (`_drive_run`) logs whatever that loop raises and carries on with the socket open: a
+        frame that is not JSON or not an object is dropped there, with the update it carried,
+        before any handler sees it. So whatever leaves the receive loop is a gap, except a
+        socket error, which closes the socket (`closed` counts that loss).
         """
         dispatch, start, close = stream._dispatch, stream._start_ws, stream.close
+        consume = stream._consume
+
+        async def observed_consume(*args: Any, **kwargs: Any) -> None:
+            try:
+                await consume(*args, **kwargs)
+            except WebSocketException:
+                raise
+            except Exception as exc:
+                self._incomplete(
+                    ValueError(f"Alpaca trade stream dropped a frame: {type(exc).__name__}")
+                )
+                raise
 
         async def observed_dispatch(message: dict) -> None:
             if is_listening_ack(message):
@@ -535,10 +577,11 @@ class AlpacaPaperExecutionClient(ExecutionClient):
             self._on_stream("closed")
             await close()
 
-        stream._dispatch, stream._start_ws, stream.close = (
+        stream._dispatch, stream._start_ws, stream.close, stream._consume = (
             observed_dispatch,
             observed_start,
             observed_close,
+            observed_consume,
         )
 
     def _on_stream(self, kind: str) -> None:
@@ -702,6 +745,15 @@ class AlpacaPaperExecutionClient(ExecutionClient):
 
     async def _do_submit_order(self, command: Any, token: _Command) -> None:
         native = command.order
+        if (
+            native.instrument_id not in self.universe
+            or self.cache.instrument(native.instrument_id) is None
+        ):
+            # The engine routes by venue: an order in another instrument loaded in the node would
+            # be posted and then be one whose reports and executions this client refuses.
+            token.settled = True
+            self.generate_order_denied(native, "order instrument is outside the lane's universe")
+            return
         try:
             payload = submit_payload(native, self.house_prefix)
         except ValueError as exc:
@@ -731,7 +783,7 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         except Exception as exc:
             if _unresolved(exc, token):
                 # Sent: the venue's later status decides, never a local reject.
-                self._log().warning(f"Alpaca submit outcome unknown ({type(exc).__name__})")
+                self._unknown_outcome("submit", exc)
                 return
             reason = "venue refused the order" if token.sent else f"not sent: {_why(exc)}"
             self._refuse(token, reason)
@@ -773,6 +825,7 @@ class AlpacaPaperExecutionClient(ExecutionClient):
                 raise ValueError("Alpaca order report requires its venue and client order ids")
         try:
             with self._reading():
+                self._same_instrument(row)
                 report = self._order_report(row)
         except Exception:
             return row, None
@@ -821,7 +874,7 @@ class AlpacaPaperExecutionClient(ExecutionClient):
             token.settled = True
         except Exception as exc:
             if _unresolved(exc, token):
-                self._log().warning(f"Alpaca cancel outcome unknown ({type(exc).__name__})")
+                self._unknown_outcome("cancel", exc)
                 return
             reason = "venue refused the cancel" if token.sent else f"not sent: {_why(exc)}"
             self._refuse(token, reason)
@@ -877,6 +930,7 @@ class AlpacaPaperExecutionClient(ExecutionClient):
                     return None
                 raise
             check_one_writer(row, self.house_prefix)
+            self._same_instrument(row)
             if withheld_unloaded(row, self._is_loaded) or unmappable_history(row):
                 return None
             report = self._order_report(row)
@@ -909,6 +963,7 @@ class AlpacaPaperExecutionClient(ExecutionClient):
                 for row in rows:
                     try:
                         check_one_writer(row, self.house_prefix)
+                        self._same_instrument(row)
                         if withheld_unloaded(row, self._is_loaded):
                             trace.withheld_unloaded += 1
                             withheld.add(row["symbol"])  # text: `withheld_unloaded` read it
@@ -1067,6 +1122,8 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         if update.event in REPLACE_EVENTS:
             raise ValueError("house order replaced at the venue; this lane never modifies")
         native = self.cache.order(ClientOrderId(update.client_order_id))
+        if native is not None and native.instrument_id != instrument_id(update.symbol):
+            raise ValueError(OTHER_INSTRUMENT)
         if update.event == "order_cancel_rejected":
             if native is not None and not late:
                 self.generate_order_cancel_rejected(
