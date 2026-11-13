@@ -1,0 +1,109 @@
+{
+  "budget": {
+    "broker_limit_per_window": 200,
+    "burst": 18,
+    "cap_per_window_from_the_refill_arithmetic": 179,
+    "priority": "CANCEL > REDUCE > MODIFY > QUERY > SUBMIT, FIFO within a kind",
+    "refill_interval_ns": 370370371,
+    "request_budget_per_window": 180,
+    "window_ns": 60000000000
+  },
+  "component": {
+    "control_rows": "meridian.order_budget.rows (FIXTURE_ONLY, UNCALIBRATED)",
+    "control_rows_sha256": "bec0fe527456c6cd809913fef43a6b9ef5b3cb1225fdf96fe801ec569d6852e4",
+    "pacer": "meridian.order_budget.pacer.AccountPacer (harvested; see UPSTREAM.md)"
+  },
+  "demand": {
+    "backlog_at_start": 240,
+    "entry_withdrawn_if_unsent_after_s": 30,
+    "mix_after_start": {
+      "CANCEL": 0.1,
+      "MODIFY": 0.15,
+      "QUERY": 0.25,
+      "REDUCE": 0.1,
+      "SUBMIT": 0.4
+    },
+    "per_minute_after_start": 210,
+    "requested": {
+      "CANCEL": 1380,
+      "MODIFY": 1974,
+      "QUERY": 3162,
+      "REDUCE": 1297,
+      "SUBMIT": 5078
+    },
+    "seed": 20261112,
+    "simulated_seconds": 3600
+  },
+  "lane": "order-budget",
+  "milestone": "M2",
+  "mode": "soak",
+  "observed": {
+    "left_in_queue": 0,
+    "longest_wait_s": {
+      "CANCEL": 17.037037,
+      "MODIFY": 69.259259,
+      "QUERY": 131.508037,
+      "REDUCE": 41.111111,
+      "SUBMIT": 29.999291
+    },
+    "most_order_actions_in_any_window": 176,
+    "most_sent_in_any_window": 179,
+    "priority_violations": 0,
+    "refused_unsent": {
+      "CANCEL": 0,
+      "MODIFY": 0,
+      "QUERY": 0,
+      "REDUCE": 0,
+      "SUBMIT": 3115
+    },
+    "sent": {
+      "CANCEL": 1380,
+      "MODIFY": 1974,
+      "QUERY": 3162,
+      "REDUCE": 1297,
+      "SUBMIT": 1963
+    },
+    "sent_per_minute": {
+      "first_minute": 179,
+      "later_minutes_max": 163,
+      "later_minutes_min": 161
+    },
+    "sent_twice": 0,
+    "when_a_window_was_first_full": {
+      "at_ns": 59629629731,
+      "next_action": {
+        "kind": "MODIFY",
+        "requested_at_ns": 0,
+        "sent_at_ns": 60000000102
+      },
+      "oldest_send_in_window_ns": 0,
+      "sent_in_window": 179
+    },
+    "wire_counters": {
+      "actions": 6614,
+      "day": "simulated",
+      "fills": 0,
+      "kinds": {
+        "CANCEL": 1380,
+        "MODIFY": 1974,
+        "REDUCE": 1297,
+        "SUBMIT": 1963
+      },
+      "new_orders": 3260,
+      "requests": 9776
+    }
+  },
+  "offline": true,
+  "problems": [],
+  "result": "pass",
+  "run_ended_utc": "2026-11-13T02:17:12Z",
+  "run_started_utc": "2026-11-13T02:17:12Z",
+  "schema": "meridian.run-record/1",
+  "simulated_venue": {
+    "limit_per_window": 200,
+    "most_requests_in_any_window": 179,
+    "rate_limited_answers": 0,
+    "requests_received": 9776,
+    "window_ns": 60000000000
+  }
+}
