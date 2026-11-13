@@ -8,6 +8,16 @@ here and no upstream ships it.
 A row is added in the same commit that adds the tool. Versions are taken from the running distro
 or the lockfile, not from memory. Transitive Python packages are pinned with hashes in `uv.lock`.
 
+## Sandbox lane (milestone M2)
+
+| Component | Version or commit | Source URL (read) | Date read | Used for | Origin |
+|---|---|---|---|---|---|
+| NautilusTrader's sandbox execution client (`nautilus_trader.adapters.sandbox`) and its built-in `ExecTester` strategy (`nautilus_trader.testkit.ExecTesterConfig`) | 2.0.0rc9, part of the pinned engine; nothing new is installed. Crate README at the tag commit, git blob `531b56e46e64bfe34007b84ea1f945c2447dac4e` | https://raw.githubusercontent.com/nautechsystems/nautilus_trader/da6b57aefdd62b44f675e434ffcfefca7f4025dd/crates/adapters/sandbox/README.md ; the installed stubs `nautilus_trader/adapters/sandbox/__init__.pyi` and `nautilus_trader/testkit/__init__.pyi` | 2026-11-12 | the simulated venue the sandbox lane trades against (the engine's own matching engine, on live market data) and the strategy it runs | upstream |
+| Upstream example `examples/live/sandbox/exec_tester.py` (read, not copied) | at the tag commit, git blob `953fd1ace9d1b675a2d5c35722a3153204e3f49c` | https://raw.githubusercontent.com/nautechsystems/nautilus_trader/da6b57aefdd62b44f675e434ffcfefca7f4025dd/examples/live/sandbox/exec_tester.py | 2026-11-12 | the pattern `meridian/sandbox_node.py` follows: one data client, the sandbox added with `add_simulated_exec_client`, `ExecTester` added with `add_builtin_strategy`. Changed here: IB data instead of Binance, with no reconnect after a drop; a cash account in USD with a flat fee; 1 share with DAY orders; no client id on the strategy, so its orders route by venue to the sandbox; quotes only (no book or trades), no LIMIT sells, no post-only, reduce-only on stop, no external orders claimed; the risk engine not bypassed; explicit timeouts; and a stop on the lane's own timer after a minute, so an earlier stop fails the run | upstream |
+| NautilusTrader's Python adapter base classes (`nautilus_trader.live.clients`: `MarketDataClient`, `DataClientFactory`) | 2.0.0rc9, git blob `17ffeba39c2134059143828c535429be34414e71` at the tag commit | https://raw.githubusercontent.com/nautechsystems/nautilus_trader/da6b57aefdd62b44f675e434ffcfefca7f4025dd/python/nautilus_trader/live/clients.py | 2026-11-12 | the base of the offline fake data feed in `tests/fake_market_data.py` | upstream |
+| `meridian/sandbox_lane.py`, `meridian/sandbox_node.py` | this repo | n/a | 2026-11-12 | the sandbox lane: the IBKR lane's paper checks before and after the run, the owner's typed confirmation, a node with IB's data client and the sandbox as its only execution client, and the run record | own design |
+| `tests/fake_market_data.py`, `tests/test_sandbox_lane.py` | this repo | n/a | 2026-11-12 | the offline fake feed (AAPL.XNAS quotes, no socket) and the tests: no execution client but the sandbox, in the source and in the node as built; a run offline on the fake feed, started only once those checks pass, in an empty network namespace where the machine allows one; the engine's output kept off the terminal; the gate and the record | own design |
+
 ## Distro (`deploy/wsl/`)
 
 | Component | Version or commit | Source URL (read) | Date read | Used for | Origin |
@@ -105,8 +115,9 @@ Notes on the agent runtimes:
 
 ## Assessed and not used
 
-Read for plan 8.6 and 8.7 on 2026-11-12 and not installed, each for the reason given. An
-evidence record can reopen one.
+Read for plan 8.6 and 8.7 on 2026-11-12 and not installed, each for the reason given, without
+an evidence ADR. An evidence record can reopen one: it then gets its row under "Evidence ADRs"
+below and leaves this table.
 
 | Project | Source of the assessment | Why it is not used |
 |---|---|---|
@@ -148,6 +159,66 @@ evidence record can reopen one.
 | `meridian/ibkr_paper.py` | this repo | n/a | 2026-11-12 | the gate before the engine and again after the run, the owner's typed confirmation, and the scrubbed run record | own design |
 | `meridian/ibkr_node.py` | this repo; it subclasses and calls the two upstream files above | n/a | 2026-11-12 | order mode: one DAY LIMIT order through upstream's base strategy; fill mode: one BUY and its one closing SELL, both DAY LIMIT priced past the quote; and the calls that feed the run record | own design |
 
+## Order budget (milestone M2)
+
+The budget is the owner's own design, harvested from the owner's repository
+`seathatflowsinourveins/sextant`, read at head `33cdee7b65d53c93ab106b7b3196fc790b14a5a8`.
+The same files are byte-identical in `seathatflowsinourveins/sextant-paper` at
+`a991b73a7e3a2933384bc94f5092ad0e1f7e6445`. `tests/test_order_budget_harvest.py` checks that
+each harvested file is the source but for the import lines listed there.
+
+| Component | Version or commit | Source URL (read) | Date read | Used for | Origin |
+|---|---|---|---|---|---|
+| `meridian/order_budget/pacer.py` | `src/sextant/execution/pacer.py`, git blob `49a30e965aac62dea17cb3d6b4c09fee685e9742`, last changed in `49654edc56419a51445bff40b16ec3a12c8c3593` (2026-11-10). Changed here: the import line of the controls | https://github.com/seathatflowsinourveins/sextant/blob/33cdee7b65d53c93ab106b7b3196fc790b14a5a8/src/sextant/execution/pacer.py | 2026-11-12 | the order budget, one pacer per account, within one process. Every paced request (CANCEL, REDUCE, MODIFY, QUERY, SUBMIT) takes a token from a bucket of `request_budget x burst_fraction` tokens that refills one token per `window // (budget - burst) + 1` ns; waiting requests go out by kind in that order, first in first out within a kind; admission is checked again at send; a 429 empties the bucket and pauses every request | own design (the owner's, from Sextant) |
+| `meridian/order_budget/controls.py` | `src/sextant/risk/controls.py`, blob `d7fed7b1c9252d425a8ec32ec985560a39231273`, last changed in `09c148480a0cc9dda2b5b6d0835fd9aea594f86e` (2026-11-10). Unchanged; its docstring points into the owner's earlier repositories | https://github.com/seathatflowsinourveins/sextant/blob/33cdee7b65d53c93ab106b7b3196fc790b14a5a8/src/sextant/risk/controls.py | 2026-11-12 | validates the control rows: every control named once, with source, unit, calibration and scope; fixture rows only with `fixture=True`; the budget at most the broker limit; `1 <= burst < budget`. It is not under a `risk/` folder here, because `risk/` belongs to the owner | own design (the owner's, from Sextant) |
+| `tests/test_order_budget_pacer.py` | `tests/proofs/custody/test_pacer.py`, blob `97c32c1016f1343b929bd5f20ba7cd39c0677a3b`, last changed in `09c148480a0cc9dda2b5b6d0835fd9aea594f86e`. Changed here: its import lines | https://github.com/seathatflowsinourveins/sextant/blob/33cdee7b65d53c93ab106b7b3196fc790b14a5a8/tests/proofs/custody/test_pacer.py | 2026-11-12 | the pacer's own tests: priority and FIFO, no window over the budget, admission checked again after a wait, the 429 path, entry reserves, the wire hook used once, restore | own design (the owner's, from Sextant) |
+| `meridian/order_budget/rows.py`, `tests/order_budget_fixtures.py` | this repo; the values and helpers are `control_rows()` and `controls()` in `tests/proofs/custody/conftest.py` (blob `0bdc6ac9cab4a154a4c661c95d59e8e5a716c129`), pinned by `tests/test_order_budget_harvest.py` | https://github.com/seathatflowsinourveins/sextant/blob/33cdee7b65d53c93ab106b7b3196fc790b14a5a8/tests/proofs/custody/conftest.py | 2026-11-12 | the soak's and the tests' control rows: budget 180, broker limit 200, window 60 s, burst fraction 0.1 (burst 18), reserves 1, all `FIXTURE_ONLY` and `UNCALIBRATED`. `Controls.from_rows` refuses them unless it is called with `fixture=True`, which only the soak and the tests do; a lane builds its controls without it, as Sextant's Alpaca execution factory does, and needs rows the owner has reviewed | own design |
+| `meridian/order_budget/soak.py`, `tests/test_order_budget_soak.py`, `tests/test_order_budget_harvest.py` | this repo | n/a | 2026-11-12 | the offline soak against a simulated venue, its run record in `evidence/`, the checks that each of its conditions can fail, tests of the 429 pause and of the bucket it empties, and the check of the harvested files | own design |
+| Sextant's design notes on the budget (read, not copied) | `docs/adr/0009-order-rate-limits.md` (blob `27010a67a625483233f0fb8ccffa0fcbf7b88d74`), `docs/handbook/alpaca-execution.md` (blob `24e3d0491883fd1c12082756e180b11a159c5e86`) | https://github.com/seathatflowsinourveins/sextant/blob/33cdee7b65d53c93ab106b7b3196fc790b14a5a8/docs/adr/0009-order-rate-limits.md ; https://github.com/seathatflowsinourveins/sextant/blob/33cdee7b65d53c93ab106b7b3196fc790b14a5a8/docs/handbook/alpaca-execution.md | 2026-11-12 | the budget's reasons: 180 order actions a minute under Alpaca's 200, queries counted, the burst inside the budget, priority CANCEL > REDUCE > MODIFY > QUERY > SUBMIT; and how the Alpaca adapter calls the pacer (every REST request through it, the SDK's own retries off, a pacer refusal is a not-sent refusal) | own design (the owner's) |
+| Alpaca Trading API rate limit | n/a (Alpaca support article, December 2022) | https://alpaca.markets/support/usage-limit-api-calls | 2026-11-12 | "currently 200 requests per minute, per account", every request counted, 429 past it; the budget keeps to 180 of them. Alpaca's archived API reference (`alpacahq/alpaca-docs` at `2080c5e0efbbd812c48eef9209a7a9962de67d2a`, `content/api-references/trading-api/_index.md`) says per API key instead; the current docs give no figure | upstream |
+| NautilusTrader's own order rate limits (read, not set here) | 2.0.0rc9, commit `da6b57aefdd62b44f675e434ffcfefca7f4025dd` | https://github.com/nautechsystems/nautilus_trader/blob/da6b57aefdd62b44f675e434ffcfefca7f4025dd/crates/live/src/node/config.rs ; https://github.com/nautechsystems/nautilus_trader/blob/da6b57aefdd62b44f675e434ffcfefca7f4025dd/crates/risk/src/engine/mod.rs ; https://github.com/nautechsystems/nautilus_trader/blob/da6b57aefdd62b44f675e434ffcfefca7f4025dd/crates/trading/src/strategy/mod.rs | 2026-11-12 | why the budget is a component of its own: the risk engine throttles only submits and modifies (100 a second each by default, rolling window) and denies the excess instead of queueing it, while a strategy's cancels and queries go straight to execution without a throttle | upstream |
+
+Notes on the order budget, measured by the soak (`evidence/M2-order-budget-*-soak.json`):
+
+- **It holds the request past the budget; it never refuses it for being over the budget.** A
+  request waits in the pacer's queue until the bucket has a token, most urgent kind first, and
+  neither the queue nor the wait has a limit. An entry also waits until the bucket holds more
+  tokens than its protection reserve. A queued request leaves the queue unsent in four ways:
+  its caller's admission check turns false (the caller withdrew it; in the soak, an entry not
+  sent within 30 s); it is an entry whose reserve would reach the burst (`refuse(reason)` is
+  called, and `request()` raises `PacerRefused` if that is already so when it is made); it is
+  an entry whose reserve cannot be worked out (reserve rows missing, or a position count that is
+  not a whole number), which is dropped silently, so a caller checks reserve authority in its own
+  admission, as Sextant's Alpaca gateway does; or, fourth, in the send itself: the pacer
+  spends the token and takes the request off the queue before it calls `send`, so a `send` that
+  returns or raises without calling its wire hook, or whose hook raises `ValueError` because
+  admission is false by then, sends nothing. An exception raised inside `send` (that
+  `ValueError` among them) comes out of whichever `request()` or `drain()` call started that
+  drain, and that call may have been made for another request, which may already be sent or
+  still be queued: a raise from `request()` is not always about the request just made. A hook
+  kept and called after `send` returned raises `ValueError` at that later call, not out of
+  `request()` or `drain()`. This is the owner's design (Sextant ADR-0009, R6),
+  kept as it is because the Alpaca adapter of M3 relies on it. Whether "refused" may mean "held
+  until the window has room, or withdrawn by its caller" is the owner's to confirm.
+- **The cap is 179, not 180.** The refill interval rounds up (370,370,371 ns for 162 refills a
+  minute), so the 162nd refill lands 102 ns after the window: a full burst of 18 plus 161
+  refills. That holds for any budget and burst: the cap is always one under the budget.
+  Rounding down instead, `(window_ns - 1) // (limit - burst)`, would give exactly the budget
+  for a window as long as this one (a very short window would need a guard against going over);
+  that is a change to the owner's arithmetic and is not made here.
+  After a quiet spell the bucket is full again, and the window that follows holds 179 too.
+  Under steady demand above the budget it sends 161 to 163 a minute, because the burst is
+  shared with the budget rather than added to it.
+- **The budget holds within one pacer, not across a restart.** A new `AccountPacer` starts with
+  a full burst and no memory of the last 60 s; `to_state()` and `restore()` carry only the wire
+  counters, not the tokens or a 429 pause. Sextant's Alpaca adapter builds a new pacer each time
+  the node connects, so a start within 60 s of the previous run's last request can add up to one
+  burst (18) to that window. Each start adds a burst: with requests always waiting, one pacer
+  sends 179 in its first 60 s, a restart at 30 s makes that 196 (a burst and 80 refills, twice),
+  and restarts at 20 s and 40 s make it 213 (a burst and 53 refills, three times), past
+  Alpaca's 200. These counts come from running the pacer alone with the fixture rows; the soak
+  does not restart it. The M3 lane has to start a pacer empty, or wait out the window.
+
 ## Trading (Alpaca paper lane, milestone M3 groundwork)
 
 | Component | Version or commit | Source URL (read) | Date read | Used for | Origin |
@@ -157,6 +228,28 @@ evidence record can reopen one.
 | `meridian/alpaca/` | this repo; ported from `seathatflowsinourveins/sextant-paper` at `a991b73a7e3a2933384bc94f5092ad0e1f7e6445`, `src/sextant/alpaca/{execution,wire,reports,parsing,config,factories,constants}.py`, and coded against the order budget interface of `src/sextant/execution/pacer.py` there (blob `49a30e965aac62dea17cb3d6b4c09fee685e9742`), trimmed to plain DAY LIMIT orders | https://github.com/seathatflowsinourveins/sextant-paper/tree/a991b73a7e3a2933384bc94f5092ad0e1f7e6445/src/sextant | 2026-11-12 | the Alpaca paper execution adapter; what was carried and changed is in `docs/m3-alpaca.md` | own design |
 | systemd credentials (`LoadCredentialEncrypted=`, `systemd-creds`, `systemd-ask-password`) | systemd 259 (259.5-0ubuntu3.4, in the distro) | systemd.exec(5), systemd-creds(1) and `systemd-ask-password --help` as installed in the distro | 2026-11-12 | how the paper keys reach the lane: `deploy/systemd/meridian-alpaca-paper.service`, `meridian/alpaca/credentials.py` | upstream |
 | `deploy/systemd/meridian-alpaca-paper.service` | this repo | n/a | 2026-11-12 | the unattended shape for the keys, prepared and not installed or enabled; checked with `systemd-analyze verify` and `systemd-analyze security --offline=true` in the distro | own design |
+
+## Evidence ADRs (plans 8.6 and 8.7)
+
+One row per component that an evidence ADR in `docs/adr/` assessed, whatever it decided: the
+Decision cell gives the ADR's status, and only a row whose status is adopted is installed. None
+is today. What was read and set aside without an ADR is under "Assessed and not used" above.
+
+| Component | Version or commit | Licence | Source URL (read) | Date read | Decision | ADR |
+|---|---|---|---|---|---|---|
+| semble (semantic code search), with its embedding model `minishlab/potion-code-16M-v2` | 0.7.2, tag commit `bb746c9c79925760df8a3759fcca658734e2eaf6`, wheel sha256 `e0cb9c8ea303f38d7390e5f441fc9c05dbc1eeae6e2afa20e2ab8bef10942e2d`; model revision `e9d2a44ca6a05ac6685f3b23709ea57eb7352d5b` | MIT; model MIT | https://github.com/MinishLab/semble/tree/v0.7.2 ; https://pypi.org/pypi/semble/json ; https://huggingface.co/api/models/minishlab/potion-code-16M-v2 | 2026-11-12 | not adopted: on 30 fixed questions it answered 3 fewer than ripgrep plus pyright within the top 1, 3 and 5 results (3, 4 and 4 fewer once a helper wrongly accepted as a test answer is set aside) | [0001](docs/adr/0001-semble-code-search.md) |
+| pyright-lsp (Claude Code plugin from `anthropics/claude-plugins-official`; one language server, `pyright-langserver --stdio`) | manifest 1.0.0 at marketplace commit `f75f5b25ae94f4332be4ff5f18435741d2589bdb` | Apache-2.0 | https://github.com/anthropics/claude-plugins-official/tree/f75f5b25ae94f4332be4ff5f18435741d2589bdb/plugins/pyright-lsp | 2026-11-12, re-checked 2026-11-13 | not adopted: on R1 its language server started in 1 of 3 runs, and with every run scored (post hoc) its arm used 7.1% more median tokens | [0002](docs/adr/0002-claude-pyright-lsp.md) |
+| Trail of Bits skills: property-based-testing 1.2.3 and supply-chain-risk-auditor 2.0.4 (Claude Code plugins) | commit `149d7b21f4067765b82e67029730b42d228ef4b4` (head of `main`, 2026-11-12; no tags or releases) | CC-BY-SA-4.0 | https://github.com/trailofbits/skills/tree/149d7b21f4067765b82e67029730b42d228ef4b4 | 2026-11-12, re-checked 2026-11-13 | not adopted: supply-chain-risk-auditor passed 0 of 3 R5 runs against 0 of 3 without it, and property-based-testing adds +316 always-on tokens on `claude-opus-5-5`, over its 200 limit | [0003](docs/adr/0003-trailofbits-property-testing-supply-chain.md) |
+| mattpocock/skills `tdd` and `diagnosing-bugs` (route assessed: copy 7 files into `.agents/skills/`, not the plugin; nothing copied) | v1.3.2, annotated tag `85cbec972d7a79c278c793d272f7fc715850fad4` on commit `d1478fcb140db0b93c0c8df17bcfd311844749d0` | MIT | https://github.com/mattpocock/skills/tree/d1478fcb140db0b93c0c8df17bcfd311844749d0 | 2026-11-12, re-checked 2026-11-13 | not adopted: neither skill was invoked in any of its 3 with-runs, and the arms tied on R3 (0 of 3, writing tests for existing checks) and on R1 (3 of 3) | [0004](docs/adr/0004-mattpocock-tdd-diagnosing-bugs.md) |
+| obra/superpowers (Claude Code plugin: 15 skills and a SessionStart hook; the same commit's Codex and agy manifests) | v7.0.2, commit `22f0b463e7a5e579904dd6211a520321035526f7` (annotated tag `c62ffea8267a70de07583e153544d355b6748a56`) | MIT | https://github.com/obra/superpowers/tree/22f0b463e7a5e579904dd6211a520321035526f7 | 2026-11-12, re-checked 2026-11-13 | not adopted: on R1 both arms passed 3 of 3 and superpowers used 24.6% more median tokens, where the rule needs 25% fewer | [0005](docs/adr/0005-claude-code-superpowers.md) |
+| compound-engineering (Claude Code plugin, skills only) | 3.38.1, tag `compound-engineering-v3.38.1` (lightweight, movable) = commit `d8f8e03237bded06e77bcb3930b43ef841e7eeda` | MIT | https://github.com/EveryInc/compound-engineering-plugin/tree/d8f8e03237bded06e77bcb3930b43ef841e7eeda | 2026-11-12, re-checked 2026-11-13 | not adopted: on R1 both arms passed 3 of 3, CE never fired and used 0.6% more median tokens, where the rule needs 25% fewer | [0006](docs/adr/0006-claude-compound-engineering.md) |
+| openai/plugins: codex-security and superpowers (Codex CLI) | `d420d13` (codex-security "0.1.32", upstream codex-security's release number, tag npm-v0.1.32, never published to npm; superpowers 6.3.0) | none for the repository; codex-security's field Proprietary, superpowers MIT | https://github.com/openai/plugins/tree/d420d13051bffe4543ed39e30fa46b87148e47dd | 2026-11-12, re-checked 2026-11-13 | not adopted: under the machine's Codex policy neither plugin loads (policy probe) | [0007](docs/adr/0007-codex-openai-plugins.md) |
+| oh-my-codex (Codex CLI) | 0.22.6 (tag `v0.22.6` = `610be90`, lightweight; npm `oh-my-codex@0.22.6`) | MIT | https://github.com/Yeachan-Heo/oh-my-codex/tree/610be90863964394fd311b5198e8324bf96157c0 | 2026-11-12, re-checked 2026-11-13 | not adopted: both arms passed R1 3 of 3 and the arm with it used 104.4 % more tokens | [0008](docs/adr/0008-codex-oh-my-codex.md) |
+| dsh-codex-peer (Codex peer plugin for DeepSeek Harness) | v0.3.4 (`f4882df301c063481a80014ab9e6f99845e4bc94`) | MIT | https://github.com/wuanthony397-hash/dsh-codex-peer/tree/f4882df301c063481a80014ab9e6f99845e4bc94 (read) | 2026-11-12, re-checked 2026-11-13 | not adopted: three clauses of its R4 rule fail (with arm 1 of 3 counted, Codex alone 3 of 3, +2,547 DeepSeek tokens against a 2,500 ceiling) | [0009](docs/adr/0009-dsh-codex-peer.md) |
+| dsh-gungnir (goal-verification plugin for DeepSeek Harness), with its dependency `gungnir-core` 0.1.2 | npm 0.2.1 (shasum `7b59357000676b09fcd76f685880951ce9f01265`; source `301255aeb71c6c15c28d150a94580df59e8761aa`, untagged) | Apache-2.0 (LICENSE file; no `license` field on npm) | https://github.com/Jonah-Wu23/dsh-gungnir/tree/301255aeb71c6c15c28d150a94580df59e8761aa/packages/dsh-plugin and https://registry.npmjs.org/dsh-gungnir (read) | 2026-11-12, re-checked 2026-11-13 | not adopted: dsh 0.2.2-rc.1 refuses the install (all 10 dsh peers pinned to 0.1.2-rc.1) | [0010](docs/adr/0010-dsh-gungnir.md) |
+| dsh-goalloop-agentteams (DeepSeek Harness plugin: completion gate on `update_goal`, goal-loop skills, Agent Teams dispatch) | 0.9.2, lightweight tag `v0.9.2` on `ea481186b41b78ed897ac9abe7c4376aea2a55b2`; release asset `dsh-goalloop-agentteams-0.9.2.tgz`, 113,923 bytes, sha256 `5d0b9c5a715ccc2c37e717f643d4c04e421421d10a46fab194841c4774ce3c0c`; not on npm; measured on dsh 0.2.2-rc.1 (`66491b05`) | none in the tree (NOASSERTION); `package.json` declares MIT with no licence text | https://github.com/samirliu/dsh-goalloop-agentteams/tree/ea481186b41b78ed897ac9abe7c4376aea2a55b2 ; https://github.com/samirliu/dsh-goalloop-agentteams/releases/tag/v0.9.2 ; https://github.com/deepseek-ai/deepseek-harness/tree/dsh-v0.2.2-rc.1 | 2026-11-12; re-checked and measured 2026-11-13 | deferred: in the real task (3 of 3 passes in both arms) the gate never acted | [0011](docs/adr/0011-dsh-goalloop-agentteams.md) |
+| dsh-early-stop-guard (DeepSeek Harness plugin: steers a turn that stopped on a narration back to work) | commit `71c2f93be2645351424d2730998f3fa88f432f3f` (`package.json` 0.1.0; no tag, release or npm package); measured on dsh 0.2.2-rc.1 (`66491b05`) | none in the tree (MIT declared only in `package.json` and README) | https://github.com/pf-sjtu/dsh-early-stop-guard/tree/71c2f93be2645351424d2730998f3fa88f432f3f ; https://registry.npmjs.org/dsh-early-stop-guard (404) | 2026-11-12; re-checked and measured 2026-11-13 | not adopted: 3 of 3 real-task passes in both arms leave the rule's two-more-successes clause unmet | [0012](docs/adr/0012-dsh-early-stop-guard.md) |
+| Antigravity CLI (`agy`) documentation reading: plugins, MCP servers, hooks, Google's bundles, a `GEMINI.md` or rule file | `1.5.7` (tag `87bd97327a72d62d553c3aede8cf77752ae4c59a`; asset sha256 `d6150a8d…8fdbb`); `1.5.8` newest on 2026-11-13 | none (proprietary; Google Terms of Service and Antigravity Additional Terms) | https://github.com/google-antigravity/antigravity-cli and https://antigravity.google/docs (read) | 2026-11-12, re-checked 2026-11-13 | not adopted: decided on the documentation reading, none measured | [0013](docs/adr/0013-antigravity-cli-reading.md) |
 
 ## Notes on choices
 

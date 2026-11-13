@@ -1,0 +1,115 @@
+ADR 0011 pre-registration, published copy (written 2026-11-13 after the runs, for this repository).
+Edited after the real-task series of 2026-11-13: a commit id that is not on the public remote was
+removed. The replay this file plans was never run as written; the real task ran under
+0011-real-prereg.txt.
+
+This file was not itself written before the runs. It restates what was fixed before the first
+probe (2026-11-13 02:00:58 ET) in these files, which stay on the owner's machine because they
+name home-directory paths. Each point names its source. Where they differ, this copy follows the
+later file; no source written before the runs sets that precedence, which is stated here for the
+first time, after the runs. The probe count in point 3 and the run order in point 4 did not
+follow it: both are deviations found afterwards, listed at the end of this file.
+
+  [A] the assessment       sha256 050ddfbd5a8a381392efcbef1e9c0a5dcd928e14e7ce2718666791d61b74f633  last changed 2026-11-12 21:39 ET
+  [M] method-dsh           sha256 5ca972cdd0c1e8be8b6650febef352a648492cfbb84fc33a096f507c244df6c1  last changed 2026-11-12 21:42 ET
+  [F] the re-check (fact sheet and protocol problems)
+                           sha256 20ac01b84a9cfc12a56e42490653ef2a43c0a522297db13efdffc59c0a27f7fa  last changed 2026-11-13 01:49 ET
+  [V] method-dsh's own check
+                           sha256 42b4646702095f691ec4b3b7f0501bd561bab0a542eaecb46d51d983254f938c  last changed 2026-11-13 01:51 ET
+  [R] the run folder: start stamp 01:56:36 ET; probe.txt (= 0011-probe.txt, sha256
+      8013cab46f99ff3a9ae167ef2b99843db315eb5c7980e7155e4b321f7c5dcdfd) and arm-key.txt (= 0011-key.txt),
+      both written 02:00:39 ET.
+
+[M] and [V] are published, as corrected, in docs/adr/data/ab-dsh.md; the task and its brief in
+docs/adr/data/ab-tasks.md (R2).
+
+1. Arms [R]: A = without, B = with dsh-goalloop-agentteams 0.9.2 (git ea481186). Profiles arm-a = A,
+   arm-b = B. The with arm loads the package's own row (id goal-gate, config {}) by a second --patch
+   whose module is a relative path to the 19 pinned files: "a --patch overlay may insert a row whose
+   relative plugin name resolves beside the patch file" [V].
+
+2. Home [V], replacing [M]'s "Do not use a separate DSH_HOME" and [F]'s profiles under ~/.dsh/profiles:
+   "DSH_HOME=$EV/dsh-home for every A/B command (profiles, plugin installs, sessions, logs, anonymous
+   id all scratch), DSH_AGENTS_HOME=$EV/agents-home (empty), the shared overlay restating the three
+   uploads-off rows ... plus DSH_TELEMETRY_DISABLED=1. Its only blocker is the API key."
+   Profiles from dsh's headless template, never dsh-tui [M][F]. Overlay last in both arms [M]: uploads
+   and OpenTelemetry off, session-title model and tool-web off, deepseek-flash with thinking on and
+   effort max, sessions and storage in $EV. Before any run, dump both configurations, diff them (only
+   the addition's row may differ), and stop unless both show the upload rows off, OpenTelemetry
+   DISABLED [M] and tool-plugin-manager disabled [V].
+
+3. Always-on [M][V][A]: the probe "Reply with exactly the word OK. Do not call any tool." in both
+   arms with the same overlay and flags; "run the n=0 probe on the task base (96e82e6 + 39cb68e
+   tests)" [V], not on main as [M] had it; 3 runs per arm [A], although [M], [F] and [V] say one
+   probe per arm (a deviation, see the end); worktree names of equal length in both
+   arms (the working directory is in the runtime-context message) [V]. The claim is the
+   with-minus-without delta of the first request's prompt; [M] reads DeepSeek's own count from the
+   session log, and reports the split into system prompt, tools and injected messages.
+
+4. Real task [F], the boundary replay (R2 in ab-tasks.md):
+   - Setup: a detached worktree at 96e82e6b521cdb9c7d172176898d20e2658ec50b, tests/ from
+     39cb68ea3241caeececb6db0521a12ea2fa92fee, uv sync --locked.
+   - Brief: the ab-tasks.md R1 brief verbatim, except that only meridian/boundary.py may change, with
+     its sha256 recorded before the first run; both arms also get the same create_goal line, because
+     the gate fires only on update_goal. The exact line and both hashes were to be fixed before the
+     first replay run; none ran. Added after the always-on runs, before any replay run: the line
+     follows docs/HANDBOOK.md's Goals rules: one measurable end state, proved by a command whose
+     exit code decides and whose output the session prints; a turn bound ("or stop after N
+     turns"; without one dsh's goal budget is 256 rounds by default); no lane run, order, IB
+     Gateway, port 4002 or step only the owner takes.
+   - Flags [M][V]: --permission-mode danger-full-access --approval-policy never, under
+     timeout --signal=INT --kill-after=60 1800; exit 124 and 137 both count as timed out.
+   - Runs [F], with ab-tasks.md's rules for every series: 3 per arm, one at a time, interleaved
+     a1 b1 b2 a2 a3 b3; 2 more per arm if the arms differ by one success or tie at 2 each. A run whose
+     tool calls read the fix is void; a run that ends on an API error, a usage limit or a rate limit
+     is re-run later, not scored.
+   - With arm only: an operator-stamped, cache-free contract (PYTHONDONTWRITEBYTECODE=1,
+     -p no:cacheprovider, ruff --no-cache) whose tests check compares tests/ with a sha256 manifest kept
+     outside the worktree, so it does not name the fix commit; check timeouts allow for spawnSync
+     blocking dsh's event loop.
+   - Grade [M][F], outside the agent: the run's patch replayed into a fresh worktree set up the same way passes
+     uv run ruff check ., uv run ruff format --check ., uv run pyright and uv run pytest; tests/ is
+     unchanged; meridian/boundary.py is the only other path changed; .goal-gate/ is allowed untracked
+     in the with arm; no secret location or IBKR-lane module in any tool call; the main checkout's
+     status unchanged.
+   - Limit [F]: the with arm's contract is the grader itself, so the replay measures a grader inside
+     the loop, not production use, where Orca-driven workers would write their own contract.
+
+5. Rule [M], tightened by [F]: adopt only if no BLOCKED run and no safety violation, and either
+   S_with >= 2 and S_without <= 1, or S_with >= S_without >= 2 with median billed tokens per run at
+   most 0.75 x the without arm's. S = graded passes per arm. Billed tokens = input + cache-read +
+   cache-write + output over every session of the run (parent and subagents) [M]. Otherwise not
+   adopted. Always report the always-on delta per request [M].
+
+6. Safety [A] and ab-tasks.md: the IB Gateway stays logged out for the whole series, and no agent
+   starts the IBKR lane; the series stops if a check before a run finds the Gateway up. Nothing
+   under ~/.dsh changes: the owner's dsh files are hashed before and after [M][V].
+
+Decided during the runs, not above (each is in docs/adr/data/0011-results.json, "deviations"):
+worktrees from an unauthenticated scratch clone instead of the main checkout; a 127.0.0.1 capture
+endpoint and o200k_base counts in place of the probe's model call, because no key route exists
+(dsh inside bwrap --unshare-net, a stub that answers 400; no source above sets a capture route); no
+uv sync in the probe worktrees; no TMPDIR in the two pilots; after the first series stopped on a
+false Gateway alarm, a new driver that runs one probe per call with a fixed Gateway check.
+
+Found afterwards, also in "deviations"; none of them changes a count:
+- The pilots A1 and B1, made with an earlier, unkept probe runner, were counted as runs a1 and b1
+  of the 3+3, although the first driver had planned six fresh runs after them. So 2 runs per arm
+  come from the published runner.
+- Pilot A1 (02:00:58 to 02:01:00 ET) ran about 15 s before the dump, diff and stop check of
+  point 2 (dumps 02:01:15 ET); the profile init files (01:56:58 ET) lack the overlay rows. B1
+  and the continuation runs came after that check. A1 ran inside bwrap --unshare-net, so nothing
+  could be uploaded, and it is byte-identical to A2 and A3 in system, tools and options.
+- Point 2's "Overlay last in both arms" held only in arm A: in arm B the with-only patch came
+  after the overlay, as ab-dsh.md's own run line has it. That row only inserts goal-gate; it
+  changes no overlay row.
+- [A], [M], [F], [V] and the raw captures stay on the owner's machine, not in the private
+  meridian-evidence repository that ab-tasks.md and ab-dsh.md name. No commit or archive made
+  before the runs carries this pre-registration: it rests on those files' modification times
+  only (the hashes above identify them).
+- Run order: [F] restates ab-tasks.md's rule for every series, a1 b1 b2 a2 a3 b3, while [M] and
+  its check [V], the later file, give b1 a1 a2 b2 b3 a3. The runs followed [F], not the later
+  file (a precedence this copy states only after the runs).
+- Probe count: [A], the earliest file, has "3 runs each" for the always-on figure, while [M]
+  ("one probe call per arm (n=0)"), [F] ("n=0 probe per arm") and [V] ("run the n=0 probe on the
+  task base") say one probe per arm. The runs followed [A], not the later files.

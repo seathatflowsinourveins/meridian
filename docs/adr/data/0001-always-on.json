@@ -1,0 +1,68 @@
+{
+  "schema": "meridian.adr-0001.always-on/1",
+  "adr": "docs/adr/0001-semble-code-search.md",
+  "what": "The texts that semble 0.7.2's default install for Claude Code would put into every session, taken from semble's source, with their sizes. A reconstruction: `semble install` was never run, and no session was measured before and after.",
+  "source": "https://github.com/MinishLab/semble at tag v0.7.2, commit bb746c9c79925760df8a3759fcca658734e2eaf6",
+  "counted": "2026-11-13, with 0001_count_tokens.py (sha256 a8dcf1e4dedd1ded41652e6b3a3291094279b4857cf0d6c1e3ea587bc80f7502) under Python 3.14.10, after its --self-test passed. Encoding o200k_base, OpenAI's vocabulary (file sha256 446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d), used as a proxy: these are not Claude's own counts.",
+  "texts": "Not published: they are semble's. Each row says where its text comes from in the source, and gives the sha256 of the text's UTF-8 bytes. The five texts read from source files were derived again from the tag for this count and were byte for byte the saved ones.",
+  "default_install": [
+    {
+      "part": "MCP tool definitions",
+      "from": "json.dumps of the two tools (search, find_related) that semble.mcp.create_server lists, each as model_dump(mode=\"json\", exclude_none=True): what the harness's inprocess step builds, with the mcp extra. Saved when the harness ran and not rebuilt for this count; its length is tool_definitions_chars in 0001-results.json.",
+      "chars": 3868,
+      "utf8_bytes": 3868,
+      "tokens": 1017,
+      "sha256": "fced663dc48e8bebd55f07d302f70938589531b87a0fd8fc6d4d5f499367f2a7"
+    },
+    {
+      "part": "MCP server instructions",
+      "from": "the instructions argument in src/semble/mcp.py",
+      "chars": 439,
+      "utf8_bytes": 439,
+      "tokens": 95,
+      "sha256": "f5a0261babc45f0898ba54c51bce27b74d2662e490910d9ba1d320736c1bf896"
+    },
+    {
+      "part": "CLAUDE.md block",
+      "from": "INSTRUCTIONS in src/semble/installer/agents.py, with the pin an install from PyPI gives, semble[mcp]==0.7.2",
+      "chars": 2021,
+      "utf8_bytes": 2027,
+      "tokens": 480,
+      "sha256": "4bf86108667da3b7b39ba53ca2c580e9cc85c433c15cb506783ac2fcc3e8b790"
+    },
+    {
+      "part": "sub-agent description",
+      "from": "description in the front matter of src/semble/agents/claude.md",
+      "chars": 236,
+      "utf8_bytes": 236,
+      "tokens": 44,
+      "sha256": "715aa993420068ddd23255327d681f42e235f021b33c2ed7e57d75c028f5201e"
+    }
+  ],
+  "default_install_total": {
+    "chars": 6564,
+    "tokens": 1636
+  },
+  "skill_variant": [
+    {
+      "part": "skill description",
+      "from": "description in the front matter of src/semble/agents/skill.md",
+      "chars": 248,
+      "utf8_bytes": 248,
+      "tokens": 52,
+      "sha256": "881b659573401e6bf1780514f479314dbc5bdeda9a254efdb89a8b47150268dd"
+    },
+    {
+      "part": "CLAUDE.md pointer",
+      "from": "SKILL_POINTER in src/semble/installer/agents.py",
+      "chars": 106,
+      "utf8_bytes": 106,
+      "tokens": 26,
+      "sha256": "47dfd76371acefe0d473b982e5e451c3ac9d90fd94c03f3b234dcab1898dba40"
+    }
+  ],
+  "skill_variant_total": {
+    "chars": 354,
+    "tokens": 78
+  }
+}

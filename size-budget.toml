@@ -1,0 +1,62 @@
+# Size budget (plan 9.5), checked by tests/test_size_budget.py.
+#
+# Raising a limit takes a pull request that says why, approved by the owner. The numbers were
+# measured on 2026-11-13 on main at 9c5daaa merged (git merge-tree) with this milestone's three
+# branches; on main with this branch alone all Markdown is 831 lines and the rest is the same.
+#
+# A tripwire, not a lock. Every agent here pushes as the owner's own GitHub account, GitHub does
+# not let an author approve their own pull request, and its push rules that block changes to
+# given paths apply only to private and internal repositories. So GitHub cannot require the
+# owner's approval for a change to this file while every push comes from that one account.
+#
+# Not checked: the number of open issues. Without a token CI can read only the count of open
+# issues and pull requests together (repository.open_issues_count in the event that started the
+# run), and a budget on that would stop CI whenever many pull requests are open, as during the
+# ADR work. The count of issues alone needs an API request, reliable only with a token, and the
+# automatic GITHUB_TOKEN is a secret; unauthenticated requests from GitHub's shared runners fall
+# under a limit of 60 an hour per address.
+
+[lines]
+"AGENTS.md" = 120 # plan 9.5. Main at 9c5daaa has 126 lines; with this trim, 117
+"CLAUDE.md" = 1 # only the @AGENTS.md import
+"docs/HANDBOOK.md" = 400 # plan 9.5
+"docs/adr/README.md" = 80 # the ADR format and the index
+
+[adr]
+max_lines_each = 60 # plan 8.6
+max_count = 20 # 13 now: 0001 to 0013
+
+[totals]
+agent_instruction_lines = 121 # every AGENTS.md and CLAUDE.md, at any depth: 118 now
+prose_lines = 1900 # Markdown outside docs/adr/data/: 1,859 now, ADRs 0001 to 0013 included; M3 adds 162 (docs/m3-alpaca.md 150, its UPSTREAM.md section 10, two AGENTS.md rows); was 1,800, raised as the owner asked on 2026-11-13 for #5 to land with the limits it needs
+config_lines = 450 # 392 now, this file included; M3 adds 53 (its systemd unit 52, one pyproject.toml line); was 360, raised as the owner asked on 2026-11-13 for #5 to land with the limits it needs
+workflows = 1
+skills = 6 # Orca's two (#1), and room for plan 8.6's first skill candidates
+
+[kinds]
+# Every tracked file is one of these kinds: the first that matches its path or its file name
+# (case-insensitive fnmatch, where * also matches "/"), in this order. A file that matches none
+# fails the test, so a new kind of file is counted or set aside on purpose.
+# adr_data is matched first and counts toward no total: a file under docs/adr/data/ is not
+# counted whatever its extension, Markdown included (the owner's decision, 2026-11-13).
+# Markdown anywhere else, evidence/ and upstream/ included, is prose.
+adr_data = ["docs/adr/data/*"]
+prose = ["*.md", "*.markdown"]
+not_counted = ["uv.lock", "evidence/*", "upstream/*", "*.py", "*.sh"]
+config = [
+  "*.toml",
+  "*.yml",
+  "*.yaml",
+  "*.json",
+  "*.ini",
+  "*.cfg",
+  "*.conf",
+  "*.service",
+  "*.timer",
+  "*.socket",
+  "*.user-data",
+  ".gitignore",
+  ".gitattributes",
+  ".worktreeinclude",
+  ".python-version",
+]

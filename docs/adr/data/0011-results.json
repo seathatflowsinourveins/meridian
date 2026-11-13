@@ -1,0 +1,712 @@
+{
+ "adr": "0011",
+ "status": "always-on measured, 3 probe runs per arm (o200k proxy); the real task R2 ran 3 runs per arm on 2026-11-13 and is in 0011-real-results.json",
+ "what": "Always-on context of DeepSeek Harness 0.2.2-rc.1 without and with dsh-goalloop-agentteams 0.9.2: dsh's first provider request for a one-line probe, captured locally and split into its parts, 3 runs per arm. The real task (the boundary replay, R2 in ab-tasks.md) did not run. This file holds every always-on and run figure in ADR 0011, the re-check's counts from the source (static_from_source) and its count of what the digest would hash (digest_at_main). Other upstream facts (pin, licence, maintainer, advisories, downloads) come from the assessment and the re-check, not from this file.",
+ "runtime": "dsh 0.2.2-rc.1 (node v24.22.3, bubblewrap 0.11.1, Python 3.14.4, git 2.53.0) in distro meridian, version re-checked before every continuation run; addition dsh-goalloop-agentteams 0.9.2 at ea481186 (19 shipped files, git blob ids under addition_files, re-checked for the continuation); model row deepseek-flash, thinking enabled, effort max (as sent: model deepseek-flash, max_tokens 256000, thinking enabled, output_config.effort max; never called)",
+ "setup": "Profiles arm-a (without) and arm-b (with) from dsh's headless template in a scratch DSH_HOME, both patched with 0011-overlay.cordis.yml. Arm B adds 0011-with-only.cordis.yml, a second --patch row naming the 19 files of the pinned release (addition_files below, checked against their git blob ids at ea481186b41b78ed897ac9abe7c4376aea2a55b2 before the first load); the two config dumps differ only by that row, which follows the overlay in arm B. The first session made them at 02:01:15 ET, 15 s after pilot A1 and before pilot B1 (see deviations). Each run had its own detached worktree of an unauthenticated scratch clone at 96e82e6b521cdb9c7d172176898d20e2658ec50b with tests/ from 39cb68ea3241caeececb6db0521a12ea2fa92fee, no uv sync, and a worktree name of the same length in both arms. The continuation rebuilt both profiles the same way; their init and dump files are byte-identical to the first session's, and the uploads-off, OTel-off and plugin-manager-off row checks passed in both arms.",
+ "capture": "dsh ran inside bwrap --unshare-net with DEEPSEEK_BASE_URL pointing at 0011_capture_server.py on 127.0.0.1, which recorded each request (credential headers redacted) and answered 400; the API key was a placeholder. Each run made exactly one request and ended with exit 1 and final reason INVALID_REQUEST, as intended. No model call was made and nothing left the machine, so there are no provider token counts.",
+ "split": "0011_analyze_capture.py: prompt = system text + the tools array as compact JSON in the order sent + the message texts; raw body = the whole JSON body as sent. Each tool is also counted on its own JSON, so the per-tool tokens do not add up to the array's count.",
+ "tokens": "Counted with 0011_count_tokens.py (byte-identical to 0010_count_tokens.py): o200k_base, OpenAI's vocabulary (file sha256 446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d), as a proxy: DeepSeek's tokenizer is not available offline.",
+ "probe": {
+  "file": "0011-probe.txt",
+  "text": "Reply with exactly the word OK. Do not call any tool.",
+  "bytes": 54,
+  "sha256": "8013cab46f99ff3a9ae167ef2b99843db315eb5c7980e7155e4b321f7c5dcdfd"
+ },
+ "arm_key": "0011-key.txt (A = without, B = with; profiles arm-a = A, arm-b = B)",
+ "order": "a1 b1 b2 a2 a3 b3 (ab-tasks.md's rule for every series, restated by the fact sheet; method-dsh and its check give b1 a1 a2 b2 b3 a3). A1 and B1 are the first session's pilots (2026-11-13, 02:00:58 to 02:01:34 ET). The first session's driver had planned six fresh runs A1 B1 B2 A2 A3 B3 after them and stopped at its Gateway check before its first run (02:03 ET; see gateway_check); the pilots were then counted as a1 and b1 (see deviations). B2, A2, A3 and B3 are the continuation (04:06:54 to 04:07:33 ET), one run per call of 0011_series2_always_on.sh (not published).",
+ "runs": [
+  {
+   "run": "A1",
+   "arm": "without",
+   "session": "first (pilot)",
+   "runner": "earlier, unkept version of the probe runner, no TMPDIR",
+   "gateway_check_before": "old check (pgrep -f), passed; no log kept",
+   "exit": 1,
+   "final_reason": "INVALID_REQUEST",
+   "duration_ms": 1811,
+   "requests_captured": 1,
+   "path": "/anthropic/v1/messages",
+   "body_bytes": 27428,
+   "body_sha256": "0ebb17cc93d98f50e0e54722b164f2e89e6fb99e1937accf3cf250529d1ffc7b",
+   "prompt_tokens_o200k": 5825,
+   "raw_body_tokens_o200k": 6003,
+   "passed_as_probe": true,
+   "void": false,
+   "containment": "checked at session level only (no per-run files): home unchanged, owner dsh files hash-identical, no process left. No TMPDIR, so dsh made its spill root (dsh-spill-XXXXXX) in /tmp; pilot B1's dsh startup swept it. A pre-existing empty root, dsh-spill-CRIDfv, was swept by a dsh startup, this run's or a concurrent agent's.",
+   "config_check": "the pre-registered dump, diff and stop check came 15 s after this run (02:01:15 ET)"
+  },
+  {
+   "run": "B1",
+   "arm": "with",
+   "session": "first (pilot)",
+   "runner": "earlier, unkept version of the probe runner, no TMPDIR",
+   "gateway_check_before": "old check (pgrep -f), passed; no log kept",
+   "exit": 1,
+   "final_reason": "INVALID_REQUEST",
+   "duration_ms": 1832,
+   "requests_captured": 1,
+   "path": "/anthropic/v1/messages",
+   "body_bytes": 36823,
+   "body_sha256": "1d930f459d31fe4dde5938541a473cda3e2a64c73d765c2f3fb516053f50a163",
+   "prompt_tokens_o200k": 7809,
+   "raw_body_tokens_o200k": 8004,
+   "passed_as_probe": true,
+   "void": false,
+   "containment": "home unchanged; worktree showed only the two tests/ files staged from 39cb68e; no .goal-gate/; no ~/.dsh write; no process left. No TMPDIR, so /tmp changed: its diff (raw/pilot-B1.tmp.diff) shows dsh's own spill-root swap, dsh-spill-8CBiGJ gone (pilot A1's, swept at this run's dsh startup) and dsh-spill-VbuX0D new (this run's, empty); the measurer removed that root afterwards.",
+   "config_check": "passed before this run (dumps 02:01:15 ET)"
+  },
+  {
+   "run": "B2",
+   "arm": "with",
+   "session": "continuation",
+   "runner": "run_probe.sh and the series driver as run (not published: they built each run tree from a full clone)",
+   "gateway_check_before": "04:06:54 gateway down (exit 0)",
+   "exit": 1,
+   "final_reason": "INVALID_REQUEST",
+   "duration_ms": 2713,
+   "requests_captured": 1,
+   "path": "/anthropic/v1/messages",
+   "body_bytes": 36823,
+   "body_sha256": "c41d4c4a7f3140c9083e96f46d3f8d3dec0588877cff22c64656ecca95edacaa",
+   "prompt_tokens_o200k": 7809,
+   "raw_body_tokens_o200k": 8004,
+   "passed_as_probe": true,
+   "void": false,
+   "containment": "home diff 0, /tmp diff 0; worktree status only tests/test_boundary.py and tests/test_public_tree.py, staged from 39cb68e; main-checkout worktree list unchanged; ~/.dsh writes 0; .goal-gate/ absent; processes left 0; per-run TMPDIR 7 entries (dsh's own spill folder and native-module cache)",
+   "config_check": "passed before the continuation (profiles and dumps rebuilt at 04:05 ET, identical to the first session's)"
+  },
+  {
+   "run": "A2",
+   "arm": "without",
+   "session": "continuation",
+   "runner": "run_probe.sh and the series driver as run (not published: they built each run tree from a full clone)",
+   "gateway_check_before": "04:07:12 gateway down (exit 0)",
+   "exit": 1,
+   "final_reason": "INVALID_REQUEST",
+   "duration_ms": 1811,
+   "requests_captured": 1,
+   "path": "/anthropic/v1/messages",
+   "body_bytes": 27428,
+   "body_sha256": "510776f589caa93db6e9e249b2f3357b0d6492a828da7a558f09924499bdac25",
+   "prompt_tokens_o200k": 5825,
+   "raw_body_tokens_o200k": 6003,
+   "passed_as_probe": true,
+   "void": false,
+   "containment": "home diff 0, /tmp diff 0; worktree status only tests/test_boundary.py and tests/test_public_tree.py, staged from 39cb68e; main-checkout worktree list unchanged; ~/.dsh writes 0; .goal-gate/ absent; processes left 0; per-run TMPDIR 7 entries (dsh's own spill folder and native-module cache)",
+   "config_check": "passed before the continuation (profiles and dumps rebuilt at 04:05 ET, identical to the first session's)"
+  },
+  {
+   "run": "A3",
+   "arm": "without",
+   "session": "continuation",
+   "runner": "run_probe.sh and the series driver as run (not published: they built each run tree from a full clone)",
+   "gateway_check_before": "04:07:25 gateway down (exit 0)",
+   "exit": 1,
+   "final_reason": "INVALID_REQUEST",
+   "duration_ms": 1813,
+   "requests_captured": 1,
+   "path": "/anthropic/v1/messages",
+   "body_bytes": 27428,
+   "body_sha256": "bb6c92d50488a227caa6bfd1542d0c810df557e2ef3d2722f64d95edb8a64513",
+   "prompt_tokens_o200k": 5825,
+   "raw_body_tokens_o200k": 6003,
+   "passed_as_probe": true,
+   "void": false,
+   "containment": "home diff 0, /tmp diff 0; worktree status only tests/test_boundary.py and tests/test_public_tree.py, staged from 39cb68e; main-checkout worktree list unchanged; ~/.dsh writes 0; .goal-gate/ absent; processes left 0; per-run TMPDIR 7 entries (dsh's own spill folder and native-module cache)",
+   "config_check": "passed before the continuation (profiles and dumps rebuilt at 04:05 ET, identical to the first session's)"
+  },
+  {
+   "run": "B3",
+   "arm": "with",
+   "session": "continuation",
+   "runner": "run_probe.sh and the series driver as run (not published: they built each run tree from a full clone)",
+   "gateway_check_before": "04:07:31 gateway down (exit 0)",
+   "exit": 1,
+   "final_reason": "INVALID_REQUEST",
+   "duration_ms": 1812,
+   "requests_captured": 1,
+   "path": "/anthropic/v1/messages",
+   "body_bytes": 36823,
+   "body_sha256": "7aabca793ab432d243bb3a9d85ff6b20a33fbc81749fbeecb1ed6118123484b5",
+   "prompt_tokens_o200k": 7809,
+   "raw_body_tokens_o200k": 8004,
+   "passed_as_probe": true,
+   "void": false,
+   "containment": "home diff 0, /tmp diff 0; worktree status only tests/test_boundary.py and tests/test_public_tree.py, staged from 39cb68e; main-checkout worktree list unchanged; ~/.dsh writes 0; .goal-gate/ absent; processes left 0; per-run TMPDIR 7 entries (dsh's own spill folder and native-module cache)",
+   "config_check": "passed before the continuation (profiles and dumps rebuilt at 04:05 ET, identical to the first session's)"
+  }
+ ],
+ "always_on": {
+  "without_runs": [
+   5825,
+   5825,
+   5825
+  ],
+  "with_runs": [
+   7809,
+   7809,
+   7809
+  ],
+  "median_without": 5825,
+  "median_with": 7809,
+  "delta_tokens": 1984,
+  "delta_chars": 9349,
+  "counting_basis": "Prompt texts: the system text, the tools array as compact JSON in the order sent and the message texts, the probe included (it is in the first user message); without_runs, with_runs, the medians and delta_tokens are on this basis. The raw body, the whole JSON body as sent, is in raw_body_delta and parts.*.raw_body. dsh_own_goal_tools_in_both_arms counts each schema's JSON on its own and sums them, so those figures are not a slice of the array's count.",
+  "spread_per_arm": 0,
+  "agreement": "In every run the system text, the tools array and the request options are byte-identical to the pilot of the same arm; the first user message differs only in the worktree name (A1 against A2, for example), of equal length, so every count is identical.",
+  "provider_tokens": "not measured: no request reached DeepSeek",
+  "dsh_own_goal_tools_in_both_arms": {
+   "create_goal": 110,
+   "get_goal": 36,
+   "update_goal": 192,
+   "note": "o200k tokens, each schema counted on its own JSON (parts.without.tool_schemas.each)"
+  },
+  "scope": "The absolute figures and the share describe this headless-derived A/B profile, not dsh-tui; only the with-minus-without delta is the claim.",
+  "raw_body_delta": {
+   "bytes": 9395,
+   "tokens": 2001
+  },
+  "requests_measured": "the first request of each run only; no later request was made"
+ },
+ "parts": {
+  "without": {
+   "system_prompt": {
+    "chars": 2222,
+    "tokens": 449
+   },
+   "tool_schemas": {
+    "count": 22,
+    "chars": 18583,
+    "tokens": 3857,
+    "each": [
+     {
+      "name": "bash",
+      "chars": 2282,
+      "tokens": 474
+     },
+     {
+      "name": "create_goal",
+      "chars": 579,
+      "tokens": 110
+     },
+     {
+      "name": "edit",
+      "chars": 1153,
+      "tokens": 235
+     },
+     {
+      "name": "get_goal",
+      "chars": 172,
+      "tokens": 36
+     },
+     {
+      "name": "glob",
+      "chars": 752,
+      "tokens": 164
+     },
+     {
+      "name": "grep",
+      "chars": 704,
+      "tokens": 153
+     },
+     {
+      "name": "interrupt_agent",
+      "chars": 516,
+      "tokens": 102
+     },
+     {
+      "name": "job_kill",
+      "chars": 372,
+      "tokens": 78
+     },
+     {
+      "name": "job_list",
+      "chars": 170,
+      "tokens": 38
+     },
+     {
+      "name": "job_output",
+      "chars": 617,
+      "tokens": 129
+     },
+     {
+      "name": "list_agents",
+      "chars": 663,
+      "tokens": 134
+     },
+     {
+      "name": "read",
+      "chars": 440,
+      "tokens": 100
+     },
+     {
+      "name": "read_image",
+      "chars": 391,
+      "tokens": 82
+     },
+     {
+      "name": "send_message",
+      "chars": 529,
+      "tokens": 113
+     },
+     {
+      "name": "skill",
+      "chars": 334,
+      "tokens": 69
+     },
+     {
+      "name": "subagent",
+      "chars": 1163,
+      "tokens": 229
+     },
+     {
+      "name": "subagent_fork",
+      "chars": 1270,
+      "tokens": 252
+     },
+     {
+      "name": "todo_write",
+      "chars": 858,
+      "tokens": 184
+     },
+     {
+      "name": "update_goal",
+      "chars": 986,
+      "tokens": 192
+     },
+     {
+      "name": "workflow",
+      "chars": 3391,
+      "tokens": 739
+     },
+     {
+      "name": "working_directory",
+      "chars": 362,
+      "tokens": 69
+     },
+     {
+      "name": "write",
+      "chars": 856,
+      "tokens": 175
+     }
+    ]
+   },
+   "first_user_message": {
+    "text_blocks": 3,
+    "chars": 6162,
+    "tokens": 1519
+   },
+   "prompt": {
+    "chars": 26967,
+    "tokens": 5825
+   },
+   "raw_body": {
+    "bytes": 27428,
+    "tokens": 6003
+   }
+  },
+  "with": {
+   "system_prompt": {
+    "chars": 2222,
+    "tokens": 449
+   },
+   "tool_schemas": {
+    "count": 35,
+    "chars": 26123,
+    "tokens": 5454,
+    "each": [
+     {
+      "name": "bash",
+      "chars": 2282,
+      "tokens": 474
+     },
+     {
+      "name": "create_goal",
+      "chars": 579,
+      "tokens": 110
+     },
+     {
+      "name": "edit",
+      "chars": 1153,
+      "tokens": 235
+     },
+     {
+      "name": "get_goal",
+      "chars": 172,
+      "tokens": 36
+     },
+     {
+      "name": "glob",
+      "chars": 752,
+      "tokens": 164
+     },
+     {
+      "name": "goal_gate_audit",
+      "chars": 385,
+      "tokens": 84
+     },
+     {
+      "name": "goal_gate_baseline",
+      "chars": 482,
+      "tokens": 102
+     },
+     {
+      "name": "goal_gate_check",
+      "chars": 597,
+      "tokens": 126
+     },
+     {
+      "name": "goal_gate_collect",
+      "chars": 319,
+      "tokens": 70
+     },
+     {
+      "name": "goal_gate_dispatch",
+      "chars": 777,
+      "tokens": 168
+     },
+     {
+      "name": "goal_gate_doctor",
+      "chars": 337,
+      "tokens": 67
+     },
+     {
+      "name": "goal_gate_grill",
+      "chars": 554,
+      "tokens": 117
+     },
+     {
+      "name": "goal_gate_init",
+      "chars": 326,
+      "tokens": 76
+     },
+     {
+      "name": "goal_gate_judge",
+      "chars": 579,
+      "tokens": 129
+     },
+     {
+      "name": "goal_gate_staff",
+      "chars": 899,
+      "tokens": 193
+     },
+     {
+      "name": "goal_gate_stamp",
+      "chars": 939,
+      "tokens": 193
+     },
+     {
+      "name": "goal_gate_status",
+      "chars": 435,
+      "tokens": 90
+     },
+     {
+      "name": "goal_loop_at",
+      "chars": 898,
+      "tokens": 186
+     },
+     {
+      "name": "grep",
+      "chars": 704,
+      "tokens": 153
+     },
+     {
+      "name": "interrupt_agent",
+      "chars": 516,
+      "tokens": 102
+     },
+     {
+      "name": "job_kill",
+      "chars": 372,
+      "tokens": 78
+     },
+     {
+      "name": "job_list",
+      "chars": 170,
+      "tokens": 38
+     },
+     {
+      "name": "job_output",
+      "chars": 617,
+      "tokens": 129
+     },
+     {
+      "name": "list_agents",
+      "chars": 663,
+      "tokens": 134
+     },
+     {
+      "name": "read",
+      "chars": 440,
+      "tokens": 100
+     },
+     {
+      "name": "read_image",
+      "chars": 391,
+      "tokens": 82
+     },
+     {
+      "name": "send_message",
+      "chars": 529,
+      "tokens": 113
+     },
+     {
+      "name": "skill",
+      "chars": 334,
+      "tokens": 69
+     },
+     {
+      "name": "subagent",
+      "chars": 1163,
+      "tokens": 229
+     },
+     {
+      "name": "subagent_fork",
+      "chars": 1270,
+      "tokens": 252
+     },
+     {
+      "name": "todo_write",
+      "chars": 858,
+      "tokens": 184
+     },
+     {
+      "name": "update_goal",
+      "chars": 986,
+      "tokens": 192
+     },
+     {
+      "name": "workflow",
+      "chars": 3391,
+      "tokens": 739
+     },
+     {
+      "name": "working_directory",
+      "chars": 362,
+      "tokens": 69
+     },
+     {
+      "name": "write",
+      "chars": 856,
+      "tokens": 175
+     }
+    ]
+   },
+   "first_user_message": {
+    "text_blocks": 4,
+    "chars": 7971,
+    "tokens": 1906
+   },
+   "prompt": {
+    "chars": 36316,
+    "tokens": 7809
+   },
+   "raw_body": {
+    "bytes": 36823,
+    "tokens": 8004
+   }
+  }
+ },
+ "delta": {
+  "system_prompt": {
+   "chars": 0,
+   "tokens": 0
+  },
+  "tool_schemas": {
+   "count": 13,
+   "chars": 7540,
+   "tokens": 1597,
+   "added": [
+    "goal_gate_audit",
+    "goal_gate_baseline",
+    "goal_gate_check",
+    "goal_gate_collect",
+    "goal_gate_dispatch",
+    "goal_gate_doctor",
+    "goal_gate_grill",
+    "goal_gate_init",
+    "goal_gate_judge",
+    "goal_gate_staff",
+    "goal_gate_stamp",
+    "goal_gate_status",
+    "goal_loop_at"
+   ],
+   "positions": "1-based positions 6 to 18 of 35 (tools are sent sorted by name); the 22 shared schemas are unchanged",
+   "shim": "byte-identical to the re-check's reconstruction in the plugin's fallback-shim key order (7,541 characters, 1,599 tokens standalone): loaded by a relative --patch row, the plugin's import of @deepseek-ai/dsh-tools did not resolve, so dsh's argument validation does not apply"
+  },
+  "first_user_message": {
+   "chars": 1809,
+   "tokens": 387,
+   "what": "a skill-catalogue system-reminder appended to the first user message as a fourth text block; the rest of that message is identical in both arms apart from one character of the worktree name"
+  },
+  "prompt": {
+   "chars": 9349,
+   "tokens": 1984,
+   "share_of_without": "+34.1 %",
+   "agents_md_comparison": "not made for the measured delta: it is at 96e82e6, whose AGENTS.md is not main's, and it includes the whole catalogue frame (+387) that main's two repo skills would partly carry already. The comparison with AGENTS.md at main uses the at-main figure from the source, static_from_source.total (1,839 tokens, 85 % of AGENTS.md at 9c5daaa). An earlier version of this file gave 0.92, the measured delta over AGENTS.md at main, which mixed the two bases."
+  },
+  "where": "Measured on the first request only (3 runs per arm). From dsh's source and session log, not measured: dsh sends the tools array with every request, and the catalogue is a user message that every later request carries in its history until compaction, so all of the delta would be in every request of a session. At 96e82e6 there is no other skill, so the whole catalogue frame is new; at main 9c5daaa, which has 2 repo skills, the re-check's static +243 applies to the catalogue instead (about 1,840 in all; not measured live)."
+ },
+ "static_from_source": {
+  "source": "the re-check's independent reconstruction from the v0.9.2 source (ea48118) in a worktree of meridian's main 9c5daaa, o200k_base",
+  "tool_schemas_13": {
+   "chars": 7541,
+   "tokens": 1596,
+   "tokens_in_shim_key_order": 1599
+  },
+  "catalog_lines_3": {
+   "chars": 1124,
+   "tokens": 243
+  },
+  "catalog_at_main": {
+   "without": {
+    "chars": 1718,
+    "tokens": 398
+   },
+   "with": {
+    "chars": 2843,
+    "tokens": 641
+   }
+  },
+  "catalog_frame_with_only_these_3": {
+   "chars": 1808,
+   "tokens": 386
+  },
+  "total": {
+   "chars": 8665,
+   "tokens": 1839,
+   "share_of_agents_md": "85 %"
+  },
+  "agents_md_at_main": {
+   "lines": 126,
+   "chars": 8318,
+   "tokens": 2159
+  },
+  "on_demand": {
+   "goal-loop": {
+    "chars": 14953,
+    "tokens": 3996
+   },
+   "goal-loop-contract": {
+    "chars": 8500,
+    "tokens": 2214
+   },
+   "goal-loop-grill": {
+    "chars": 15129,
+    "tokens": 3820
+   },
+   "goal-loop-at turn": {
+    "chars": 1390,
+    "tokens": 609
+   }
+  }
+ },
+ "digest_at_main": {
+  "source": "the re-check (its check X08-digest-size), a read-only count in meridian's main checkout on 2026-11-13, leaving out .git, node_modules, runs, risk, .env* and *.contract.json, which the digest would also hash",
+  "files_up_to_2_MB": 9067,
+  "bytes_of_those_files": 90428230,
+  "files_over_2_MB": 4,
+  "pyc_files_in_venv": 155,
+  "boundary": "The digest's exclude list is fixed at .goal-gate, node_modules, .git and .dsh (lib/core.js L118 at ea48118); no caller passes another and no setting changes it, and fingerprintFile (L121-L130) SHA-1-hashes the contents of every other file up to 2 MB. In dsh's process the gate would therefore read the contents of any .env* file in the checkout (secret values, which no agent here may read) and of every *.contract.json and file under risk/."
+ },
+ "rule": "Adopt only if no BLOCKED run and no safety violation, and either S_with >= 2 and S_without <= 1, or S_with >= S_without >= 2 with median billed tokens per run (input + cache-read + cache-write + output over every session of the run) at most 0.75 x the without arm's; S = graded passes per arm. Otherwise not adopted (0011-prereg.txt point 5; method-dsh: 'Otherwise REJECT').",
+ "rule_result": "see 0011-real-results.json (R2, 2026-11-13 09:02 to 09:11 ET)",
+ "gateway_check": "The first session's check, in its series driver (its as-run copy not published), was 'no listener on :4002 and no pgrep -f ibgateway match'. At 02:03 ET it matched another agent's Claude Code run whose command line carries that string; port 4002 had no listener and no Gateway process ran, so it was a false alarm, and the series stopped as its rule says. The pilots' checks with that test, before A1 and B1, left no log. The continuation used the owner's fixed check, which matches a listener on port 4002, executables under the Gateway's install folder and the process names java and ibgateway, never command lines. It reported 'gateway down' before each of B2, A2, A3 and B3 and after cleanup. Nothing connected to port 4002, and no trading lane or broker code ran.",
+ "deviations": [
+  "Worktrees came from an unauthenticated scratch clone of the public repository, not meridian's main checkout (the main checkout must not change).",
+  "Probe count: 3 runs per arm, from the assessment, the earliest source ('3 runs each'), although method-dsh ('one probe call per arm (n=0)'), the fact sheet ('n=0 probe per arm') and method-dsh's check ('run the n=0 probe on the task base'), all later, say one probe per arm. The precedence 'the later file wins' is stated only in the published pre-registration, written after the runs; no source written before them sets it. Found afterwards.",
+  "The probe worktrees had no uv sync (the prompt does not read .venv); the pilots set no TMPDIR. The probe does not need either: the captures are identical with and without TMPDIR.",
+  "After the false stop the series continued one run per call with a new driver and the fixed check; the probe runner was unchanged.",
+  "The pilots A1 and B1, made with an earlier, unkept probe runner, were counted as runs a1 and b1 of the 3+3, although the first driver had planned six fresh runs after them; so 2 runs per arm come from the published runner. The counts are unaffected: every run of an arm is byte-identical in system text, tools and request options.",
+  "Pilot A1 (02:00:58 to 02:01:00 ET) ran about 15 s before the pre-registered dump, diff and stop check (dumps 02:01:15 ET); the profile init files (01:56:58 ET) lack the overlay rows. B1 and the continuation runs came after the check. A1 ran inside bwrap --unshare-net, so nothing could be uploaded, and it is byte-identical to A2 and A3.",
+  "The pre-registration's 'overlay last in both arms' held only in arm A: in arm B the with-only patch came after the overlay (as ab-dsh.md's own run line has it). That row only inserts goal-gate and changes no overlay row.",
+  "Run order a1 b1 b2 a2 a3 b3 from the fact sheet and ab-tasks.md, although method-dsh's check, the later file, gives b1 a1 a2 b2 b3 a3. The precedence 'the later file wins' is stated only in the published pre-registration, written after the runs; no source written before them sets it. Found afterwards."
+ ],
+ "cost": "DeepSeek tokens billed: 0. No request left the machine: every dsh run, profile init and dump ran in bwrap --unshare-net, the runs against a 127.0.0.1 capture endpoint with the placeholder key 'capture-only-placeholder'; the owner's key was never read, sourced, copied or linked. Claude Code agents started 0, Codex runs 0; dsh sessions 6, the probe runs, none reaching a model (plus the profile inits and dumps). This measurement made 0 GitHub REST and 0 GraphQL calls (only unauthenticated git clones, all removed); the re-check it relies on made 5 REST and 2 GraphQL calls.",
+ "containment": "Per run: see runs. Over both sessions: the owner's five dsh files hash-identical before and after (sha256sum -c OK), nothing under ~/.dsh newer than the start stamps, the home folder's top level unchanged, nothing run against meridian's main checkout (read-only worktree lists with --no-optional-locks only). Apart from the pilots' spill roots in /tmp (dsh's own, in both arms, because the pilots set no TMPDIR; see runs A1 and B1), changes in /tmp and in the main checkout's worktree list during the sessions came from other agents' measurements, between runs; each continuation run's own diffs are 0.",
+ "addition_files": {
+  "commit": "ea481186b41b78ed897ac9abe7c4376aea2a55b2",
+  "git_blob_ids": {
+   "README.md": "476cc905330427e759cb9a1fa342c426191cec7c",
+   "README.zh.md": "6e458f9a3c879c9ef25d018d9cbb2a98d4253209",
+   "bin/gate.mjs": "ed8db12866116de12dfe7ea03e0c6a9548b12654",
+   "cordis.patch.yml": "25848f36a80532fd0aed0a53330fc1671c97c8f1",
+   "docs/agent-teams-loop.md": "3fe739ed3bf6b4d523857a8b6923bfb920718964",
+   "docs/defect-ledger.md": "0a156f566805f0bd395a6bfa2951e5ff71c73583",
+   "docs/e2e-evidence.md": "9802844f8aa9cc186bc11b50a8cdc72e53eeed8e",
+   "docs/live-demo-ledger/goal.md": "37461110aa8d080da74ced692b5cd018507dba1a",
+   "docs/live-demo-ledger/history.jsonl": "3849060f3b488af6eae2bbb8629789e063f94f42",
+   "docs/live-demo-ledger/state.json": "b4fdab75294cc7ddf6360af67546f78a5363dfcd",
+   "docs/platform-contract.md": "fc6d884d5bf7976fa67bfd7fa8416278b3e0ac9d",
+   "lib/core.js": "a173305efd16b62d867a4a954c21b231eb7024d7",
+   "lib/grill.js": "885730564a93a992895aa9ffdf50b6dad1d8e290",
+   "lib/index.js": "b6a465b8e7d227112add57686dcbe307b9bbb2a8",
+   "lib/ledger.js": "3572b3086ce67fc5fd8d84237fcaa985fc1538a8",
+   "package.json": "c37bc7d954e74ea3b8e97705bc1c1a241d7f2d23",
+   "skills/goal-loop-contract/SKILL.md": "335749996849191b4ef957fc39768947797d26e5",
+   "skills/goal-loop-grill/SKILL.md": "a949f11120a2b3a3481cc778731c45ba8cf14f9b",
+   "skills/goal-loop/SKILL.md": "ea2283be1c38be0ea0cf1d97f88d490e3575b9fb"
+  }
+ },
+ "scripts": {
+  "published_note": "published_sha256 lists each data file as published beside ADR 0011 in docs/adr/data, to be committed together with the ADR; it does not say that they are already committed.",
+  "published_sha256": [
+   {
+    "file": "0011-key.txt",
+    "sha256": "8e96ad8b5f40ee7aa6264fcc746c15f34ab6fad50ce3d7a17515d3f3b1874cac"
+   },
+   {
+    "file": "0011-overlay.cordis.yml",
+    "sha256": "fe20e13d97056e686a5d5e2926882729837453ea84c5b395b31abb218bf7a962"
+   },
+   {
+    "file": "0011-prereg.txt",
+    "sha256": "c0032427fe08776825b4234516cb679a2247e69e3b187d6228bb6562e27aeba5"
+   },
+   {
+    "file": "0011-probe.txt",
+    "sha256": "8013cab46f99ff3a9ae167ef2b99843db315eb5c7980e7155e4b321f7c5dcdfd"
+   },
+   {
+    "file": "0011-with-only.cordis.yml",
+    "sha256": "8bb86f9dbcbdea6c9459b3b1e5457fe6054d5c908f9c381314d0e5b5d98a6f93"
+   },
+   {
+    "file": "0011_analyze_capture.py",
+    "sha256": "b43b7acc23c06307a3cd9f4c0f0b8790703c22270fab79469ad4aca157deb65d"
+   },
+   {
+    "file": "0011_capture_server.py",
+    "sha256": "84eddf61bcc4e74828eb64305108091fcf86d79394dd59bcaa1cb47839163d84"
+   },
+   {
+    "file": "0011_count_tokens.py",
+    "sha256": "a8dcf1e4dedd1ded41652e6b3a3291094279b4857cf0d6c1e3ea587bc80f7502"
+   },
+   {
+    "file": "0011_gateway_guard.sh",
+    "sha256": "12bbc82389ebe3bb30df285cbc7844dfb1d0e85757fe62ceb5e1f078729d9fec"
+   }
+  ],
+  "as_run_sha256": [
+   {
+    "file": "ab-overlay.cordis.yml",
+    "sha256": "31802699fcb8ebb1aed708956506a44bb7bca94be494bda2b5456604a8c9c7bb"
+   },
+   {
+    "file": "series_always_on.sh (first session's driver as run, not published; made no capture; see earlier_commit)",
+    "sha256": "20b9af8e87ca97b2a4eeb97d688d569f3da1fe8479105a21b61218710180beff"
+   },
+   {
+    "file": "gateway-guard.sh (the owner's fixed guard, under ~/.cache/meridian)",
+    "sha256": "12bbc82389ebe3bb30df285cbc7844dfb1d0e85757fe62ceb5e1f078729d9fec"
+   }
+  ],
+  "byte_identical_to_run": "0011_capture_server.py, 0011_analyze_capture.py, 0011_count_tokens.py (also byte-identical to 0010_count_tokens.py), 0011-probe.txt, 0011-with-only.cordis.yml, 0011-key.txt and 0011_gateway_guard.sh; only their names are new (the run's names without the 0011 prefix; 0011-key.txt was arm-key.txt, 0011_gateway_guard.sh was ~/.cache/meridian/gateway-guard.sh).",
+  "changed_from_run": "the probe runner and series driver are not published (removed 2026-11-13: they built each run tree from a full clone of the public repository)",
+  "pilots": "A1 and B1 ran with an earlier, unkept version of the probe runner that did not set TMPDIR. The four continuation runs used run_probe.sh unchanged (as-run sha256 above) and reproduced the pilots byte for byte in system text, tools and request options, and count for count; so 2 of the 3 runs per arm come from the published runner."
+ },
+ "not_here": "Request bodies, split parts, run streams, session logs, config dumps and the method notes files hold local paths, so they stay on the owner's machine: not published, and not in meridian-evidence either (see deviations).",
+ "edited": "2026-11-13 after the real-task series: the replay plan that never ran, its rule reading and the always-on drivers (which built run trees from a full clone) were removed; one commit id was removed"
+}

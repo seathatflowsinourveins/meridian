@@ -1,0 +1,51 @@
+# ADR 0007 fact sheet: openai/plugins in Codex CLI (verified, read 2026-11-13)
+
+## Pin
+- openai/plugins has no tags and no releases (git ls-remote; GraphQL releases 0, tag refs 0). Pin = commit `d420d13051bffe4543ed39e30fa46b87148e47dd`, 2026-11-06T19:08:34Z, "Add AWS Core to curated marketplace (#410)"; still HEAD of main on 2026-11-13 (ls-remote).
+- Runtime: Codex `rust-v0.167.2` (tag object 08a3b12 -> commit `ce21072c90d32c40af7a55b60b2fb35c84a43a6a`, released 2026-11-11T22:44:46Z) is what is installed (`codex --version` in meridian). It is no longer the newest: `rust-v0.168.0` was released 2026-11-13T03:54:29Z (GraphQL), and Codex updates itself.
+
+## Licence, maintainers, activity
+- No repository licence: REST `repos/openai/plugins/license` 404, GraphQL licenseInfo null. Per-plugin `license` fields: 37 MIT, 8 Proprietary, 11 none, 2 Apache-2.0, 1 each GPL-3.0-only, LicenseRef-Figma-Developer-Terms, UNLICENSED, "Apache-2.0 AND CC-BY-4.0" (plugins/*/.codex-plugin/plugin.json).
+- Owner: GitHub Organization openai. Created 2026-03-04T21:52:32Z. 310 commits; 11 since 2026-08-14 (willwang-openai 7); 63 contributors (REST); 46 open PRs; issues disabled (GraphQL).
+- Matched plugin codex-security: version "0.1.32", license "Proprietary", OWNERS `@openai/cyber-products`; last changed 0722921d 2026-10-08 "update API catalog to 0.1.32". Upstream openai/codex-security is Apache-2.0; its npm release npm-v0.1.32 (7c19cce, 2026-09-28) already carried plugin.json version 0.1.95 and Apache-2.0, so "0.1.32" is the npm release number. Upstream is now at npm-v0.10.0 (2026-11-12T02:18:52Z; 55 releases), HEAD f26b669 (2026-11-13T05:50:46Z).
+
+## Advisories (GraphQL G2 `securityVulnerabilities`, REST R1-R3 repo advisories)
+- Repo advisories: openai/plugins none, openai/codex-security none, openai/codex 1 (GHSA-w5fx-fh39-j5rw, 2025). npm @openai/codex: 2 advisories (<= 0.23.0; 0.2.0-0.38.0), neither covers 0.167.2. @openai/codex-sdk, @openai/codex-security, xcodebuildmcp: none.
+- Bundled in codex-security 0.1.32 (decompressed bundle path markers): zod 4.6.5 in GHSA-mrhx-c7xc-m3w5 (high, fixed 4.6.6); @modelcontextprotocol/sdk 1.31.0 in GHSA-46jr-4wx8-v453 and GHSA-22jm-h49p-29qw (high), GHSA-rvq5-wwqv-78pq and GHSA-6prh-2h8m-c8cw (moderate), fixed 1.32.0; fast-uri 3.1.8 in GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr (moderate), GHSA-xhq7-xmqj-769h, GHSA-333x-w4r6-6crp (low), fixed 3.1.9. smol-toml 1.9.0, ajv 8.20.0, ajv-formats 3.0.1, zod-to-json-schema 3.25.2, fast-deep-equal 3.1.3, json-schema-traverse 1.0.0: none affecting. Exploitability not assessed.
+
+## What it installs and sends
+- Not one unit: the source of Codex's curated marketplaces `openai-curated` (65 entries: 62 local, 3 remote) and `openai-api-curated` (51: 47 local, 4 remote incl. aws-core), remote entries with no ref (.agents/plugins/*.json).
+- 62 plugin dirs: 46 with skills (531 SKILL.md under skills/), 31 with MCP servers (26 HTTP vendor endpoints, 5 stdio; build-ios-apps runs `npx -y xcodebuildmcp@latest mcp`, unpinned), 34 with app connectors (public-equity-investing includes an `alpaca` broker connector), 1 hooks.json (figma PostToolUse "Write|Edit", echoes a reminder). 8 prebuilt .node files, all in codex-security. No LSP.
+- codex-security: 15 skills; stdio MCP `./scripts/launch_codex_security_mcp --stdio` (env passthrough of 45 names incl. OPENAI_API_KEY, AWS_* credentials, proxies); apps linear, github, atlassian. mcp/server.mjs and mcp/helpers.mjs each brotli-decompress bundles (266,028 -> 1,831,445 bytes; 63,398 -> 374,869 bytes) and run them with Module._compile. 39 registerTool sites; 12 model-visible in the main layout. Deep Scan starts `codex exec --experimental-json` workers (bundled @openai/codex-sdk 0.162.0-alpha.16) with approvalPolicy "never" and no sandboxMode, so they inherit the home's sandbox (danger-full-access in meridian). State in $CODEX_HOME/state/plugins/codex-security. Python workbench: standard library only.
+- Codex side (ce21072): with plugins on and no ChatGPT remote catalog, a start runs `git fetch --depth 1 --no-tags https://github.com/openai/plugins.git` into $CODEX_HOME/.tmp/plugins, falling back to the API zipball and chatgpt.com/backend-api/plugins/export/curated (core-plugins/src/startup_sync.rs:27-38,273; manager.rs:774-790); curated plugins are reinstalled at each new SHA (loader.rs:408-529). This already happened once on this machine: ~/.codex/.tmp/plugins (103 MB, d420d13) dated 2026-11-12 18:50 ET, before sign-in and before /etc/codex/requirements.toml (21:23).
+
+## Always-on texts (o200k_base, count_tokens.py; files in work/0007-verify3/injected)
+- Baseline: AGENTS.md at main 9c5daaa, 126 lines, 8,318 chars, 2,159 tokens.
+- codex-security skill-listing lines (host catalog, full descriptions, render.rs:309-318): 5,664 chars / 1,275 tokens with the protocol's cache path and a host alias root; 5,652 / 1,264 with the assessor's path (byte-identical to the assessor's file); 6,770 / 1,672 if Codex chooses absolute paths.
+- Deferred-namespace row `mcp__codex_security` (codex-mcp/src/tools.rs:228-233): 22 chars / 8 tokens if a <tools> block already exists (Codex's own snapshots show one for multi_agent_v1), else a new block 64 / 18.
+- Total per session: 5,686 chars / 1,283 tokens (aliased, row only) to 6,834 / 1,690 (absolute paths, new block) = 59% to 78% of the AGENTS.md baseline.
+- Not injected for gpt-6-astra: <plugins_instructions> (1,014 / 209): include_plugin_usage_instructions false in the bundled models.json and in ~/.codex/models_cache.json (fetched 2026-11-13T06:23:55Z). tool_suggest tools (772 / 165 + 1,139 / 264) only with apps, plugins and tool_suggest on. On demand: 12 MCP tool names and descriptions 3,801 / 748 (schemas not counted); @-mention hint 250 / 52. superpowers listing 3,152 / 690 (ADR 0005 covers it).
+
+## Overlap
+- Codex built-ins: /review, `codex review`, bundled system skill `review-agent` (in ~/.codex/skills/.system), /goal (feature goals, stable, on). Claude Code built-in /security-review and /code-review. openai/codex-plugin-cc 1.0.6: /codex:review and /codex:adversarial-review. ADR 0003 trailofbits (security audit), 0005 superpowers (same content here), 0006, 0008, 0009 review paths. gh CLI vs the github plugin.
+
+## Outcome evidence
+- None published for codex-security, superpowers or github in openai/plugins. Upstream openai/codex-security evals/ (108 files at f26b669) is harness code; 462bad3 (2026-11-13T05:49Z) adds synthetic examples with expected-findings.json, no results.
+
+## Pinned install and removal (Codex 0.167.2)
+- Documented route (learn.chatgpt.com/docs/plugins, read 2026-11-13): `codex`, then `/plugins`; no CLI install, pin or remove commands. CLI (cli/src/plugin_cmd.rs, marketplace_cmd.rs): `codex plugin add <plugin>@<marketplace>`, `codex plugin remove ...`, `codex plugin marketplace add|list|upgrade|remove`. Curated names are reserved (core-plugins/src/lib.rs:47-48, marketplace_policy.rs:343), so `marketplace add openai/plugins --ref <sha>` is refused; the only pin is a vendored local marketplace.
+- Blocked on this machine: /etc/codex/requirements.toml (deploy/wsl/meridian.user-data:68-77 at 9c5daaa; agents-check enforces it, setup.sh:490-509) pins `plugins`, `apps`, `skill_mcp_dependency_install`, `memories` = false and has an empty `[mcp_servers]`. Observed 2026-11-13 in a throwaway CODEX_HOME whose config.toml set plugins = true: `codex features list` reports plugins false; `codex plugin marketplace add <dir>` writes the entry, then `codex plugin add dummy@v3-dummy` fails "not found in marketplace" and `codex plugin list` shows none. Docs: an empty `mcp_servers` "disables all MCP servers"; plugin MCP servers are filtered the same way (core/src/config/mod.rs:1839-1856, 2290-2310).
+- Removal if ever installed: `codex plugin remove codex-security@<marketplace>`, `codex plugin marketplace remove <name>`, delete $CODEX_HOME/state/plugins/codex-security and $CODEX_HOME/.tmp/plugins*.
+
+## Measurement protocol
+- Real task R4 (ab-tasks.md): worktree at 96e82e6; brief verbatim "Review `meridian/boundary.py` for ways a login that is not a paper login could pass its checks. Report what you find and change nothing."; graded on whether the [DEFAULT]-inheritance defect is reported plus real/false findings against 39cb68ea3241caeececb6db0521a12ea2fa92fee. Judgement-graded, not exit-code graded. Rules: neutral a/b names, 3 runs per arm interleaved a1 b1 b2 a2 a3 b3, +2 per arm on a one-success gap or a 2-2 tie, brief sha256 recorded.
+- Not executable under this machine's policy: both arms would run with plugins off. Running it needs the owner to change machine policy (requirements.toml, user-data, agents-check) and to sign in to new homes; no agent may do either. Runs done: none.
+- Adoption rule (stated up front): adopt only if the preconditions hold (owner lifts the pins, vendored pinned copy, bundled advisories fixed or accepted) and D(with) >= 2/3 while D(without) <= 1/3, median false findings no higher, median total tokens <= 3x, measured always-on delta <= 1,500 tokens.
+
+## Provisional verdict
+- Not adopted. Machine policy blocks it (plugins and every MCP server pinned off), the documented route follows HEAD, codex-security here is an old, relabelled copy with high-severity bundled advisories, it adds about 1,283 tokens (59% of AGENTS.md) to every Codex session, and its job is already covered by /review, review-agent, /codex:review and Claude Code's /security-review.
+
+## Open questions
+- Does a ChatGPT-login backend catalog (openai-curated-remote) serve 0.1.32 or a newer codex-security? Not observable without enabling plugins.
+- Would Codex pick host aliases or absolute paths for this listing (1,275 vs 1,672 tokens)? Measurable only with plugins on.
+- Should upstream openai/codex-security (Apache-2.0, npm 0.10.0) get its own candidate, given that the same machine pins still block its MCP server?

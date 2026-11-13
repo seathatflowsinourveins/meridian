@@ -1,0 +1,1673 @@
+{
+ "schema": "meridian.adr-0001.results/1",
+ "frozen_commit": "f65d835ee39ca716ee0348db33e173d896ba3b47",
+ "questions": 30,
+ "measured_utc": "2026-11-13T02:56:22Z",
+ "machine": {
+  "cpus": 64,
+  "system": "Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.43"
+ },
+ "versions": {
+  "harness_blob": "99710a4ba7a6f46dd719233a070a00a12c360797",
+  "python": "3.14.10",
+  "semble": "0.7.2",
+  "ripgrep": "ripgrep 14.1.1 (rev 424a542a9c)",
+  "pyright": "pyright 1.1.414"
+ },
+ "model": {
+  "name": "minishlab/potion-code-16M-v2",
+  "revision": "e9d2a44ca6a05ac6685f3b23709ea57eb7352d5b",
+  "snapshot_files": [
+   "README.md",
+   "config.json",
+   "model.safetensors",
+   "tokenizer.json"
+  ],
+  "hf_home_bytes": 33563192,
+  "hf_home_entries": [
+   ".agent_harnesses.json",
+   "hub",
+   "hub/.locks",
+   "hub/CACHEDIR.TAG",
+   "hub/blobs",
+   "hub/models--minishlab--potion-code-16M-v2",
+   "xet",
+   "xet/https___cas_serv-tGqkUaZf_CBPHQ6h",
+   "xet/logs"
+  ],
+  "hosts_in_xet_log": [
+   "cas-server.xethub.hf.co",
+   "us.aws.cdn.hf.co"
+  ],
+  "first_load_with_download_s": 3.32
+ },
+ "pyright_ready_s": 1.39,
+ "semble_builds": {
+  "all": {
+   "first_cli_call_s": 1.306,
+   "warm_cli_call_s": 0.712,
+   "index_bytes": 858010,
+   "indexed_files": 24,
+   "chunks": 365
+  },
+  "code": {
+   "first_cli_call_s": 0.78,
+   "warm_cli_call_s": 0.631,
+   "index_bytes": 730492,
+   "indexed_files": 16,
+   "chunks": 308
+  },
+  "config": {
+   "first_cli_call_s": 0.684,
+   "warm_cli_call_s": 0.68,
+   "index_bytes": 19163,
+   "indexed_files": 4,
+   "chunks": 7
+  }
+ },
+ "semble_inprocess": {
+  "median_build_s_model_loaded": {
+   "code": 0.0835,
+   "docs": 0.0219,
+   "config": 0.0055,
+   "all": 0.1022
+  },
+  "median_search_s": 0.00092,
+  "max_search_s": 0.0027,
+  "packages": [
+   "annotated-types==0.8.0",
+   "anyio==4.16.0",
+   "attrs==26.1.0",
+   "cffi==2.1.1",
+   "click==8.5.0",
+   "cloudpickle==3.1.2",
+   "cryptography==50.0.2",
+   "filelock==4.2.9",
+   "fsspec==2026.9.0",
+   "h11==0.16.0",
+   "hf-xet==1.8.0",
+   "httpcore2==2.16.0",
+   "httpx2==2.16.0",
+   "huggingface_hub==2.4.0",
+   "idna==3.20",
+   "jinja2==3.1.6",
+   "joblib==1.6.0",
+   "jsonschema-specifications==2025.9.1",
+   "jsonschema==4.26.0",
+   "markupsafe==3.0.4",
+   "mcp-types==2.3.0",
+   "mcp==2.3.0",
+   "model2vec==0.10.0",
+   "numpy==2.5.4",
+   "opentelemetry-api==1.45.2",
+   "orjson==3.13.0",
+   "packaging==26.3",
+   "pathspec==1.1.1",
+   "prompt_toolkit==3.0.53",
+   "pycparser==3.12",
+   "pydantic==2.14.2",
+   "pydantic_core==2.50.2",
+   "pyjwt==2.15.1",
+   "python-multipart==0.0.33",
+   "pyyaml==6.0.3",
+   "questionary==2.1.1",
+   "referencing==0.37.0",
+   "rpds-py==2026.9.1",
+   "safetensors==0.8.0",
+   "semble-grammars==0.1.2",
+   "semble==0.7.2",
+   "sse-starlette==3.6.0",
+   "starlette==1.10.0",
+   "tokenizers==0.23.3",
+   "tqdm==4.70.1",
+   "tree-sitter==0.26.0",
+   "truststore==0.10.5",
+   "typing-inspection==0.4.5",
+   "typing_extensions==4.16.0",
+   "uvicorn==0.54.0",
+   "vicinity==0.4.6",
+   "wcwidth==0.9.4"
+  ],
+  "mcp_context": {
+   "tools": [
+    "search",
+    "find_related"
+   ],
+   "tool_definitions_chars": 3868,
+   "server_instructions_chars": 439
+  }
+ },
+ "summary": {
+  "slot1_rg_pyright": {
+   "at_1": 19,
+   "at_3": 24,
+   "at_5": 26
+  },
+  "slot1_printed_order": {
+   "at_1": 11,
+   "at_3": 19,
+   "at_5": 21
+  },
+  "semble_plan_query": {
+   "at_1": 16,
+   "at_3": 21,
+   "at_5": 23
+  },
+  "semble_verbatim_question_all_content": {
+   "at_1": 13,
+   "at_3": 15,
+   "at_5": 16
+  },
+  "by_category_at_3": {
+   "check": {
+    "questions": 10,
+    "slot1_at_3": 7,
+    "semble_at_3": 10
+   },
+   "calls": {
+    "questions": 4,
+    "slot1_at_3": 4,
+    "semble_at_3": 3
+   },
+   "upstream": {
+    "questions": 2,
+    "slot1_at_3": 1,
+    "semble_at_3": 0
+   },
+   "record": {
+    "questions": 5,
+    "slot1_at_3": 5,
+    "semble_at_3": 5
+   },
+   "test": {
+    "questions": 5,
+    "slot1_at_3": 4,
+    "semble_at_3": 1
+   },
+   "ops": {
+    "questions": 4,
+    "slot1_at_3": 3,
+    "semble_at_3": 2
+   }
+  },
+  "median_seconds": {
+   "slot1": 0.0105,
+   "semble_cli": 0.6596,
+   "semble_inprocess_search": 0.00092
+  },
+  "median_output_chars": {
+   "slot1": 1243.0,
+   "semble_cli": 4610.0
+  },
+  "all_results_stable_across_repeats": true
+ },
+ "decision": {
+  "rule": "adopt only if semble's count at 3 is at least 5 above slot 1's and it is not lower at 1 or at 5",
+  "semble_minus_slot1": {
+   "at_1": -3,
+   "at_3": -3,
+   "at_5": -3
+  },
+  "adopt": false
+ },
+ "audit": {
+  "model-download": {
+   "network": [
+    "socket.connect <socket.socket fd=12, family=2, type=1, proto=6, laddr=('0.0.0.0', 0)> ('3.168.73.111', 443)",
+    "socket.connect <socket.socket fd=5, family=2, type=1, proto=6, laddr=('0.0.0.0', 0)> ('3.168.73.111', 443)",
+    "socket.connect <socket.socket fd=6, family=2, type=1, proto=6, laddr=('0.0.0.0', 0)> ('3.168.73.111', 443)",
+    "socket.connect <socket.socket fd=8, family=2, type=1, proto=6, laddr=('0.0.0.0', 0)> ('3.168.73.111', 443)",
+    "socket.getaddrinfo 'huggingface.co' 443 0 1 0"
+   ],
+   "processes": [],
+   "write_folders_in_work": [
+    "$WORK",
+    "$WORK/hf",
+    "$WORK/hf/hub",
+    "$WORK/hf/hub/.locks",
+    "$WORK/hf/hub/.locks/models--minishlab--potion-code-16M-v2",
+    "$WORK/hf/hub/blobs",
+    "$WORK/hf/hub/blobs/f1",
+    "$WORK/hf/hub/models--minishlab--potion-code-16M-v2",
+    "$WORK/hf/hub/models--minishlab--potion-code-16M-v2/blobs",
+    "$WORK/hf/hub/models--minishlab--potion-code-16M-v2/refs",
+    "$WORK/hf/hub/models--minishlab--potion-code-16M-v2/snapshots",
+    "$WORK/hf/hub/models--minishlab--potion-code-16M-v2/tmpt7id_4kg",
+    "$WORK/hf/hub/models--minishlab--potion-code-16M-v2/trees",
+    "$WORK/hf/hub/tmpw7n8wvch"
+   ],
+   "writes_outside_work": {
+    "/tmp (an unnamed temporary file)": "has no name; gone when closed",
+    "/tmp/<temporary name>": "created and removed in the same process"
+   }
+  },
+  "build-all": {
+   "network": [],
+   "processes": [],
+   "write_folders_in_work": [
+    "$WORK",
+    "$WORK/semble-cache-all",
+    "$WORK/semble-cache-all/<hash>",
+    "$WORK/semble-cache-all/<hash>/index-code-config-docs",
+    "$WORK/semble-cache-all/<hash>/index-code-config-docs/bm25_index",
+    "$WORK/semble-cache-all/<hash>/index-code-config-docs/semantic_index",
+    "$WORK/xdg-cache",
+    "$WORK/xdg-cache/semble",
+    "$WORK/xdg-cache/semble/grammars",
+    "$WORK/xdg-cache/semble/grammars/0.1.2",
+    "$WORK/xdg-cache/semble/grammars/0.1.2/linux-x86_64"
+   ],
+   "writes_outside_work": {
+    "/tmp (an unnamed temporary file)": "has no name; gone when closed",
+    "/tmp/<temporary name>": "created and removed in the same process"
+   }
+  },
+  "build-code": {
+   "network": [],
+   "processes": [],
+   "write_folders_in_work": [
+    "$WORK",
+    "$WORK/semble-cache-code",
+    "$WORK/semble-cache-code/<hash>",
+    "$WORK/semble-cache-code/<hash>/index",
+    "$WORK/semble-cache-code/<hash>/index/bm25_index",
+    "$WORK/semble-cache-code/<hash>/index/semantic_index"
+   ],
+   "writes_outside_work": {
+    "/tmp (an unnamed temporary file)": "has no name; gone when closed",
+    "/tmp/<temporary name>": "created and removed in the same process"
+   }
+  },
+  "build-config": {
+   "network": [],
+   "processes": [],
+   "write_folders_in_work": [
+    "$WORK",
+    "$WORK/semble-cache-config",
+    "$WORK/semble-cache-config/<hash>",
+    "$WORK/semble-cache-config/<hash>/index-config",
+    "$WORK/semble-cache-config/<hash>/index-config/bm25_index",
+    "$WORK/semble-cache-config/<hash>/index-config/semantic_index"
+   ],
+   "writes_outside_work": {
+    "/tmp (an unnamed temporary file)": "has no name; gone when closed",
+    "/tmp/<temporary name>": "created and removed in the same process"
+   }
+  },
+  "questions": {
+   "network": [],
+   "processes": [],
+   "write_folders_in_work": [
+    "$WORK",
+    "$WORK/semble-cache-all",
+    "$WORK/semble-cache-code",
+    "$WORK/semble-cache-config"
+   ],
+   "writes_outside_work": {
+    "/tmp (an unnamed temporary file)": "has no name; gone when closed",
+    "/tmp/<temporary name>": "created and removed in the same process"
+   }
+  }
+ },
+ "per_question": [
+  {
+   "id": "Q01",
+   "category": "check",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 2,
+    "rank_printed_order": 2,
+    "top5": [
+     "meridian/boundary.py:1-31",
+     "meridian/boundary.py:191-195",
+     "meridian/boundary.py:163-188",
+     "meridian/ibkr_paper.py:1-25",
+     "meridian/ibkr_paper.py:253-303"
+    ],
+    "median_s": 0.011,
+    "rg_hit_lines": 21,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 2348
+   },
+   "semble": {
+    "rank": 2,
+    "top5": [
+     "meridian/ibkr_paper.py:1-24",
+     "meridian/boundary.py:183-198",
+     "deploy/wsl/setup.sh:114-128",
+     "meridian/ibkr_paper.py:282-296",
+     "meridian/boundary.py:1-30"
+    ],
+    "median_cli_s": 0.697,
+    "output_chars": 6478
+   },
+   "semble_verbatim_all": {
+    "rank": 1,
+    "top5": [
+     "meridian/boundary.py:183-198",
+     "meridian/ibkr_paper.py:1-24",
+     "deploy/wsl/setup.sh:114-128",
+     "AGENTS.md:63-70",
+     "UPSTREAM.md:58-58"
+    ],
+    "median_cli_s": 0.6879,
+    "output_chars": 5085
+   }
+  },
+  {
+   "id": "Q02",
+   "category": "check",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 9,
+    "top5": [
+     "meridian/boundary.py:293-301",
+     "meridian/boundary.py:1-31",
+     "meridian/boundary.py:54-54",
+     "meridian/boundary.py:235-283",
+     "meridian/boundary.py:201-223"
+    ],
+    "median_s": 0.0102,
+    "rg_hit_lines": 35,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 3139
+   },
+   "semble": {
+    "rank": 1,
+    "top5": [
+     "meridian/boundary.py:286-301",
+     "meridian/ibkr_paper.py:254-271",
+     "meridian/boundary.py:1-30",
+     "tests/test_boundary.py:508-521",
+     "meridian/ibkr_paper.py:1-24"
+    ],
+    "median_cli_s": 0.7269,
+    "output_chars": 6433
+   },
+   "semble_verbatim_all": {
+    "rank": 1,
+    "top5": [
+     "meridian/boundary.py:286-301",
+     "meridian/ibkr_paper.py:254-271",
+     "AGENTS.md:63-70",
+     "meridian/boundary.py:1-30",
+     "UPSTREAM.md:90-97"
+    ],
+    "median_cli_s": 0.6979,
+    "output_chars": 5529
+   }
+  },
+  {
+   "id": "Q03",
+   "category": "check",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 3,
+    "top5": [
+     "meridian/boundary.py:315-330",
+     "meridian/boundary.py:235-283",
+     "meridian/boundary.py:1-31",
+     "meridian/boundary.py:67-67",
+     "meridian/boundary.py:333-339"
+    ],
+    "median_s": 0.0112,
+    "rg_hit_lines": 12,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 1089
+   },
+   "semble": {
+    "rank": 1,
+    "top5": [
+     "meridian/boundary.py:316-329",
+     "meridian/ibkr_paper.py:228-242",
+     "deploy/wsl/setup.sh:35-47",
+     "meridian/boundary.py:372-388",
+     "meridian/ibkr_node.py:1-21"
+    ],
+    "median_cli_s": 0.6739,
+    "output_chars": 4859
+   },
+   "semble_verbatim_all": {
+    "rank": 1,
+    "top5": [
+     "meridian/boundary.py:316-329",
+     "meridian/ibkr_paper.py:254-271",
+     "AGENTS.md:71-78",
+     "meridian/boundary.py:372-388",
+     "deploy/wsl/setup.sh:114-128"
+    ],
+    "median_cli_s": 0.7062,
+    "output_chars": 4463
+   }
+  },
+  {
+   "id": "Q04",
+   "category": "check",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 3,
+    "rank_printed_order": 4,
+    "top5": [
+     "meridian/boundary.py:123-157",
+     "meridian/ibkr_paper.py:253-303",
+     "meridian/boundary.py:333-339",
+     "meridian/boundary.py:345-356",
+     "meridian/boundary.py:1-31"
+    ],
+    "median_s": 0.0069,
+    "rg_hit_lines": 29,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 2913
+   },
+   "semble": {
+    "rank": 1,
+    "top5": [
+     "meridian/boundary.py:330-342",
+     "meridian/boundary.py:75-91",
+     "meridian/ibkr_paper.py:272-281",
+     "deploy/wsl/setup.sh:16-25",
+     "tests/test_boundary.py:71-89"
+    ],
+    "median_cli_s": 0.6497,
+    "output_chars": 3814
+   },
+   "semble_verbatim_all": {
+    "rank": 1,
+    "top5": [
+     "meridian/boundary.py:330-342",
+     "AGENTS.md:40-49",
+     "UPSTREAM.md:59-61",
+     "meridian/ibkr_paper.py:254-271",
+     "AGENTS.md:71-78"
+    ],
+    "median_cli_s": 0.6984,
+    "output_chars": 4158
+   }
+  },
+  {
+   "id": "Q05",
+   "category": "check",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 7,
+    "rank_printed_order": 7,
+    "top5": [
+     "meridian/boundary.py:1-31",
+     "meridian/boundary.py:359-393",
+     "meridian/ib_probe.py:81-106",
+     "meridian/boundary.py:49-49",
+     "meridian/ibkr_paper.py:1-25"
+    ],
+    "median_s": 0.0128,
+    "rg_hit_lines": 10,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 878
+   },
+   "semble": {
+    "rank": 1,
+    "top5": [
+     "meridian/boundary.py:137-152",
+     "meridian/ibkr_paper.py:272-281",
+     "meridian/boundary.py:124-136",
+     "tests/test_boundary.py:641-649",
+     "meridian/boundary.py:102-115"
+    ],
+    "median_cli_s": 0.6931,
+    "output_chars": 3837
+   },
+   "semble_verbatim_all": {
+    "rank": 1,
+    "top5": [
+     "meridian/boundary.py:137-152",
+     "AGENTS.md:71-78",
+     "meridian/ibkr_paper.py:272-281",
+     "meridian/boundary.py:102-115",
+     "UPSTREAM.md:1-11"
+    ],
+    "median_cli_s": 0.7019,
+    "output_chars": 3895
+   }
+  },
+  {
+   "id": "Q06",
+   "category": "check",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 3,
+    "top5": [
+     "meridian/ibkr_paper.py:68-76",
+     "meridian/ibkr_paper.py:253-303",
+     "meridian/ibkr_paper.py:1-25",
+     "meridian/boundary.py:63-63",
+     "meridian/ibkr_paper.py:64-65"
+    ],
+    "median_s": 0.01,
+    "rg_hit_lines": 17,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 1435
+   },
+   "semble": {
+    "rank": 1,
+    "top5": [
+     "meridian/ibkr_paper.py:68-76",
+     "meridian/boundary.py:360-370",
+     "meridian/ibkr_paper.py:282-296",
+     "meridian/ibkr_node.py:125-134",
+     "tests/test_boundary.py:814-822"
+    ],
+    "median_cli_s": 0.711,
+    "output_chars": 3248
+   },
+   "semble_verbatim_all": {
+    "rank": 1,
+    "top5": [
+     "meridian/ibkr_paper.py:68-76",
+     "meridian/boundary.py:360-370",
+     "AGENTS.md:7-14",
+     "UPSTREAM.md:82-89",
+     "meridian/ibkr_paper.py:282-296"
+    ],
+    "median_cli_s": 0.6803,
+    "output_chars": 3803
+   }
+  },
+  {
+   "id": "Q07",
+   "category": "check",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 4,
+    "rank_printed_order": 6,
+    "top5": [
+     "meridian/ibkr_paper.py:306-307",
+     "tests/test_boundary.py:544-550",
+     "tests/test_boundary.py:918-922",
+     "meridian/ibkr_paper.py:253-303",
+     "meridian/ibkr_paper.py:1-25"
+    ],
+    "median_s": 0.0164,
+    "rg_hit_lines": 21,
+    "rg_errors": [],
+    "lookup_locations": 3,
+    "output_chars": 2066
+   },
+   "semble": {
+    "rank": 3,
+    "top5": [
+     "meridian/ibkr_paper.py:1-24",
+     "meridian/boundary.py:1-30",
+     "meridian/ibkr_paper.py:282-296",
+     "tests/test_boundary.py:862-872",
+     "tests/test_run_record.py:111-120"
+    ],
+    "median_cli_s": 0.6654,
+    "output_chars": 6035
+   },
+   "semble_verbatim_all": {
+    "rank": 5,
+    "top5": [
+     "meridian/ibkr_paper.py:1-24",
+     "meridian/boundary.py:1-30",
+     "AGENTS.md:84-90",
+     "UPSTREAM.md:59-61",
+     "meridian/ibkr_paper.py:282-296"
+    ],
+    "median_cli_s": 0.6805,
+    "output_chars": 6345
+   }
+  },
+  {
+   "id": "Q08",
+   "category": "check",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 3,
+    "top5": [
+     "meridian/ibkr_paper.py:151-199",
+     "meridian/boundary.py:359-393",
+     "meridian/boundary.py:396-398",
+     "meridian/ibkr_paper.py:1-25",
+     "meridian/ibkr_paper.py:68-76"
+    ],
+    "median_s": 0.0102,
+    "rg_hit_lines": 20,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 1891
+   },
+   "semble": {
+    "rank": 1,
+    "top5": [
+     "meridian/ibkr_paper.py:192-201",
+     "meridian/ibkr_node.py:232-245",
+     "meridian/boundary.py:75-91",
+     "meridian/ibkr_paper.py:1-24",
+     "meridian/ibkr_node.py:1-21"
+    ],
+    "median_cli_s": 0.6419,
+    "output_chars": 5394
+   },
+   "semble_verbatim_all": {
+    "rank": 2,
+    "top5": [
+     "UPSTREAM.md:82-89",
+     "meridian/ibkr_paper.py:192-201",
+     "meridian/ibkr_node.py:1-21",
+     "AGENTS.md:84-90",
+     "meridian/boundary.py:102-115"
+    ],
+    "median_cli_s": 0.6731,
+    "output_chars": 4494
+   }
+  },
+  {
+   "id": "Q09",
+   "category": "check",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 1,
+    "top5": [
+     "meridian/ibkr_node.py:165-191"
+    ],
+    "median_s": 0.0079,
+    "rg_hit_lines": 6,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 534
+   },
+   "semble": {
+    "rank": 1,
+    "top5": [
+     "meridian/ibkr_node.py:166-176",
+     "meridian/ibkr_paper.py:113-114",
+     "meridian/boundary.py:360-370",
+     "meridian/ibkr_node.py:66-83",
+     "tests/test_ibkr_node_offline.py:79-95"
+    ],
+    "median_cli_s": 0.6324,
+    "output_chars": 3647
+   },
+   "semble_verbatim_all": {
+    "rank": 1,
+    "top5": [
+     "meridian/ibkr_node.py:166-176",
+     "AGENTS.md:84-90",
+     "meridian/ibkr_paper.py:113-114",
+     "meridian/boundary.py:1-30",
+     "UPSTREAM.md:1-11"
+    ],
+    "median_cli_s": 0.6588,
+    "output_chars": 4685
+   }
+  },
+  {
+   "id": "Q10",
+   "category": "check",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 4,
+    "rank_printed_order": 2,
+    "top5": [
+     "meridian/ibkr_paper.py:116-130",
+     "meridian/ibkr_node.py:85-94",
+     "meridian/ibkr_paper.py:151-199",
+     "meridian/ibkr_node.py:96-107",
+     "meridian/ibkr_node.py:1-22"
+    ],
+    "median_s": 0.0103,
+    "rg_hit_lines": 19,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 1729
+   },
+   "semble": {
+    "rank": 1,
+    "top5": [
+     "meridian/ibkr_node.py:96-107",
+     "meridian/ibkr_paper.py:116-133",
+     "meridian/boundary.py:1-30",
+     "meridian/ibkr_node.py:85-94",
+     "upstream/nautilus_trader/v2.0.0rc9/examples/live/interactive_brokers/ib_v2_order_strategies.py:880-907"
+    ],
+    "median_cli_s": 0.6725,
+    "output_chars": 5293
+   },
+   "semble_verbatim_all": {
+    "rank": 1,
+    "top5": [
+     "meridian/ibkr_node.py:96-107",
+     "meridian/ibkr_paper.py:116-133",
+     "AGENTS.md:71-78",
+     "meridian/boundary.py:102-115",
+     "UPSTREAM.md:82-89"
+    ],
+    "median_cli_s": 0.6789,
+    "output_chars": 4137
+   }
+  },
+  {
+   "id": "Q11",
+   "category": "calls",
+   "names_identifier": true,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 1,
+    "top5": [
+     "meridian/ibkr_paper.py:227-250",
+     "meridian/ibkr_paper.py:253-303",
+     "meridian/ibkr_paper.py:57-61"
+    ],
+    "median_s": 0.0145,
+    "rg_hit_lines": 4,
+    "rg_errors": [],
+    "lookup_locations": 3,
+    "output_chars": 393
+   },
+   "semble": {
+    "rank": 1,
+    "top5": [
+     "meridian/ibkr_paper.py:228-242",
+     "deploy/wsl/setup.sh:114-128",
+     "meridian/boundary.py:286-301",
+     "meridian/ibkr_node.py:1-21",
+     "meridian/ibkr_paper.py:282-296"
+    ],
+    "median_cli_s": 0.665,
+    "output_chars": 4858
+   },
+   "semble_verbatim_all": {
+    "rank": null,
+    "top5": [
+     "AGENTS.md:40-49",
+     "meridian/ibkr_node.py:1-21",
+     "meridian/ibkr_paper.py:1-24",
+     "UPSTREAM.md:59-61",
+     "meridian/ib_probe.py:76-87"
+    ],
+    "median_cli_s": 0.6808,
+    "output_chars": 5343
+   }
+  },
+  {
+   "id": "Q12",
+   "category": "calls",
+   "names_identifier": true,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 1,
+    "top5": [
+     "meridian/boundary.py:304-309",
+     "meridian/boundary.py:359-393",
+     "tests/test_boundary.py:273-282",
+     "tests/test_boundary.py:285-311",
+     "tests/test_boundary.py:314-316"
+    ],
+    "median_s": 0.0238,
+    "rg_hit_lines": 3,
+    "rg_errors": [],
+    "lookup_locations": 6,
+    "output_chars": 348
+   },
+   "semble": {
+    "rank": 4,
+    "top5": [
+     "meridian/boundary.py:183-198",
+     "deploy/wsl/setup.sh:35-47",
+     "meridian/ibkr_paper.py:228-242",
+     "meridian/boundary.py:304-315",
+     "deploy/wsl/setup.sh:102-112"
+    ],
+    "median_cli_s": 0.6415,
+    "output_chars": 3725
+   },
+   "semble_verbatim_all": {
+    "rank": 1,
+    "top5": [
+     "meridian/boundary.py:304-315",
+     "AGENTS.md:40-49",
+     "UPSTREAM.md:62-64",
+     "meridian/boundary.py:372-388",
+     "meridian/ibkr_paper.py:272-281"
+    ],
+    "median_cli_s": 0.6599,
+    "output_chars": 3251
+   }
+  },
+  {
+   "id": "Q13",
+   "category": "calls",
+   "names_identifier": true,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 2,
+    "rank_printed_order": 2,
+    "top5": [
+     "meridian/ibkr_node.py:53-53",
+     "meridian/ibkr_node.py:65-162",
+     "meridian/ibkr_node.py:1-22"
+    ],
+    "median_s": 0.0156,
+    "rg_hit_lines": 4,
+    "rg_errors": [],
+    "lookup_locations": 1,
+    "output_chars": 348
+   },
+   "semble": {
+    "rank": 1,
+    "top5": [
+     "meridian/ibkr_node.py:53-65",
+     "upstream/nautilus_trader/v2.0.0rc9/examples/live/interactive_brokers/ib_v2_order_strategies.py:384-403",
+     "meridian/ibkr_node.py:66-83",
+     "upstream/nautilus_trader/v2.0.0rc9/examples/live/interactive_brokers/_common.py:390-414",
+     "upstream/nautilus_trader/v2.0.0rc9/examples/live/interactive_brokers/ib_v2_order_strategies.py:724-753"
+    ],
+    "median_cli_s": 0.6926,
+    "output_chars": 4049
+   },
+   "semble_verbatim_all": {
+    "rank": null,
+    "top5": [
+     "UPSTREAM.md:62-64",
+     "meridian/ibkr_node.py:1-21",
+     "AGENTS.md:27-38",
+     "upstream/nautilus_trader/v2.0.0rc9/examples/live/interactive_brokers/ib_v2_order_strategies.py:384-403",
+     "UPSTREAM.md:43-45"
+    ],
+    "median_cli_s": 0.7207,
+    "output_chars": 4240
+   }
+  },
+  {
+   "id": "Q14",
+   "category": "calls",
+   "names_identifier": true,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 1,
+    "top5": [
+     "meridian/boundary.py:359-393",
+     "meridian/ibkr_paper.py:57-61",
+     "tests/test_ib_probe.py:10-11",
+     "tests/test_ib_probe.py:89-93",
+     "tests/test_ib_probe.py:101-105"
+    ],
+    "median_s": 0.012,
+    "rg_hit_lines": 3,
+    "rg_errors": [],
+    "lookup_locations": 5,
+    "output_chars": 482
+   },
+   "semble": {
+    "rank": 2,
+    "top5": [
+     "meridian/ib_probe.py:76-87",
+     "meridian/boundary.py:372-388",
+     "meridian/ibkr_paper.py:53-65",
+     "deploy/wsl/setup.sh:60-68",
+     "meridian/boundary.py:316-329"
+    ],
+    "median_cli_s": 0.6733,
+    "output_chars": 4065
+   },
+   "semble_verbatim_all": {
+    "rank": null,
+    "top5": [
+     "UPSTREAM.md:53-54",
+     "meridian/boundary.py:316-329",
+     "AGENTS.md:40-49",
+     "meridian/ib_probe.py:1-32",
+     "meridian/ibkr_paper.py:272-281"
+    ],
+    "median_cli_s": 0.6574,
+    "output_chars": 4241
+   }
+  },
+  {
+   "id": "Q15",
+   "category": "upstream",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 1,
+    "top5": [
+     "upstream/nautilus_trader/v2.0.0rc9/examples/live/interactive_brokers/ib_v2_order_strategies.py:638-657",
+     "upstream/nautilus_trader/v2.0.0rc9/examples/live/interactive_brokers/ib_v2_order_strategies.py:790-876",
+     "meridian/ibkr_paper.py:151-199",
+     "upstream/nautilus_trader/v2.0.0rc9/examples/live/interactive_brokers/ib_v2_order_strategies.py:659-673",
+     "meridian/ibkr_node.py:1-22"
+    ],
+    "median_s": 0.0108,
+    "rg_hit_lines": 20,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 3097
+   },
+   "semble": {
+    "rank": null,
+    "top5": [
+     "meridian/ibkr_node.py:153-165",
+     "meridian/ibkr_paper.py:183-191",
+     "meridian/boundary.py:360-370",
+     "meridian/ib_probe.py:1-32",
+     "meridian/ibkr_paper.py:1-24"
+    ],
+    "median_cli_s": 0.6571,
+    "output_chars": 5100
+   },
+   "semble_verbatim_all": {
+    "rank": null,
+    "top5": [
+     "UPSTREAM.md:82-89",
+     "meridian/ibkr_node.py:1-21",
+     "meridian/boundary.py:1-30",
+     "AGENTS.md:84-90",
+     "meridian/ibkr_paper.py:1-24"
+    ],
+    "median_cli_s": 0.6863,
+    "output_chars": 6703
+   }
+  },
+  {
+   "id": "Q16",
+   "category": "upstream",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": null,
+    "rank_printed_order": null,
+    "top5": [
+     "meridian/boundary.py:315-330"
+    ],
+    "median_s": 0.01,
+    "rg_hit_lines": 1,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 119
+   },
+   "semble": {
+    "rank": null,
+    "top5": [
+     "meridian/boundary.py:316-329",
+     "meridian/ibkr_paper.py:282-296",
+     "meridian/ibkr_node.py:177-195",
+     "meridian/ib_probe.py:1-32",
+     "meridian/boundary.py:75-91"
+    ],
+    "median_cli_s": 0.6638,
+    "output_chars": 4795
+   },
+   "semble_verbatim_all": {
+    "rank": null,
+    "top5": [
+     "meridian/boundary.py:316-329",
+     "UPSTREAM.md:73-81",
+     "AGENTS.md:15-22",
+     "meridian/ibkr_paper.py:1-24",
+     "meridian/ibkr_node.py:1-1"
+    ],
+    "median_cli_s": 0.6464,
+    "output_chars": 4450
+   }
+  },
+  {
+   "id": "Q17",
+   "category": "record",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 5,
+    "top5": [
+     "meridian/ibkr_paper.py:201-224",
+     "meridian/ibkr_node.py:220-245",
+     "meridian/ibkr_paper.py:79-86",
+     "meridian/ibkr_paper.py:227-250",
+     "meridian/ibkr_paper.py:1-25"
+    ],
+    "median_s": 0.0112,
+    "rg_hit_lines": 20,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 1845
+   },
+   "semble": {
+    "rank": 1,
+    "top5": [
+     "meridian/ibkr_paper.py:202-220",
+     "meridian/ibkr_node.py:232-245",
+     "tests/test_run_record.py:123-137",
+     "meridian/ibkr_paper.py:243-253",
+     "deploy/wsl/setup.sh:114-128"
+    ],
+    "median_cli_s": 0.662,
+    "output_chars": 4055
+   },
+   "semble_verbatim_all": {
+    "rank": null,
+    "top5": [
+     "meridian/ibkr_paper.py:79-93",
+     "AGENTS.md:15-22",
+     "tests/test_run_record.py:180-184",
+     "meridian/ibkr_paper.py:243-253",
+     ".github/workflows/ci.yml:18-31"
+    ],
+    "median_cli_s": 0.6731,
+    "output_chars": 3277
+   }
+  },
+  {
+   "id": "Q18",
+   "category": "record",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 1,
+    "top5": [
+     "meridian/ibkr_paper.py:79-86",
+     "meridian/ibkr_paper.py:227-250",
+     "meridian/ibkr_paper.py:201-224",
+     "meridian/ibkr_node.py:37-38",
+     "meridian/ibkr_node.py:65-162"
+    ],
+    "median_s": 0.011,
+    "rg_hit_lines": 12,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 1074
+   },
+   "semble": {
+    "rank": 1,
+    "top5": [
+     "meridian/ibkr_paper.py:79-93",
+     "meridian/boundary.py:1-30",
+     "meridian/ibkr_node.py:232-245",
+     "tests/test_run_record.py:81-98",
+     "meridian/ibkr_paper.py:228-242"
+    ],
+    "median_cli_s": 0.6447,
+    "output_chars": 5557
+   },
+   "semble_verbatim_all": {
+    "rank": 1,
+    "top5": [
+     "meridian/ibkr_paper.py:79-93",
+     "AGENTS.md:15-22",
+     "meridian/boundary.py:1-30",
+     "UPSTREAM.md:90-97",
+     "tests/test_run_record.py:81-98"
+    ],
+    "median_cli_s": 0.6656,
+    "output_chars": 5413
+   }
+  },
+  {
+   "id": "Q19",
+   "category": "record",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 1,
+    "top5": [
+     "meridian/ibkr_node.py:220-245",
+     "meridian/ibkr_paper.py:201-224",
+     "meridian/ibkr_paper.py:1-25",
+     "meridian/ibkr_paper.py:92-114"
+    ],
+    "median_s": 0.0106,
+    "rg_hit_lines": 8,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 855
+   },
+   "semble": {
+    "rank": 1,
+    "top5": [
+     "meridian/ibkr_node.py:221-231",
+     "meridian/ibkr_paper.py:113-114",
+     "meridian/boundary.py:360-370",
+     "meridian/ibkr_node.py:196-204",
+     "meridian/ibkr_paper.py:282-296"
+    ],
+    "median_cli_s": 0.6427,
+    "output_chars": 3288
+   },
+   "semble_verbatim_all": {
+    "rank": 1,
+    "top5": [
+     "meridian/ibkr_node.py:221-231",
+     "meridian/boundary.py:360-370",
+     "meridian/ibkr_paper.py:282-296",
+     "UPSTREAM.md:90-97",
+     "AGENTS.md:84-90"
+    ],
+    "median_cli_s": 0.6679,
+    "output_chars": 3875
+   }
+  },
+  {
+   "id": "Q20",
+   "category": "record",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 2,
+    "rank_printed_order": 6,
+    "top5": [
+     "meridian/ibkr_node.py:109-115",
+     "meridian/ibkr_node.py:117-134",
+     "meridian/ibkr_paper.py:79-86",
+     "upstream/nautilus_trader/v2.0.0rc9/examples/live/interactive_brokers/ib_v2_order_strategies.py:790-876",
+     "meridian/ibkr_node.py:1-22"
+    ],
+    "median_s": 0.0112,
+    "rg_hit_lines": 17,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 1632
+   },
+   "semble": {
+    "rank": 1,
+    "top5": [
+     "meridian/ibkr_node.py:118-124",
+     "meridian/ibkr_paper.py:183-191",
+     "meridian/ibkr_node.py:53-65",
+     "upstream/nautilus_trader/v2.0.0rc9/examples/live/interactive_brokers/ib_v2_order_strategies.py:846-859",
+     "tests/test_run_record.py:25-41"
+    ],
+    "median_cli_s": 0.6522,
+    "output_chars": 3483
+   },
+   "semble_verbatim_all": {
+    "rank": 1,
+    "top5": [
+     "meridian/ibkr_node.py:118-124",
+     "meridian/ibkr_paper.py:183-191",
+     "AGENTS.md:84-90",
+     "meridian/ibkr_node.py:109-117",
+     "meridian/boundary.py:102-115"
+    ],
+    "median_cli_s": 0.6631,
+    "output_chars": 3391
+   }
+  },
+  {
+   "id": "Q21",
+   "category": "record",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 1,
+    "top5": [
+     "meridian/ib_probe.py:81-106",
+     "meridian/ib_probe.py:35-46",
+     "meridian/ib_probe.py:49-54",
+     "meridian/ib_probe.py:61-73"
+    ],
+    "median_s": 0.0063,
+    "rg_hit_lines": 17,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 1397
+   },
+   "semble": {
+    "rank": 1,
+    "top5": [
+     "meridian/ib_probe.py:88-100",
+     "meridian/boundary.py:1-30",
+     "meridian/ibkr_paper.py:1-24",
+     "meridian/ib_probe.py:35-46",
+     "meridian/boundary.py:316-329"
+    ],
+    "median_cli_s": 0.6435,
+    "output_chars": 6280
+   },
+   "semble_verbatim_all": {
+    "rank": 1,
+    "top5": [
+     "meridian/ib_probe.py:88-100",
+     "meridian/boundary.py:102-115",
+     "UPSTREAM.md:73-81",
+     "AGENTS.md:7-14",
+     "meridian/ibkr_paper.py:228-242"
+    ],
+    "median_cli_s": 0.6367,
+    "output_chars": 4390
+   }
+  },
+  {
+   "id": "Q22",
+   "category": "test",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 3,
+    "rank_printed_order": 3,
+    "top5": [
+     "tests/test_boundary.py:285-311",
+     "tests/test_boundary.py:273-282",
+     "tests/test_boundary.py:603-617",
+     "tests/test_boundary.py:999-1009",
+     "tests/test_paper_only.py:65-76"
+    ],
+    "median_s": 0.0093,
+    "rg_hit_lines": 26,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 2460
+   },
+   "semble": {
+    "rank": null,
+    "top5": [
+     "meridian/boundary.py:1-30",
+     "deploy/wsl/setup.sh:114-128",
+     "meridian/boundary.py:183-198",
+     "meridian/ibkr_paper.py:1-24",
+     "meridian/ibkr_node.py:221-231"
+    ],
+    "median_cli_s": 0.6154,
+    "output_chars": 6343
+   },
+   "semble_verbatim_all": {
+    "rank": null,
+    "top5": [
+     "AGENTS.md:63-70",
+     "UPSTREAM.md:58-58",
+     "meridian/boundary.py:1-30",
+     "meridian/ibkr_paper.py:1-24",
+     "meridian/ibkr_node.py:221-231"
+    ],
+    "median_cli_s": 0.6576,
+    "output_chars": 6096
+   }
+  },
+  {
+   "id": "Q23",
+   "category": "test",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": null,
+    "rank_printed_order": null,
+    "top5": [
+     "tests/test_ib_probe.py:89-93",
+     "tests/test_ib_probe.py:101-105",
+     "tests/test_ib_probe.py:7-7",
+     "tests/test_ib_probe.py:10-11",
+     "tests/test_ib_probe.py:43-48"
+    ],
+    "median_s": 0.0087,
+    "rg_hit_lines": 12,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 1055
+   },
+   "semble": {
+    "rank": null,
+    "top5": [
+     "meridian/ib_probe.py:1-32",
+     "meridian/boundary.py:372-388",
+     "meridian/ibkr_paper.py:282-296",
+     "meridian/ibkr_node.py:96-107",
+     "tests/test_ib_probe.py:67-86"
+    ],
+    "median_cli_s": 0.6319,
+    "output_chars": 4574
+   },
+   "semble_verbatim_all": {
+    "rank": null,
+    "top5": [
+     "meridian/ib_probe.py:1-32",
+     "meridian/boundary.py:372-388",
+     "AGENTS.md:84-90",
+     "UPSTREAM.md:58-58",
+     "meridian/ibkr_paper.py:25-50"
+    ],
+    "median_cli_s": 0.6282,
+    "output_chars": 4186
+   }
+  },
+  {
+   "id": "Q24",
+   "category": "test",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 7,
+    "top5": [
+     "tests/test_ibkr_node_offline.py:123-148",
+     "tests/test_boundary.py:814-822",
+     "tests/test_boundary.py:753-758",
+     "tests/test_boundary.py:729-750",
+     "tests/test_boundary.py:678-687"
+    ],
+    "median_s": 0.0129,
+    "rg_hit_lines": 26,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 2667
+   },
+   "semble": {
+    "rank": 5,
+    "top5": [
+     "meridian/ibkr_node.py:221-231",
+     "meridian/boundary.py:360-370",
+     "meridian/ibkr_paper.py:68-76",
+     "tests/test_boundary.py:814-822",
+     "tests/test_ibkr_node_offline.py:142-148"
+    ],
+    "median_cli_s": 0.6457,
+    "output_chars": 3071
+   },
+   "semble_verbatim_all": {
+    "rank": null,
+    "top5": [
+     "meridian/boundary.py:360-370",
+     "meridian/ibkr_node.py:221-231",
+     "AGENTS.md:84-90",
+     "meridian/ibkr_paper.py:68-76",
+     "UPSTREAM.md:59-61"
+    ],
+    "median_cli_s": 0.6675,
+    "output_chars": 3635
+   }
+  },
+  {
+   "id": "Q25",
+   "category": "test",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 1,
+    "top5": [
+     "tests/test_run_record.py:133-137",
+     "tests/test_run_record.py:93-95",
+     "tests/test_run_record.py:98-120",
+     "tests/test_run_record.py:25-41",
+     "tests/test_run_record.py:147-156"
+    ],
+    "median_s": 0.0093,
+    "rg_hit_lines": 10,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 917
+   },
+   "semble": {
+    "rank": 2,
+    "top5": [
+     "meridian/ibkr_node.py:153-165",
+     "tests/test_run_record.py:81-98",
+     "meridian/ibkr_paper.py:1-24",
+     "deploy/wsl/setup.sh:26-35",
+     "meridian/boundary.py:102-115"
+    ],
+    "median_cli_s": 0.6516,
+    "output_chars": 4646
+   },
+   "semble_verbatim_all": {
+    "rank": null,
+    "top5": [
+     "meridian/ibkr_paper.py:1-24",
+     "AGENTS.md:84-90",
+     "meridian/boundary.py:102-115",
+     "UPSTREAM.md:59-61",
+     ".github/workflows/ci.yml:18-31"
+    ],
+    "median_cli_s": 0.6636,
+    "output_chars": 4929
+   }
+  },
+  {
+   "id": "Q26",
+   "category": "test",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 3,
+    "top5": [
+     "tests/test_boundary.py:1023-1034",
+     "tests/test_boundary.py:887-894",
+     "tests/test_run_record.py:162-164",
+     "tests/test_run_record.py:167-171",
+     "tests/test_run_record.py:174-177"
+    ],
+    "median_s": 0.0163,
+    "rg_hit_lines": 44,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 4467
+   },
+   "semble": {
+    "rank": null,
+    "top5": [
+     "meridian/ibkr_paper.py:1-24",
+     "tests/test_boundary.py:932-952",
+     "meridian/boundary.py:75-91",
+     "meridian/ibkr_node.py:232-245",
+     "tests/test_run_record.py:123-137"
+    ],
+    "median_cli_s": 0.6554,
+    "output_chars": 5143
+   },
+   "semble_verbatim_all": {
+    "rank": null,
+    "top5": [
+     "AGENTS.md:84-90",
+     "meridian/ibkr_paper.py:1-24",
+     "UPSTREAM.md:90-97",
+     "meridian/boundary.py:1-30",
+     "upstream/nautilus_trader/v2.0.0rc9/NOTICE.md:17-18"
+    ],
+    "median_cli_s": 0.6418,
+    "output_chars": 5634
+   }
+  },
+  {
+   "id": "Q27",
+   "category": "ops",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 6,
+    "top5": [
+     "deploy/wsl/setup.sh:114-128",
+     "deploy/wsl/setup.sh:15-28",
+     "deploy/wsl/setup.sh:1-13",
+     "deploy/wsl/meridian.user-data:82-112",
+     "deploy/wsl/setup.sh:35-78"
+    ],
+    "median_s": 0.0067,
+    "rg_hit_lines": 32,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 2988
+   },
+   "semble": {
+    "rank": null,
+    "top5": [
+     "UPSTREAM.md:57-57",
+     "deploy/wsl/setup.sh:1-15",
+     "meridian/boundary.py:1-30",
+     "meridian/ib_probe.py:1-32",
+     "deploy/wsl/setup.sh:16-25"
+    ],
+    "median_cli_s": 0.6858,
+    "output_chars": 5535
+   },
+   "semble_verbatim_all": {
+    "rank": null,
+    "top5": [
+     "UPSTREAM.md:23-23",
+     "deploy/wsl/setup.sh:1-15",
+     "meridian/boundary.py:1-30",
+     "AGENTS.md:84-90",
+     "meridian/ib_probe.py:1-32"
+    ],
+    "median_cli_s": 0.7071,
+    "output_chars": 5549
+   }
+  },
+  {
+   "id": "Q28",
+   "category": "ops",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": null,
+    "rank_printed_order": null,
+    "top5": [
+     ".github/workflows/ci.yml:11-39"
+    ],
+    "median_s": 0.0068,
+    "rg_hit_lines": 2,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 178
+   },
+   "semble": {
+    "rank": 3,
+    "top5": [
+     ".github/workflows/ci.yml:1-17",
+     ".github/workflows/ci.yml:18-31",
+     ".github/workflows/ci.yml:32-39",
+     "pyproject.toml:1-27",
+     "pyproject.toml:28-39"
+    ],
+    "median_cli_s": 0.6747,
+    "output_chars": 3134
+   },
+   "semble_verbatim_all": {
+    "rank": null,
+    "top5": [
+     "UPSTREAM.md:50-52",
+     ".github/workflows/ci.yml:18-31",
+     "AGENTS.md:23-26",
+     "deploy/wsl/setup.sh:102-112",
+     "meridian/boundary.py:102-115"
+    ],
+    "median_cli_s": 0.6554,
+    "output_chars": 3272
+   }
+  },
+  {
+   "id": "Q29",
+   "category": "ops",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 1,
+    "top5": [
+     "pyproject.toml:17-22",
+     "uv.lock:5-7",
+     "AGENTS.md:94-98",
+     "UPSTREAM.md:35-62",
+     "uv.lock:9-10"
+    ],
+    "median_s": 0.0076,
+    "rg_hit_lines": 9,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 843
+   },
+   "semble": {
+    "rank": 1,
+    "top5": [
+     "pyproject.toml:1-27",
+     ".github/dependabot.yml:1-15",
+     "orca.yaml:1-3",
+     ".github/workflows/ci.yml:18-31",
+     ".github/workflows/ci.yml:32-39"
+    ],
+    "median_cli_s": 0.6834,
+    "output_chars": 2860
+   },
+   "semble_verbatim_all": {
+    "rank": 3,
+    "top5": [
+     "UPSTREAM.md:46-49",
+     "AGENTS.md:92-98",
+     "pyproject.toml:1-27",
+     ".github/dependabot.yml:1-15",
+     "deploy/wsl/setup.sh:48-59"
+    ],
+    "median_cli_s": 0.6512,
+    "output_chars": 3427
+   }
+  },
+  {
+   "id": "Q30",
+   "category": "ops",
+   "names_identifier": false,
+   "stable_across_repeats": true,
+   "slot1": {
+    "rank": 1,
+    "rank_printed_order": 1,
+    "top5": [
+     "deploy/wsl/meridian.user-data:82-112",
+     "deploy/wsl/setup.sh:35-78"
+    ],
+    "median_s": 0.0041,
+    "rg_hit_lines": 8,
+    "rg_errors": [],
+    "lookup_locations": 0,
+    "output_chars": 876
+   },
+   "semble": {
+    "rank": null,
+    "top5": [
+     "UPSTREAM.md:28-29",
+     "deploy/wsl/setup.sh:69-78",
+     ".github/workflows/ci.yml:1-17",
+     "UPSTREAM.md:26-27",
+     "pyproject.toml:1-27"
+    ],
+    "median_cli_s": 0.6366,
+    "output_chars": 3478
+   },
+   "semble_verbatim_all": {
+    "rank": null,
+    "top5": [
+     "UPSTREAM.md:26-27",
+     "deploy/wsl/setup.sh:69-78",
+     "AGENTS.md:1-5",
+     "UPSTREAM.md:28-29",
+     "pyproject.toml:1-27"
+    ],
+    "median_cli_s": 0.6411,
+    "output_chars": 3363
+   }
+  }
+ ]
+}

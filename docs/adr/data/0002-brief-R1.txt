@@ -1,0 +1,1 @@
+Make `uv run pytest` pass in this worktree by changing only files under `meridian/` and the file `.gitignore`. Do not edit `tests/` or `AGENTS.md`. Keep `uv run ruff check .`, `uv run ruff format --check .` and `uv run pyright` clean. Never run `meridian.ibkr_paper`, `meridian.ib_probe` or `meridian.boundary contract`, and connect to nothing.

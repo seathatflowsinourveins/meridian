@@ -1,0 +1,164 @@
+{
+ "adr": "0013",
+ "what": "Aggregate figures behind ADR 0013 (Antigravity CLI documentation reading). Nothing was measured and no run was made; every always-on text figure is rebuilt from the public repository by 0013_always_on.py (this block's layout and notes were written by hand).",
+ "written": "2026-11-13T04:15:00-05:00",
+ "always_on": {
+  "method": "AGENTS.md whole, plus '- <name>: <description>\n' per .agents/skills/<name>/SKILL.md (agy's own framing is unpublished); o200k_base tokens as a proxy for agy's tokenizer",
+  "reproduce": "python3 -I docs/adr/data/0013_always_on.py --repo . --out OUT --counter docs/adr/data/0013_count_tokens.py --vocab-dir VOCAB [--builtin ~/.gemini/antigravity-cli/builtin/skills]",
+  "counter_sha256": "a8dcf1e4dedd1ded41652e6b3a3291094279b4857cf0d6c1e3ea587bc80f7502",
+  "vocab_o200k_base_sha256": "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d",
+  "commits": {
+   "main": "9c5daaae9d32acf259f965fd7b95b458604503b6",
+   "reading": "f65d835ee39ca716ee0348db33e173d896ba3b47",
+   "r1_start": "27aa964df79d646027d0060eb4d3a14bd49dae8f"
+  },
+  "agents_md_blobs": {
+   "9c5daaae9d32acf259f965fd7b95b458604503b6": "adf5e048f745e532cf9af6b0f78b34da636a298c",
+   "f65d835ee39ca716ee0348db33e173d896ba3b47": "75b399a25b286b95b3475834512e1313def7508f",
+   "27aa964df79d646027d0060eb4d3a14bd49dae8f": "3e811ed0c762726a451d20a155eedf64d741e1f1"
+  },
+  "texts": {
+   "agents-main": {
+    "chars": 8318,
+    "bytes": 8320,
+    "sha256": "e4ca4f506b09abf5c616f27929a5dd3add49e853ac1d05ce94022dfa300fb5fd",
+    "tokens_o200k": 2159
+   },
+   "skills-listing-main": {
+    "chars": 1672,
+    "bytes": 1672,
+    "sha256": "57f5b373871dd2115777d3499ec0a049e5bdb3b6239ef205630e09d715754272",
+    "tokens_o200k": 395
+   },
+   "total-main": {
+    "chars": 9990,
+    "bytes": 9992,
+    "sha256": "5041302d3ab05594fabe69697a41a6856211549674cc6c815919f94020c20564",
+    "tokens_o200k": 2554
+   },
+   "agents-reading": {
+    "chars": 5964,
+    "bytes": 5966,
+    "sha256": "a515e3f0029cc970585c80dc2cc7e084a596369d6e87a9cca10ae02eef1d16cb",
+    "tokens_o200k": 1516
+   },
+   "agents-r1-start": {
+    "chars": 5717,
+    "bytes": 5717,
+    "sha256": "f378f99fb92d2e3df446bcb794fbcfbd4d3a4482651a8dd90ac6de34fb33fd1c",
+    "tokens_o200k": 1456
+   },
+   "total-r1-with": {
+    "chars": 7389,
+    "bytes": 7389,
+    "sha256": "e8e3b16d2df7d42d1e64e69765a2c6cb6beea7cecd6473379b0a72a8bb23998d",
+    "tokens_o200k": 1851
+   },
+   "agy-builtin-listing": {
+    "chars": 4700,
+    "bytes": 4704,
+    "sha256": "114acddb6d40d7944865b067f1e1314fa1817419bfa62bd8582cc514b2c8d5c9",
+    "tokens_o200k": 998
+   }
+  },
+  "agy_builtin_note": "agy-builtin-listing: the 14 built-in SKILL.md files the installed 1.5.7 build unpacked to ~/.gemini/antigravity-cli/builtin/skills, listed the same way; an upper bound (which of them reach the model is unverified); Google's text, so only its counts and sha256 are published",
+  "added_by_this_adr": {
+   "chars": 0,
+   "tokens_o200k": 0
+  },
+  "gemini_tokens": null,
+  "gemini_tokens_note": "agy's own count of these texts and of its system prompt and tools was not measured",
+  "r1_start_note": "r1_start (27aa964) and the texts agents-r1-start and total-r1-with are figures the script computes for a shared-files check that was not run"
+ },
+ "not_measured_because": [
+  "No addition was taken up: each was decided on the documentation reading, so no with/without task was run and no run of any kind was made."
+ ],
+ "versions": {
+  "read": "1.5.7, tag 87bd97327a72d62d553c3aede8cf77752ae4c59a; asset agy_cli_linux_x64.tar.gz 104,537,542 bytes, sha256 d6150a8d2a9e29a3d171b2325d6f66b6e7059628f4799a20c069b8ed8f78fdbb; published 2026-11-12T15:18:30Z",
+  "newest_on_2026_11_13": "1.5.8, tag 1554cf9fc71ddbcd9e0d176c8f65000612bba3c2; asset agy_cli_linux_x64.tar.gz 104,805,905 bytes, sha256 905d4accfbd61bc00bee84bfaf24c59b85d334cabd786cf99237b66cfe06ab98; published 2026-11-13T05:00:42Z",
+  "releases": {
+   "count": 89,
+   "first": "1.0.4, 2026-06-01T23:14:20Z",
+   "since_2026_10_13": 25,
+   "prerelease": 0,
+   "immutable": 0
+  },
+  "tag_commit_after_publication": {
+   "releases": 64,
+   "of": 89,
+   "up_to_10_s": 56,
+   "pinned_1_5_7_s": 3,
+   "2.6_to_27.5_min": 7,
+   "2.6_to_27.5_min_tags": "1.1.3, 1.1.9, 1.1.13, 1.1.14, 1.1.16, 1.4.11, 1.4.12",
+   "hours": "1 (1.5.2, 80,528 s = 22.4 h)",
+   "rechecked": "2026-11-13 04:35 ET: REST releases?per_page=100 published_at against the tag commits' dates in an unauthenticated blobless clone; the same counts"
+  },
+  "installed_2026_11_13_0408_et": "the 1.5.7 build: 280,564,136 bytes, sha256 5df525a2d6908989c57b897723caea66e00d7c4d2e24411f91ad306989574642, not updated since 2026-11-12 18:33 ET",
+  "source": "GitHub REST releases?per_page=100 (unauthenticated) and git ls-remote, 2026-11-13 04:07 ET"
+ },
+ "advisories": {
+  "repository_advisories": "[] at 2026-11-12 22:16 ET and again at 2026-11-13 04:10 ET",
+  "github_database_osv_nvd": "0 at 2026-11-12 22:16 ET (names in the ADR)"
+ },
+ "reading_check": {
+  "checks": 83,
+  "confirmed": 74,
+  "corrected": 9,
+  "refuted": 0,
+  "finished": "2026-11-12 about 22:16 ET",
+  "verdict_agrees": true
+ },
+ "reread_2026_11_13": {
+  "what": "The facts ADR 0013 added on 2026-11-13, after the reading of 2026-11-12, with their sources: each page fetched as .md (unauthenticated) and hashed on 2026-11-13 05:44-05:47 ET; the machine checks print names, counts and digests only.",
+  "pages": {
+   "cli/headless.md": {
+    "sha256": "73b24a97b5f84c4b1c18e11c5393e434d74f5893e9e673551af598f7840cb5b6",
+    "lines": "67-73 (json example: input 10,415, output 657, thinking 616, cache_read 8,113, total 11,072 = input + output); 294-295 (stream-json, second turn: input 278, cache_read 30,214, total 282; session input 30,662 = 30,384 + 278); 391 (only /model and /usage named as slash commands the CLI answers itself); 159, 448, 482-489 (--model in init, no fallback, the refusal); 454 (soft denial, exit 0)"
+   },
+   "cli/reference.md": {
+    "sha256": "8d8987d8bc42ea45bf7b35b95fe957cdbbcceca83193838843b93a25fb01cd30",
+    "lines": "49 (/skills: browse loaded local and global Agent Skills); 190 (disableSlashCommands: under -p, slash commands and skills run unless set); 192-196 (settings keys model, modelProvider, trustedWorkspaces, permissions); 194 (trustedWorkspaces: the CLI adds entries)"
+   },
+   "commands/learn.md": {
+    "sha256": "f64ee81e7787000b42174ff25de1ae74f0f5f4b1cf5f944c6183f80e709d5f05",
+    "lines": "16 (proposes before writing); 55 (writes only after explicit approval); 59-64 (where it writes: workspace AGENTS.md or GEMINI.md in the folder or .agents/, .agents/rules/, .agents/skills/; global ~/.gemini/{AGENTS,GEMINI}.md, ~/.gemini/config/{AGENTS,GEMINI}.md, ~/.gemini/config/rules/, ~/.gemini/config/skills/)"
+   },
+   "faq.md": {
+    "sha256": "cca029855adc367fbd74acded0952bb1cd71ac36af1ca128517eb2a4085df1cf",
+    "lines": "335-341 (third-party software accessing Antigravity violates the Terms; agy -p is meant for direct scripting and CI, and wrapping agy in third-party coding agents or applications is not supported on consumer plans)"
+   },
+   "customization-discovery.md": {
+    "sha256": "cc50d3e5731d404bea8e652d1249849d130d96fbc9389a336e288395f03eab41",
+    "lines": "42 (outside a repository only the workspace folder is checked); 77-81 (discovery manifests skills.json, rules.json, agents.json and plugins.json, in .agents/ or ~/.gemini/config/); 212-218 (/skills as an interactive panel)"
+   },
+   "rules.md": {
+    "sha256": "da142a2920f0b8dae56a6a7fc1a2bcedb46bcfe929ef5e24d0ad3e956880fbb3",
+    "lines": "17-23, 40, 83 (AGENTS.md always on, every turn); 146-147 (24,000 bytes per file, 20,000-token budget)"
+   },
+   "skills.md": {
+    "sha256": "c9062d3683bfffaa144736ce3330fe96989d412d80b73b5c47f0d48467793dbf",
+    "lines": "15 (skill names and descriptions every turn); 129-135 (CLI skill locations)"
+   },
+   "permissions.md": {
+    "sha256": "ac2ea19d1a0cfab72200cc791d5bcf84d02e511b03be7fede4fce24110c3483a",
+    "lines": "90, 224 (a command rule matches by exact word or token prefix, or by regex, per whitespace-separated token)"
+   },
+   "commands/skills.md": "HTTP 404: no page documents /skills under -p"
+  },
+  "release_1_5_8": {
+   "source": "GitHub REST releases/tags/1.5.8, unauthenticated, 2026-11-13 05:46 ET",
+   "published": "2026-11-13T05:00:42Z, not immutable",
+   "asset": "agy_cli_linux_x64.tar.gz 104,805,905 bytes, GitHub digest sha256:905d4accfbd61bc00bee84bfaf24c59b85d334cabd786cf99237b66cfe06ab98",
+   "body": "27 lines, sha256 of the body text 8787b328d6b7ecfaba24b80e0548a5898e79494c0a4ebc3c00c347bbb49f53ca",
+   "body_lines": "6: terminal sandbox network proxy, path-based network rules bypassed with %2F, backslashes or .. segments in a URL path; 7: always-allow command rules on Windows bypassed through cmd, powershell or pwsh; 8: permission rules ignored for MCP tools loaded up front (eager) and the /browser subagent's tools; 21: /learn appending to rule files such as GEMINI.md or AGENTS.md past the rule size limit, after which their endings were cut off on every turn"
+  },
+  "machine": {
+   "wslconfig": "%USERPROFILE%\\.wslconfig: 1 line networkingMode=mirrored (only that key read)",
+   "orca_serve": "systemctl --user cat orca-serve.service (the unit and its drop-in meridian.conf): 0 lines name AGY_; the service was active at 05:46 ET",
+   "agy_binary": "~/.local/bin/agy at 05:46 ET: 280,564,136 bytes, sha256 5df525a2d6908989c57b897723caea66e00d7c4d2e24411f91ad306989574642, modified 2026-11-12 18:33 ET (the 1.5.7 build)",
+   "no_run_yet": "at 05:46-05:47 ET: agy's conversations folder empty; its newest log from 2026-11-12 22:24 ET; no agy process",
+   "agy_config_names": "~/.gemini/config holds config.json, hooks.json, mcp_config.json, projects/default-cli-project.json and .migrated (names only)",
+   "orca_tui_launch": "stablyai/orca at b0570d90, src/shared/agent-launch/startup/tui-agent-launch-command.ts line 39 sets AGY_CLI_DISABLE_AUTO_UPDATE=true for Antigravity TUI launches"
+  }
+ }
+}

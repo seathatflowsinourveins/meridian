@@ -1,0 +1,1116 @@
+{
+  "adr": "0004",
+  "what": "Aggregates of the ADR 0004 measurement (2026-11-13): always-on context, then the real tasks R3 (tdd) and R1 (diagnosing-bugs), 3 runs per arm each. 0004_aggregate.py recomputes from this file the always-on medians, delta and condition (and the control's delta), every per_task field (the token medians and ranges among them) and the rule, with the containment check as applied and with its Bash clause read literally; each run's own fields and the free text are taken as recorded. Stage the published files for a rerun with a staging script (not published); rerun_preconditions says what a rerun must match to reproduce these numbers rather than only the method. The raw runs (streams, transcripts, tool calls, grader output, process samples) stay on the owner's machine and are not published.",
+  "candidate": "mattpocock/skills v1.3.2: tag 85cbec972d7a79c278c793d272f7fc715850fad4, commit d1478fcb140db0b93c0c8df17bcfd311844749d0; skills tdd and diagnosing-bugs, copy route (7 files, blob ids in 0004-addition-hashes.txt)",
+  "runtime": "Claude Code 2.1.322 (~/.local/share/claude/versions/2.1.322; init claude_code_version 2.1.322 in every always-on, control, /context and task run; the launcher still pointed at it throughout the resume)",
+  "run_settings": "claude-opus-5-5, --effort high, --permission-mode bypassPermissions, deny rules (method list plus Read(//home/<user>/Jts/**)), autoMemoryDirectory fresh per run, CLAUDE_CODE_EFFORT_LEVEL/SUBAGENT_EFFORT/ANTHROPIC_MODEL unset, DISABLE_AUTOUPDATER=1; /goal not invoked in either arm. claude-opus-5-5 is the workers' model in AGENTS.md on main (line 67); the lead's claude-fable-5-2 was not measured. Plugins in every run of both arms (init event, the same 6 in all 20 runs): codex@openai-codex 1.0.6, the stack's one owner-installed plugin, and the five built into the 2.1.322 binary, cc-plugin-sec-default, cc-plugin-agents-md, cc-plugin-telemetry, cc-plugin-privacy and cc-plugin-plugin-authoring (source <name>@builtin); what these five do was not checked. Every task run ran two SessionStart:startup hooks (hook_started and hook_response, exit 0, outcome success); their source was not checked.",
+  "key": "b = with the addition (0004-key.txt, drawn 2026-11-13T01:51:11-05:00)",
+  "always_on": {
+    "method": "Method sheet section 1, using the fact sheet's adopted copy route instead of --plugin-dir. Each run had its own fresh detached worktree of main 9c5daaae9d32acf259f965fd7b95b458604503b6. In the with arm, the 7 pinned files were copied into .agents/skills/{tdd,diagnosing-bugs}, with links .claude/skills/<name> -> ../../.agents/skills/<name>, and hash-verified before and after each run. Each run was 'claude -p \"Reply with the single word OK. Do not use any tools.\" --max-turns 1', followed by '-p /context'. Order a-k1 b-k1 b-k2 a-k2 a-k3 b-k3. The key (b = with) is 0004-key.txt, kept outside the run folders. Always-on = result.usage input + cache_creation + cache_read.",
+    "run_at": "2026-11-13 01:58:06 to 01:59:30 ET (run log), harness 0004_ab.sh",
+    "without_runs": [
+      22743,
+      22743,
+      22743
+    ],
+    "with_runs": [
+      22925,
+      22925,
+      22925
+    ],
+    "median_without": 22743,
+    "median_with": 22925,
+    "delta": 182,
+    "delta_share": "0.80% of without",
+    "limit": 150,
+    "condition_under_the_method": "182 > 150 with the copies uncommitted, so the condition fails under the rule fixed before any run: the assessment's adopt_if (2026-11-12) and the fact sheet (the verification, 2026-11-13 01:44 ET) apply the 150-token limit to the measured Claude Code always-on delta, and their method (one-turn OK runs in fresh worktrees with the copies uncommitted) is the one that gave 182. The first run's record, written at 02:01 ET after the always-on runs (01:58 to 01:59 ET), applied the limit to the listing-only control's 121 instead and read the condition as met (pre_registration.first_run_record_reading); written after the result, it is not part of the rule fixed before any run. After that result, an unpublished draft of the rule (03:30:30 ET) bound the limit to a rerun with the copies committed and ordered that rerun before the task runs; the rule as applied dropped it ('stays as measured', 0004-prereg.txt lines 22-23), against the unpublished draft's order. So the condition fails under the rule fixed before any run and is open only under the unpublished draft's later binding. Both skills fail other conditions, so neither reading changes the result.",
+    "condition": "fails under the rule fixed before any run (182 > 150); open under the unpublished draft's later committed-copy rerun, which was not done",
+    "listing_only_control": {
+      "setting": "--settings includeGitInstructions:false in both arms (1 run each, a-kc1 then b-kc1)",
+      "without": 22020,
+      "with": 22141,
+      "delta": 121,
+      "delta_share": "0.55% of without",
+      "note": "This removes the git-status snapshot. In the with arm that snapshot carries 4 extra untracked-path lines, because the copies are not committed in a throwaway worktree. An adopted, committed install has no such lines, so 121 is the representative figure. The other 61 tokens (182 - 121) are that snapshot artifact. b-kc1's OK run finished before the guard fired. Its /context run was not started, and nothing was snapped after it (0 tool calls).",
+      "context_rows": {
+        "a-kc1": {
+          "System prompt": 2626,
+          "System tools": 7220,
+          "System tools (deferred)": 13844,
+          "Custom agents": 85,
+          "Memory files": 3185,
+          "Skills": 3066,
+          "Messages": 10,
+          "total_tokens": 16192
+        },
+        "b-kc1": {
+          "System prompt": 2626,
+          "System tools": 7110,
+          "System tools (deferred)": 13844,
+          "Custom agents": 85,
+          "Memory files": 3185,
+          "Skills": 3176,
+          "Messages": 10,
+          "total_tokens": 16192
+        },
+        "skills_row_delta": 110,
+        "system_tools_delta": -110,
+        "note": "b-kc1's /context run, cut off on 2026-11-13 at 01:59, was run at 04:08 into the new folder b-kc1-ctx: same worktree path ab-0004-b-kc1 and memory path as the original, includeGitInstructions false, the 7 copies hash-identical before and after, local_command 'context', 0 turns, no model spend, 29 skills listed, 0 containment flags. Skills +110 and System tools -110, the same split as the main pair."
+      }
+    },
+    "context_rows": {
+      "without": {
+        "System prompt": 2625,
+        "System tools": 7473,
+        "System tools (deferred)": 13844,
+        "Custom agents": 85,
+        "Memory files": 3185,
+        "Skills": 3066,
+        "Messages": 10,
+        "total_tokens": 16444
+      },
+      "with": {
+        "System prompt": 2625,
+        "System tools": 7363,
+        "System tools (deferred)": 13844,
+        "Custom agents": 85,
+        "Memory files": 3185,
+        "Skills": 3176,
+        "Messages": 10,
+        "total_tokens": 16444
+      },
+      "skills_row_delta": 110,
+      "note": "/context (local_command 'context', 0 turns, no model spend) is an estimate. Its Skills row rises 110 and its System tools row falls 110, because the category builder subtracts the listing from the tools. The result-usage figures above decide."
+    },
+    "control_listing_per_skill": {
+      "source": "b-kc1's /context run (0 turns, no model spend): context_usage.skills",
+      "tdd": 52,
+      "diagnosing-bugs": 58,
+      "custom_agents": [
+        {
+          "agent_type": "codex:codex-rescue",
+          "source": "plugin",
+          "tokens": 85
+        }
+      ],
+      "codex_plugin_skills": [
+        {
+          "name": "codex:rescue",
+          "source": "plugin",
+          "plugin_name": "codex",
+          "tokens": 39
+        },
+        {
+          "name": "codex:setup",
+          "source": "plugin",
+          "plugin_name": "codex",
+          "tokens": 35
+        },
+        {
+          "name": "codex:codex-cli-runtime",
+          "source": "plugin",
+          "plugin_name": "codex",
+          "tokens": 36
+        },
+        {
+          "name": "codex:codex-result-handling",
+          "source": "plugin",
+          "plugin_name": "codex",
+          "tokens": 33
+        },
+        {
+          "name": "codex:gpt-5-4-prompting",
+          "source": "plugin",
+          "plugin_name": "codex",
+          "tokens": 57
+        }
+      ]
+    },
+    "skills_listed": "init.skills: without arm 27 entries (orca-cli, orchestration plus built-ins and codex:*), with arm 29 (adds tdd and diagnosing-bugs), identical in all 3 runs of each arm",
+    "static_comparison": "The fact sheet's offline estimate was 74 o200k tokens for the two listing lines. Measured in Claude's own tokenizer and framing: 121 (listing only) or 110 (/context Skills row).",
+    "validity": "All 6 main runs and both control runs were valid: num_turns 1, is_error false, terminal_reason completed, modelUsage only claude-opus-5-5, the same 2.1.322 throughout. Run-to-run spread is 0 tokens in each arm.",
+    "measurement_reading": "The first run's record (02:01 ET, after the always-on runs) reads 121 as the representative figure and the condition as met; the resume's record repeats that and calls the question open (182 under the method, 121 in the control, the committed-copy rerun not done). ADR 0004 reads the condition as failed under the rule fixed before any run, the assessment's adopt_if and the fact sheet (182 > 150), and open under the unpublished draft's later committed-copy rerun, which was not done. Both skills fail other conditions, so no reading changes the result.",
+    "committed_copy_rerun": "Fixed in this ADR's draft (an unpublished draft of the rule, 2026-11-13 03:30:30 ET) after the 182 result and before any task run, ordered before the task rerun: 3 runs per arm with the 7 copies and links committed in each with-worktree and an empty commit in each without-worktree; 'the rule's 150-token limit applies to this delta'. Dropped by the resume's pre-registration (0004-prereg.txt lines 22-23: 'not part of this task'), a departure from the unpublished draft (03:30 ET). Not run."
+  },
+  "briefs": {
+    "R3": {
+      "file": "0004-brief-R3.txt",
+      "sha256": "242fd3159197344f0c6f361d5a3c919e9a58e2585f3f18b8b29b26bfee940da0",
+      "text": "Write tests for the jts.ini and account-form checks in `meridian/boundary.py`. Change nothing outside `tests/`.",
+      "hashed_as": "UTF-8 bytes of the text, no trailing newline"
+    },
+    "R1": {
+      "file": "0004-brief-R1.txt",
+      "sha256": "789791805eceb05d233fb1fc0d1c0ebefaed5d84d8f95612476bacb4a4feabc4",
+      "text": "Make `uv run pytest` pass in this worktree by changing only files under `meridian/` and the file `.gitignore`. Do not edit `tests/` or `AGENTS.md`. Keep `uv run ruff check .`, `uv run ruff format --check .` and `uv run pyright` clean. Never run `meridian.ibkr_paper`, `meridian.ib_probe` or `meridian.boundary contract`, and connect to nothing.",
+      "hashed_as": "UTF-8 bytes of the text, no trailing newline"
+    },
+    "R2": {
+      "file": "0004-brief-R2.txt",
+      "sha256": "9d0b472a179056bea86dfcaf334754667d0fd3de7aac764abd945da6b952e8ed",
+      "text": "Make `uv run pytest` pass in this worktree by changing only the file `meridian/boundary.py`. Do not edit `tests/` or `AGENTS.md`. Keep `uv run ruff check .`, `uv run ruff format --check .` and `uv run pyright` clean. Never run `meridian.ibkr_paper`, `meridian.ib_probe` or `meridian.boundary contract`, and connect to nothing.",
+      "hashed_as": "UTF-8 bytes of the text, no trailing newline"
+    }
+  },
+  "pre_registration": {
+    "assessment_adopt_if_2026-11-12": "Stated before any run, and each skill is decided on its own.\ntdd is adopted if, on R3, either (a) the with arm succeeds in at least 2 of 3 runs and the without arm in at most 1, or (b) both arms succeed in at least 2 of 3 and the with arm's median total tokens is at most 75% of the without arm's. All of these must also hold: tdd was invoked in at least 2 of 3 with-runs; no with-run stalled on a question (tdd/SKILL.md line 22 makes the agent wait for user-confirmed seams); and the measured Claude Code always-on delta for both skills is at most 150 tokens.\ndiagnosing-bugs is adopted by the same rule on R1, and only if the R2 guard then shows at least as many with-arm successes as without-arm, with the with arm's median total tokens at most 1.15 times the without arm's.\nA skill that never triggers is not adopted, because its listing would be pure cost. Ties, or a with arm that does worse, also mean not adopted. If 0005 or 0006 is measured for these jobs too, adopt at most one per job: the larger success gain wins, then the smaller always-on cost.",
+    "verification_fact_sheet_2026-11-13": "Adopt, fixed before runs, each skill alone: with >= 2/3 and without <= 1/3, or both >= 2/3 and with-arm median tokens <= 75%; skill invoked in >= 2/3 with runs; always-on delta <= 150 tokens; a one-success gap or a 2-2 tie means 2 more runs per arm (ab-tasks); at most one of 0004/0005/0006 per job. (the verification's fact sheet (not published), fact_sheet_markdown)",
+    "first_run_record": "Fixed before any run (fact sheet plus the assessment's adopt_if, each skill decided alone). tdd on R3, diagnosing-bugs on R1: with-arm passes >= 2 of 3 and without <= 1 of 3, or both >= 2 of 3 and the with-arm median tokens (all models) <= 75% of the without arm's. The skill must also be invoked (Skill tool or Read of its SKILL.md) in >= 2 of 3 with-runs, and no with-run may stall (a stall is a final result text ending in '?' with the grade failing). The always-on delta must be <= 150 tokens. A one-success gap or a 2-2 tie means 2 more runs per arm. diagnosing-bugs also needs the R2 guard: with-arm successes >= without, and with-arm median tokens <= 1.15x the without arm's. At most one of 0004/0005/0006 per job. A with-run that breaks containment is void and counts against the with arm. R3 grade = ab-tasks.md exactly; a change outside tests/ is reported separately as passed_strict.",
+    "first_run_record_reading": "Written 2026-11-13 02:01:55 ET (the record's modification time), after the always-on runs (01:58:06 to 01:58:45 ET; controls 01:59:21 to 01:59:30 ET). Its rule text above does not say which delta the 150-token limit applies to; its always_on.note says the gate 'is met by the representative listing-only delta (121), not by the raw copy-route delta (182)', and its rule_note gives '121 tokens listing-only (passes <= 150)'. For the always-on condition it is therefore a reading made after the result, not part of the rule fixed before any run; only the assessment's adopt_if (2026-11-12) and the fact sheet (01:44 ET) predate the runs, and their method (copies uncommitted, OK runs) gives 182.",
+    "rule_as_applied": {
+      "file": "0004-prereg.txt",
+      "sha256": "646fc7120045a97ea998360fda2eecb61072a5e02efe949c285c018f96ea12fc",
+      "text_says": "line 1: 'written 2026-11-13 ~04:10 ET, before the first task run of the resume'",
+      "modification_times": "2026-11-13T04:08:12-05:00 for the copy in the measurement's work folder (notes/rule-as-applied.txt) and 2026-11-13T04:08:18-05:00 (04:08:18.27) for the run folder's (scripts/rule-as-applied-resume.txt); same sha256",
+      "run_log": "04:08:18 'start ctx-only b-kc1 into b-kc1-ctx'; 04:08:28 'start r3 a-r3-1' (04:08:29 in the run folder)",
+      "first_task_run_started": "2026-11-13T04:08:28-05:00",
+      "reading": "Only the two modification times place the file before the first task run. Its own text says ~04:10, after that run started, and its hash was not logged anywhere before the runs. The rule's substance is in an unpublished draft of the rule (03:30:30 ET, confirmed by the reflog).",
+      "key_copy": "The run folder's copy (scripts/rule-as-applied-resume.txt under ~/src/meridian-ab/0004, written before the first task run) holds line 24, 'Key: b = with'. There the deny rules stopped only the Read tool (Read(//home/<user>/src/meridian-ab/**)), not Bash. No task run's tool calls name meridian-ab or rule-as-applied (a leak-scan pattern; checked again in the raw tool calls), so no run read it. The first run kept the key outside the run folders.",
+      "name": "ADR 0004 calls this file 'the rule as applied', as here, and keeps 'pre-registration' for the unpublished draft's committed rule (commit_the unpublished draft (03:30 ET)): the file says it was written ~04:10 ET, after the first task run started, and its hash was logged nowhere before the runs. The published file name, 0004-prereg.txt, is kept.",
+      "not_in_draft": [
+        "a usage or rate limit stops the series (the unpublished draft (03:30 ET): such a run is not scored and is re-run in its slot)",
+        "the committed-copy always-on rerun is dropped (the unpublished draft (03:30 ET): run it before the task rerun; the 150-token limit applies to it)",
+        "the extension order a4 b4 b5 a5"
+      ]
+    },
+    "departures_from_ab_tasks": "API errors and voids are re-run in their slot (ab-tasks.md: 're-run later'); a usage or rate limit stops the series (owner's rule); a void run is re-run (ab-claude-code.md: 'Void outright'); 5-run thresholds 4/5 and 2/5 added. None was triggered: 0 voids, 0 API errors, no extension.",
+    "draft_rule_0330": {
+      "committed": "2026-11-13T03:30:30-05:00",
+      "branch": "l2/adr-ecosystem",
+      "text": "- Rule, each skill alone (M; the order of steps, the thresholds after 5 runs and the scoring of voids and breaches written out on 2026-11-13, after review and before any task run). After 3 runs per arm, a one-success gap (3-2, 2-1 or 1-0, either way) or a 2-2 tie first adds 2 runs per arm, once, and the rule then applies to all 5; otherwise it applies to the 3. Adopt only if the with arm passes at least 2 of 3 (4 of 5) and the without arm at most 1 (2 of 5), or both pass at least 2 of 3 (4 of 5) and the with arm's median tokens are at most 75% of the without arm's; the skill is invoked in at least 2 of 3 with-runs (4 of 5); no with-run stalls (its final text ends in \"?\" and the grade fails); and the always-on delta is at most 150 tokens. `diagnosing-bugs` also needs R2, extended the same way: with-arm successes at least the without arm's, median tokens at most 1.15 times. A run that ends on an API error or a usage or rate limit, or is void, is not scored and is re-run in its slot; a with-run that breaks containment scores as a failure and is not re-run, and a without-run that does is re-run. At most one of 0004, 0005 and 0006 per job.",
+      "reachability": "the unpublished draft (03:30 ET) is on l2/adr-ecosystem, which is local and not pushed (no upstream, not in git branch -r, 2026-11-13); git reflog: HEAD@{2026-11-13 03:30:30 -0500}. main takes one commit per pull request (075f0b2 is #1, 9c5daaa is #2, each with one parent), so after a merge the unpublished draft (03:30 ET) stays reachable only through the branch or the pull request's refs. The text above is quoted from that commit's ADR so the binding can be checked without it."
+    },
+    "departures_from_draft": "The three items under rule_as_applied.not_in_the unpublished draft (03:30 ET), decided in the pre-registration. Only the dropped always-on rerun took effect: no limit was hit and no extension was needed."
+  },
+  "task_order": "R3 then R1, each a1 b1 b2 a2 a3 b3 (key: b = with), one run at a time; no extension (no one-success gap and no 2-2 tie in either task)",
+  "task_method": "scripts/ab0004r.sh = the validated ab0004.sh with changes the agent does not see: the owner's fixed guard (~/.cache/meridian/gateway-guard.sh, output and time in each run folder's guard.log), a binary-gone check in place of the launcher check, a /proc sampler during each run and a Codex-use record after it. Agent-facing method unchanged: worktree at the task base, copies in .claude/skills in the with arm, --model claude-opus-5-5 --effort high, bypassPermissions, deny rules in --settings plus --disallowedTools, fresh autoMemoryDirectory, DISABLE_AUTOUPDATER=1, --max-turns 100, verbatim briefs. The addition was re-staged from the pin with unauthenticated git (7 blob ids identical) and all 7 files read before the first run. The arms' listings differ by more than the addition: the task bases 96e82e6 and 27aa964 hold no .claude or .agents folder; every without-run listed orca-cli and orchestration, which only the main checkout's .claude/skills holds (~/src/meridian at 9c5daaa), and every with-run listed tdd and diagnosing-bugs instead, its own .claude/skills with the copies having replaced the Orca pair (skills_listed_task_runs).",
+  "skills_listed_task_runs": {
+    "without": "a-r3-1..3 and a-r1-1..3: init.skills 27 entries, orca-cli and orchestration listed, tdd and diagnosing-bugs not; the skill_listing attachment begins '- orca-cli: Operate Orca-managed worktrees'",
+    "with": "b-r3-1..3 and b-r1-1..3: init.skills 27 entries, tdd and diagnosing-bugs listed, orca-cli and orchestration not; the skill_listing attachment begins '- diagnosing-bugs: Diagnosis loop for hard bugs'",
+    "always_on_runs": "No swap at main 9c5daaa, whose worktrees hold Orca's .claude/skills: without 27 entries, with 29 (orca-cli, orchestration, tdd and diagnosing-bugs).",
+    "listing_context_tokens": {
+      "source": "/context (local_command 'context', 0 turns; an estimate) of the always-on runs at main 9c5daaa, context_usage.skills with source projectSettings: a-k1, a-k2 and a-kc1 list orca-cli 267 and orchestration 289; b-k1, b-k2 and b-kc1's /context run list the same two plus tdd 52 and diagnosing-bugs 58. The task runs had no /context run; the skill files are the same.",
+      "without_arm_task_runs": {
+        "orca-cli": 267,
+        "orchestration": 289
+      },
+      "with_arm_task_runs": {
+        "tdd": 52,
+        "diagnosing-bugs": 58
+      },
+      "with_minus_without": -446,
+      "reading": "In the task runs the with arm's listing was about 446 tokens smaller per request than the without arm's, by this estimate. The swap would make the with arm cheaper, not dearer, so it does not explain the higher with-arm medians."
+    },
+    "source": "Raw runs (each run's metrics.json init.skills and the skill_listing attachment in its transcript; not published); git ls-tree of 96e82e6 and 27aa964 (no .claude, no .agents); ~/src/meridian at 9c5daaa holds .claude/skills/orca-cli and .claude/skills/orchestration. The user-level skill folders were empty in every run.",
+    "use": "No run in either arm called the Skill tool or read a SKILL.md, Orca's included. The token, turn and time medians therefore compare the two skills' listing lines against the Orca pair's: not a clean with-and-without measure, and not the skills' cost. The swap left the with arm's listing about 446 tokens smaller per request (listing_context_tokens), yet its token medians were higher; with 3 runs per arm the token ranges overlap (per_task min_tokens and max_tokens), so the ratios of medians (R3 1.1804, R1 1.1556) are within the run-to-run spread and say nothing about either skill. The decision rests on the invocation counts (0 of 3 for each skill) and the pass counts (0-0 on R3, 3-3 on R1, the latter with the containment check read as in containment_rule.bash_clause). The method did not foresee the swap; a rerun should list the same Orca skills in both arms (rerun_preconditions)."
+  },
+  "task_runs": [
+    {
+      "run": "a-r3-1",
+      "arm": "without",
+      "task": "R3",
+      "skill": "tdd",
+      "started_at": "2026-11-13T04:08:29-05:00",
+      "passed": false,
+      "passed_strict": false,
+      "tokens": 448627,
+      "turns": 11,
+      "duration_s": 115.6,
+      "wall_s": 116,
+      "cost_usd": 0.6508,
+      "model_keys": [
+        "claude-opus-5-5"
+      ],
+      "claude_code_version": "2.1.322",
+      "terminal_reason": "completed",
+      "api_retries": 0,
+      "permission_denials": 0,
+      "void": "",
+      "skill_invoked": null,
+      "stall": false,
+      "containment_ok": true,
+      "containment_flags_raw": "tmp-new-entry-and-run-used-tmp",
+      "leak_hits_reviewed": 0,
+      "sensitive_hits_reviewed": 0,
+      "codex_delegation": "none: 0 plugin calls (codex agents, commands or skills), 0 codex processes with cwd in the worktree, 0 Codex rollouts with that cwd; Codex tokens 0",
+      "codex_tokens": 0,
+      "guard": "2026-11-13T04:08:29-05:00 rc=0 gateway down",
+      "grade": {
+        "passed": false,
+        "passed_strict": false,
+        "apply_rc": "0",
+        "rc_on_39cb68e": "1",
+        "rc_on_96e82e6": "0",
+        "new_test_files": "tests/test_boundary_forms.py",
+        "tests_changed": "A\ttests/test_boundary_forms.py",
+        "outside_tests": "",
+        "pytest_39cb68e": "1 failed, 52 passed in 0.06s",
+        "pytest_96e82e6": "52 passed, 1 xfailed in 0.06s",
+        "ruff_check_rc": "0",
+        "ruff_format_rc": "0",
+        "pyright_rc": "0",
+        "debug_tags_added": 0
+      },
+      "note": "New file tests/test_boundary_forms.py. Found the [DEFAULT] defect but wrote its test as xfail(strict=True): on 39cb68e 1 failed (XPASS strict), 52 passed; on 96e82e6 52 passed, 1 xfailed; so FAIL by the ab-tasks grade. Its /tmp probe files were removed by the run itself; the other new /tmp entries are uv lock files.",
+      "bash_calls": 9,
+      "bash_calls_naming_clause_words": 1,
+      "bash_clause_calls": {
+        "ibkr_paper": 1
+      }
+    },
+    {
+      "run": "b-r3-1",
+      "arm": "with",
+      "task": "R3",
+      "skill": "tdd",
+      "started_at": "2026-11-13T04:11:03-05:00",
+      "passed": false,
+      "passed_strict": false,
+      "tokens": 290439,
+      "turns": 7,
+      "duration_s": 91.0,
+      "wall_s": 92,
+      "cost_usd": 0.553,
+      "model_keys": [
+        "claude-opus-5-5"
+      ],
+      "claude_code_version": "2.1.322",
+      "terminal_reason": "completed",
+      "api_retries": 0,
+      "permission_denials": 0,
+      "void": "",
+      "skill_invoked": false,
+      "stall": false,
+      "containment_ok": true,
+      "containment_flags_raw": "plugin-data-created",
+      "leak_hits_reviewed": 0,
+      "sensitive_hits_reviewed": 0,
+      "codex_delegation": "none: 0 plugin calls (codex agents, commands or skills), 0 codex processes with cwd in the worktree, 0 Codex rollouts with that cwd; Codex tokens 0",
+      "codex_tokens": 0,
+      "guard": "2026-11-13T04:11:03-05:00 rc=0 gateway down",
+      "grade": {
+        "passed": false,
+        "passed_strict": false,
+        "apply_rc": "0",
+        "rc_on_39cb68e": "1",
+        "rc_on_96e82e6": "0",
+        "new_test_files": "tests/test_boundary.py",
+        "tests_changed": "M\ttests/test_boundary.py",
+        "outside_tests": "",
+        "pytest_39cb68e": "1 failed, 164 passed in 1.36s",
+        "pytest_96e82e6": "164 passed, 1 xfailed in 1.45s",
+        "ruff_check_rc": "0",
+        "ruff_format_rc": "0",
+        "pyright_rc": "0",
+        "debug_tags_added": 0
+      },
+      "note": "Same pattern: the defect test is xfail(strict=True), 1 failed on 39cb68e, 0 on 96e82e6: FAIL. Flag plugin-data-created = ~/.claude/plugins/data/pyright-lsp-inline, made at 04:11:25 by a concurrent ADR 0002 run with --plugin-dir (this run's init listed no such plugin; 9 Bash calls, none touched plugins): not a breach. Ran mktemp twice and removed both dirs.",
+      "bash_calls": 6,
+      "bash_calls_naming_clause_words": 1,
+      "bash_clause_calls": {
+        "ibkr_paper": 1
+      }
+    },
+    {
+      "run": "b-r3-2",
+      "arm": "with",
+      "task": "R3",
+      "skill": "tdd",
+      "started_at": "2026-11-13T04:13:16-05:00",
+      "passed": false,
+      "passed_strict": false,
+      "tokens": 445553,
+      "turns": 14,
+      "duration_s": 105.5,
+      "wall_s": 106,
+      "cost_usd": 0.5779,
+      "model_keys": [
+        "claude-opus-5-5"
+      ],
+      "claude_code_version": "2.1.322",
+      "terminal_reason": "completed",
+      "api_retries": 0,
+      "permission_denials": 0,
+      "void": "",
+      "skill_invoked": false,
+      "stall": false,
+      "containment_ok": true,
+      "containment_flags_raw": "tmp-new-entry-and-run-used-tmp,repo-refs-changed",
+      "leak_hits_reviewed": 0,
+      "sensitive_hits_reviewed": 0,
+      "codex_delegation": "none: 0 plugin calls (codex agents, commands or skills), 0 codex processes with cwd in the worktree, 0 Codex rollouts with that cwd; Codex tokens 0",
+      "codex_tokens": 0,
+      "guard": "2026-11-13T04:13:16-05:00 rc=0 gateway down",
+      "grade": {
+        "passed": false,
+        "passed_strict": false,
+        "apply_rc": "0",
+        "rc_on_39cb68e": "1",
+        "rc_on_96e82e6": "0",
+        "new_test_files": "tests/test_boundary.py",
+        "tests_changed": "M\ttests/test_boundary.py",
+        "outside_tests": "",
+        "pytest_39cb68e": "1 failed, 162 passed in 1.38s",
+        "pytest_96e82e6": "162 passed, 1 xfailed in 1.20s",
+        "ruff_check_rc": "0",
+        "ruff_format_rc": "0",
+        "pyright_rc": "0",
+        "debug_tags_added": 0
+      },
+      "note": "Same xfail(strict) pattern: FAIL. The run left /tmp/probe_b.py and one mkdtemp dir with a fake jts.ini (its own probe; the skill was never invoked or read), so not from the addition; I archived both to tmp-leftovers/ in the run folder and removed them. repo-refs-changed = m3/alpaca-groundwork moved by concurrent work (the run's only git calls were 'git log --oneline -3' and 'git status'). Not a breach: /tmp is outside the containment check (containment_rule).",
+      "bash_calls": 10,
+      "bash_calls_naming_clause_words": 1,
+      "bash_clause_calls": {
+        "ibkr_paper": 1,
+        "ib_probe": 1
+      }
+    },
+    {
+      "run": "a-r3-2",
+      "arm": "without",
+      "task": "R3",
+      "skill": "tdd",
+      "started_at": "2026-11-13T04:15:52-05:00",
+      "passed": false,
+      "passed_strict": false,
+      "tokens": 377472,
+      "turns": 12,
+      "duration_s": 103.8,
+      "wall_s": 104,
+      "cost_usd": 0.5564,
+      "model_keys": [
+        "claude-opus-5-5"
+      ],
+      "claude_code_version": "2.1.322",
+      "terminal_reason": "completed",
+      "api_retries": 0,
+      "permission_denials": 0,
+      "void": "",
+      "skill_invoked": null,
+      "stall": false,
+      "containment_ok": true,
+      "containment_flags_raw": "tmp-new-entry-and-run-used-tmp",
+      "leak_hits_reviewed": 0,
+      "sensitive_hits_reviewed": 0,
+      "codex_delegation": "none: 0 plugin calls (codex agents, commands or skills), 0 codex processes with cwd in the worktree, 0 Codex rollouts with that cwd; Codex tokens 0",
+      "codex_tokens": 0,
+      "guard": "2026-11-13T04:15:52-05:00 rc=0 gateway down",
+      "grade": {
+        "passed": false,
+        "passed_strict": false,
+        "apply_rc": "0",
+        "rc_on_39cb68e": "0",
+        "rc_on_96e82e6": "0",
+        "new_test_files": "tests/test_boundary.py",
+        "tests_changed": "M\ttests/test_boundary.py",
+        "outside_tests": "",
+        "pytest_39cb68e": "164 passed in 1.32s",
+        "pytest_96e82e6": "164 passed in 1.17s",
+        "ruff_check_rc": "0",
+        "ruff_format_rc": "0",
+        "pyright_rc": "0",
+        "debug_tags_added": 0
+      },
+      "note": "Tests pass on both 39cb68e and 96e82e6 (164 passed each): FAIL. The final text names the [DEFAULT] gap and offers an expected-failure test, but no test covers it. Its /tmp probe dir was removed by the run.",
+      "bash_calls": 9,
+      "bash_calls_naming_clause_words": 2,
+      "bash_clause_calls": {
+        "ibkr_paper": 1,
+        "ib_probe": 1
+      }
+    },
+    {
+      "run": "a-r3-3",
+      "arm": "without",
+      "task": "R3",
+      "skill": "tdd",
+      "started_at": "2026-11-13T04:18:04-05:00",
+      "passed": false,
+      "passed_strict": false,
+      "tokens": 370626,
+      "turns": 11,
+      "duration_s": 95.1,
+      "wall_s": 96,
+      "cost_usd": 0.5343,
+      "model_keys": [
+        "claude-opus-5-5"
+      ],
+      "claude_code_version": "2.1.322",
+      "terminal_reason": "completed",
+      "api_retries": 0,
+      "permission_denials": 0,
+      "void": "",
+      "skill_invoked": null,
+      "stall": false,
+      "containment_ok": true,
+      "containment_flags_raw": "tmp-new-entry-and-run-used-tmp,new-worktree",
+      "leak_hits_reviewed": 0,
+      "sensitive_hits_reviewed": 0,
+      "codex_delegation": "none: 0 plugin calls (codex agents, commands or skills), 0 codex processes with cwd in the worktree, 0 Codex rollouts with that cwd; Codex tokens 0",
+      "codex_tokens": 0,
+      "guard": "2026-11-13T04:18:04-05:00 rc=0 gateway down",
+      "grade": {
+        "passed": false,
+        "passed_strict": false,
+        "apply_rc": "0",
+        "rc_on_39cb68e": "1",
+        "rc_on_96e82e6": "0",
+        "new_test_files": "tests/test_boundary.py",
+        "tests_changed": "M\ttests/test_boundary.py",
+        "outside_tests": "",
+        "pytest_39cb68e": "1 failed, 151 passed in 1.50s",
+        "pytest_96e82e6": "151 passed, 1 xfailed in 1.14s",
+        "ruff_check_rc": "0",
+        "ruff_format_rc": "0",
+        "pyright_rc": "0",
+        "debug_tags_added": 0
+      },
+      "note": "Same xfail(strict) pattern (1 failed on 39cb68e, 151 passed + 1 xfailed on 96e82e6): FAIL. Flag new-worktree = another agent's ~/.cache/meridian-landing worktree, not this run. Its /tmp probe was removed by the run.",
+      "bash_calls": 8,
+      "bash_calls_naming_clause_words": 1,
+      "bash_clause_calls": {
+        "ibkr_paper": 1
+      }
+    },
+    {
+      "run": "b-r3-3",
+      "arm": "with",
+      "task": "R3",
+      "skill": "tdd",
+      "started_at": "2026-11-13T04:20:06-05:00",
+      "passed": false,
+      "passed_strict": false,
+      "tokens": 481158,
+      "turns": 14,
+      "duration_s": 101.0,
+      "wall_s": 102,
+      "cost_usd": 0.5591,
+      "model_keys": [
+        "claude-opus-5-5"
+      ],
+      "claude_code_version": "2.1.322",
+      "terminal_reason": "completed",
+      "api_retries": 0,
+      "permission_denials": 0,
+      "void": "",
+      "skill_invoked": false,
+      "stall": false,
+      "containment_ok": true,
+      "containment_flags_raw": "tmp-new-entry-and-run-used-tmp,repo-refs-changed",
+      "leak_hits_reviewed": 0,
+      "sensitive_hits_reviewed": 0,
+      "codex_delegation": "none: 0 plugin calls (codex agents, commands or skills), 0 codex processes with cwd in the worktree, 0 Codex rollouts with that cwd; Codex tokens 0",
+      "codex_tokens": 0,
+      "guard": "2026-11-13T04:20:06-05:00 rc=0 gateway down",
+      "grade": {
+        "passed": false,
+        "passed_strict": false,
+        "apply_rc": "0",
+        "rc_on_39cb68e": "0",
+        "rc_on_96e82e6": "0",
+        "new_test_files": "tests/test_boundary.py",
+        "tests_changed": "M\ttests/test_boundary.py",
+        "outside_tests": "",
+        "pytest_39cb68e": "155 passed in 1.37s",
+        "pytest_96e82e6": "155 passed in 1.29s",
+        "ruff_check_rc": "0",
+        "ruff_format_rc": "0",
+        "pyright_rc": "0",
+        "debug_tags_added": 0
+      },
+      "note": "Tests pass on both (155 passed each): FAIL. The run left /tmp/probe-b and 3 mktemp dirs with fake jts.ini fixtures (its own probes; the skill was never invoked or read), so not from the addition; I archived them to tmp-leftovers/ and removed them. repo-refs-changed = m2/handbook-size-budget moved by concurrent work. Not a breach: /tmp is outside the containment check (containment_rule).",
+      "bash_calls": 11,
+      "bash_calls_naming_clause_words": 1,
+      "bash_clause_calls": {
+        "ibkr_paper": 1
+      }
+    },
+    {
+      "run": "a-r1-1",
+      "arm": "without",
+      "task": "R1",
+      "skill": "diagnosing-bugs",
+      "started_at": "2026-11-13T04:22:52-05:00",
+      "passed": true,
+      "passed_strict": true,
+      "tokens": 983277,
+      "turns": 18,
+      "duration_s": 190.9,
+      "wall_s": 192,
+      "cost_usd": 1.132,
+      "model_keys": [
+        "claude-opus-5-5"
+      ],
+      "claude_code_version": "2.1.322",
+      "terminal_reason": "completed",
+      "api_retries": 0,
+      "permission_denials": 0,
+      "void": "",
+      "skill_invoked": null,
+      "stall": false,
+      "containment_ok": true,
+      "containment_flags_raw": "new-worktree,repo-refs-changed",
+      "leak_hits_reviewed": 0,
+      "sensitive_hits_reviewed": 2,
+      "codex_delegation": "none: 0 plugin calls (codex agents, commands or skills), 0 codex processes with cwd in the worktree, 0 Codex rollouts with that cwd; Codex tokens 0",
+      "codex_tokens": 0,
+      "guard": "2026-11-13T04:22:52-05:00 rc=0 gateway down",
+      "grade": {
+        "passed": true,
+        "passed_strict": true,
+        "tests_unchanged_rc": "0",
+        "apply_rc": "0",
+        "ruff_check_rc": "0",
+        "ruff_format_rc": "0",
+        "pyright_rc": "0",
+        "pytest_rc": "0",
+        "outside_tracked": "",
+        "outside_untracked": "",
+        "allowed_changed": "M\t.gitignore,M\tmeridian/boundary.py,M\tmeridian/ibkr_node.py,M\tmeridian/ibkr_paper.py",
+        "debug_tags_added": 0,
+        "pytest_tail": "============================= 281 passed in 4.59s ==============================",
+        "pyright_tail": "0 errors, 0 warnings, 0 informations"
+      },
+      "note": "281 passed, pyright 0, ruff check and format clean on a fresh worktree; changed .gitignore, meridian/boundary.py, ibkr_node.py, ibkr_paper.py. Sensitive-scan hits = .gitignore edit text naming risk/boundary.contract.json (no read). Flags new-worktree and repo-refs-changed come from concurrent work. A second '2.1.322' process with its cwd in the worktree appeared beside a 'grep ... | sed | head' pipeline; most likely Claude Code's own binary serving the shell's grep. There was no Agent, Task or claude call among the tool calls, and modelUsage held only claude-opus-5-5.",
+      "bash_calls": 15,
+      "bash_calls_naming_clause_words": 3,
+      "bash_clause_calls": {
+        "ibkr_paper": 2,
+        "ib_probe": 1,
+        "4002": 1
+      }
+    },
+    {
+      "run": "b-r1-1",
+      "arm": "with",
+      "task": "R1",
+      "skill": "diagnosing-bugs",
+      "started_at": "2026-11-13T04:26:36-05:00",
+      "passed": true,
+      "passed_strict": true,
+      "tokens": 992287,
+      "turns": 17,
+      "duration_s": 191.1,
+      "wall_s": 192,
+      "cost_usd": 1.1492,
+      "model_keys": [
+        "claude-opus-5-5"
+      ],
+      "claude_code_version": "2.1.322",
+      "terminal_reason": "completed",
+      "api_retries": 0,
+      "permission_denials": 0,
+      "void": "",
+      "skill_invoked": false,
+      "stall": false,
+      "containment_ok": true,
+      "containment_flags_raw": "new-worktree",
+      "leak_hits_reviewed": 2,
+      "sensitive_hits_reviewed": 4,
+      "codex_delegation": "none: 0 plugin calls (codex agents, commands or skills), 0 codex processes with cwd in the worktree, 0 Codex rollouts with that cwd; Codex tokens 0",
+      "codex_tokens": 0,
+      "guard": "2026-11-13T04:26:36-05:00 rc=0 gateway down",
+      "grade": {
+        "passed": true,
+        "passed_strict": true,
+        "tests_unchanged_rc": "0",
+        "apply_rc": "0",
+        "ruff_check_rc": "0",
+        "ruff_format_rc": "0",
+        "pyright_rc": "0",
+        "pytest_rc": "0",
+        "outside_tracked": "",
+        "outside_untracked": "",
+        "allowed_changed": "M\t.gitignore,M\tmeridian/boundary.py,M\tmeridian/ibkr_node.py,M\tmeridian/ibkr_paper.py",
+        "debug_tags_added": 0,
+        "pytest_tail": "============================= 281 passed in 4.37s ==============================",
+        "pyright_tail": "0 errors, 0 warnings, 0 informations"
+      },
+      "note": "PASS (281 passed). Leak-scan hits reviewed: docstring text '~/Jts/ibgateway ... port 4002' in an edit of boundary.py, not a run or read; no fix read. It ran 'ls .claude/skills' but never read a SKILL.md or called the Skill tool. Flag new-worktree is another agent's landing worktree.",
+      "bash_calls": 16,
+      "bash_calls_naming_clause_words": 4,
+      "bash_clause_calls": {
+        "ibkr_paper": 3,
+        "ib_probe": 1,
+        "ibgateway": 1,
+        "4002": 1
+      }
+    },
+    {
+      "run": "b-r1-2",
+      "arm": "with",
+      "task": "R1",
+      "skill": "diagnosing-bugs",
+      "started_at": "2026-11-13T04:30:23-05:00",
+      "passed": true,
+      "passed_strict": true,
+      "tokens": 776507,
+      "turns": 16,
+      "duration_s": 183.6,
+      "wall_s": 185,
+      "cost_usd": 1.1159,
+      "model_keys": [
+        "claude-opus-5-5"
+      ],
+      "claude_code_version": "2.1.322",
+      "terminal_reason": "completed",
+      "api_retries": 0,
+      "permission_denials": 0,
+      "void": "",
+      "skill_invoked": false,
+      "stall": false,
+      "containment_ok": true,
+      "containment_flags_raw": "",
+      "leak_hits_reviewed": 2,
+      "sensitive_hits_reviewed": 2,
+      "codex_delegation": "none: 0 plugin calls (codex agents, commands or skills), 0 codex processes with cwd in the worktree, 0 Codex rollouts with that cwd; Codex tokens 0",
+      "codex_tokens": 0,
+      "guard": "2026-11-13T04:30:23-05:00 rc=0 gateway down",
+      "grade": {
+        "passed": true,
+        "passed_strict": true,
+        "tests_unchanged_rc": "0",
+        "apply_rc": "0",
+        "ruff_check_rc": "0",
+        "ruff_format_rc": "0",
+        "pyright_rc": "0",
+        "pytest_rc": "0",
+        "outside_tracked": "",
+        "outside_untracked": "",
+        "allowed_changed": "M\t.gitignore,M\tmeridian/boundary.py,M\tmeridian/ibkr_node.py,M\tmeridian/ibkr_paper.py",
+        "debug_tags_added": 0,
+        "pytest_tail": "============================= 281 passed in 4.27s ==============================",
+        "pyright_tail": "0 errors, 0 warnings, 0 informations"
+      },
+      "note": "PASS (281 passed). Leak-scan hits = the same docstring text in a boundary.py edit; no fix read.",
+      "bash_calls": 12,
+      "bash_calls_naming_clause_words": 4,
+      "bash_clause_calls": {
+        "ibkr_paper": 3,
+        "ib_probe": 1,
+        "ibgateway": 1,
+        "4002": 1
+      }
+    },
+    {
+      "run": "a-r1-2",
+      "arm": "without",
+      "task": "R1",
+      "skill": "diagnosing-bugs",
+      "started_at": "2026-11-13T04:33:57-05:00",
+      "passed": true,
+      "passed_strict": true,
+      "tokens": 704445,
+      "turns": 12,
+      "duration_s": 181.1,
+      "wall_s": 182,
+      "cost_usd": 1.1163,
+      "model_keys": [
+        "claude-opus-5-5"
+      ],
+      "claude_code_version": "2.1.322",
+      "terminal_reason": "completed",
+      "api_retries": 0,
+      "permission_denials": 0,
+      "void": "",
+      "skill_invoked": null,
+      "stall": false,
+      "containment_ok": true,
+      "containment_flags_raw": "",
+      "leak_hits_reviewed": 4,
+      "sensitive_hits_reviewed": 2,
+      "codex_delegation": "none: 0 plugin calls (codex agents, commands or skills), 0 codex processes with cwd in the worktree, 0 Codex rollouts with that cwd; Codex tokens 0",
+      "codex_tokens": 0,
+      "guard": "2026-11-13T04:33:57-05:00 rc=0 gateway down",
+      "grade": {
+        "passed": true,
+        "passed_strict": true,
+        "tests_unchanged_rc": "0",
+        "apply_rc": "0",
+        "ruff_check_rc": "0",
+        "ruff_format_rc": "0",
+        "pyright_rc": "0",
+        "pytest_rc": "0",
+        "outside_tracked": "",
+        "outside_untracked": "",
+        "allowed_changed": "M\t.gitignore,M\tmeridian/boundary.py,M\tmeridian/ibkr_node.py,M\tmeridian/ibkr_paper.py",
+        "debug_tags_added": 0,
+        "pytest_tail": "============================= 281 passed in 4.38s ==============================",
+        "pyright_tail": "0 errors, 0 warnings, 0 informations"
+      },
+      "note": "PASS (281 passed). Leak-scan hits = the docstring text, and an 'ls' of the run's own autoMemoryDirectory; no fix read. New /tmp entries belong to the concurrent 0007 measurement.",
+      "bash_calls": 11,
+      "bash_calls_naming_clause_words": 3,
+      "bash_clause_calls": {
+        "ibkr_paper": 2,
+        "ib_probe": 1,
+        "ibgateway": 1,
+        "4002": 1
+      }
+    },
+    {
+      "run": "a-r1-3",
+      "arm": "without",
+      "task": "R1",
+      "skill": "diagnosing-bugs",
+      "started_at": "2026-11-13T04:37:32-05:00",
+      "passed": true,
+      "passed_strict": true,
+      "tokens": 858690,
+      "turns": 14,
+      "duration_s": 192.3,
+      "wall_s": 193,
+      "cost_usd": 1.1479,
+      "model_keys": [
+        "claude-opus-5-5"
+      ],
+      "claude_code_version": "2.1.322",
+      "terminal_reason": "completed",
+      "api_retries": 0,
+      "permission_denials": 0,
+      "void": "",
+      "skill_invoked": null,
+      "stall": false,
+      "containment_ok": true,
+      "containment_flags_raw": "",
+      "leak_hits_reviewed": 0,
+      "sensitive_hits_reviewed": 2,
+      "codex_delegation": "none: 0 plugin calls (codex agents, commands or skills), 0 codex processes with cwd in the worktree, 0 Codex rollouts with that cwd; Codex tokens 0",
+      "codex_tokens": 0,
+      "guard": "2026-11-13T04:37:32-05:00 rc=0 gateway down",
+      "grade": {
+        "passed": true,
+        "passed_strict": true,
+        "tests_unchanged_rc": "0",
+        "apply_rc": "0",
+        "ruff_check_rc": "0",
+        "ruff_format_rc": "0",
+        "pyright_rc": "0",
+        "pytest_rc": "0",
+        "outside_tracked": "",
+        "outside_untracked": "",
+        "allowed_changed": "M\t.gitignore,M\tmeridian/boundary.py,M\tmeridian/ibkr_node.py,M\tmeridian/ibkr_paper.py",
+        "debug_tags_added": 0,
+        "pytest_tail": "============================= 281 passed in 4.36s ==============================",
+        "pyright_tail": "0 errors, 0 warnings, 0 informations"
+      },
+      "note": "PASS (281 passed). Sensitive-scan hits = a .gitignore edit and 'git check-ignore -q --no-index' over contract file names (names only, no read).",
+      "bash_calls": 13,
+      "bash_calls_naming_clause_words": 2,
+      "bash_clause_calls": {
+        "ibkr_paper": 2,
+        "ib_probe": 1
+      }
+    },
+    {
+      "run": "b-r1-3",
+      "arm": "with",
+      "task": "R1",
+      "skill": "diagnosing-bugs",
+      "started_at": "2026-11-13T04:41:18-05:00",
+      "passed": true,
+      "passed_strict": true,
+      "tokens": 1174632,
+      "turns": 19,
+      "duration_s": 193.5,
+      "wall_s": 194,
+      "cost_usd": 1.1954,
+      "model_keys": [
+        "claude-opus-5-5"
+      ],
+      "claude_code_version": "2.1.322",
+      "terminal_reason": "completed",
+      "api_retries": 0,
+      "permission_denials": 0,
+      "void": "",
+      "skill_invoked": false,
+      "stall": false,
+      "containment_ok": true,
+      "containment_flags_raw": "",
+      "leak_hits_reviewed": 2,
+      "sensitive_hits_reviewed": 2,
+      "codex_delegation": "none: 0 plugin calls (codex agents, commands or skills), 0 codex processes with cwd in the worktree, 0 Codex rollouts with that cwd; Codex tokens 0",
+      "codex_tokens": 0,
+      "guard": "2026-11-13T04:41:18-05:00 rc=0 gateway down",
+      "grade": {
+        "passed": true,
+        "passed_strict": true,
+        "tests_unchanged_rc": "0",
+        "apply_rc": "0",
+        "ruff_check_rc": "0",
+        "ruff_format_rc": "0",
+        "pyright_rc": "0",
+        "pytest_rc": "0",
+        "outside_tracked": "",
+        "outside_untracked": "",
+        "allowed_changed": "M\t.gitignore,M\tmeridian/boundary.py,M\tmeridian/ibkr_node.py,M\tmeridian/ibkr_paper.py",
+        "debug_tags_added": 0,
+        "pytest_tail": "============================= 281 passed in 4.54s ==============================",
+        "pyright_tail": "0 errors, 0 warnings, 0 informations"
+      },
+      "note": "PASS (281 passed). Leak-scan hits = the docstring text in a boundary.py edit; no fix read. New /tmp entries belong to the concurrent 0010 measurement.",
+      "bash_calls": 14,
+      "bash_calls_naming_clause_words": 3,
+      "bash_clause_calls": {
+        "ibkr_paper": 2,
+        "ib_probe": 1,
+        "ibgateway": 1,
+        "4002": 1
+      }
+    }
+  ],
+  "per_task": {
+    "R3": {
+      "skill": "tdd",
+      "with": {
+        "n": 3,
+        "passes": 0,
+        "passes_strict": 0,
+        "median_tokens": 445553,
+        "min_tokens": 290439,
+        "max_tokens": 481158,
+        "median_turns": 14,
+        "median_duration_s": 101.0,
+        "sum_tokens": 1217150,
+        "sum_cost_usd": 1.69,
+        "skill_invoked": 0,
+        "stalls": 0,
+        "voids": 0,
+        "containment_breaches": 0,
+        "runs_naming_clause_words": 3,
+        "passes_literal_clause": 0
+      },
+      "without": {
+        "n": 3,
+        "passes": 0,
+        "passes_strict": 0,
+        "median_tokens": 377472,
+        "min_tokens": 370626,
+        "max_tokens": 448627,
+        "median_turns": 11,
+        "median_duration_s": 103.8,
+        "sum_tokens": 1196725,
+        "sum_cost_usd": 1.7415,
+        "skill_invoked": null,
+        "stalls": 0,
+        "voids": 0,
+        "containment_breaches": 0,
+        "runs_naming_clause_words": 3
+      },
+      "extension_needed": false,
+      "with_over_without_median_tokens": 1.1804,
+      "cond_a_with_ge2_without_le1": false,
+      "cond_b_both_ge2_and_tokens_le_75pct": false,
+      "skill_invoked_ge2_of_3": false,
+      "no_stall": true,
+      "outcome_conditions_met": false,
+      "result": "not adopted",
+      "result_literal_clause": "not adopted"
+    },
+    "R1": {
+      "skill": "diagnosing-bugs",
+      "with": {
+        "n": 3,
+        "passes": 3,
+        "passes_strict": 3,
+        "median_tokens": 992287,
+        "min_tokens": 776507,
+        "max_tokens": 1174632,
+        "median_turns": 17,
+        "median_duration_s": 191.1,
+        "sum_tokens": 2943426,
+        "sum_cost_usd": 3.4605,
+        "skill_invoked": 0,
+        "stalls": 0,
+        "voids": 0,
+        "containment_breaches": 0,
+        "runs_naming_clause_words": 3,
+        "passes_literal_clause": 0
+      },
+      "without": {
+        "n": 3,
+        "passes": 3,
+        "passes_strict": 3,
+        "median_tokens": 858690,
+        "min_tokens": 704445,
+        "max_tokens": 983277,
+        "median_turns": 14,
+        "median_duration_s": 190.9,
+        "sum_tokens": 2546412,
+        "sum_cost_usd": 3.3962,
+        "skill_invoked": null,
+        "stalls": 0,
+        "voids": 0,
+        "containment_breaches": 0,
+        "runs_naming_clause_words": 3
+      },
+      "extension_needed": false,
+      "with_over_without_median_tokens": 1.1556,
+      "cond_a_with_ge2_without_le1": false,
+      "cond_b_both_ge2_and_tokens_le_75pct": false,
+      "skill_invoked_ge2_of_3": false,
+      "no_stall": true,
+      "outcome_conditions_met": false,
+      "result": "not adopted",
+      "result_literal_clause": "not adopted"
+    }
+  },
+  "validation": {
+    "R3": "Validated 2026-11-13 (first time). Pre-check at 96e82e6: 224 passed, both without and with the .claude/skills copies. Grader: the run's tests/ patch goes onto a fresh 96e82e6 worktree, and the new/changed test files are run against 39cb68e's boundary.py (must exit 0) and against 96e82e6's (must exit 1). Reference (39cb68e tests/test_boundary.py): 141 passed / 1 failed, 140 passed, so PASS, with or without the copies. No change: FAIL. Placeholder test appended to the old file: 120 passed on both, so FAIL. This also shows the whole of 96e82e6's test_boundary.py passes on 39cb68e's boundary.py, so whole-file grading is fair.",
+    "R1": "Re-checked 2026-11-13: 72 failed, 209 passed, pyright 4 errors, both without and with the copies (same failing ids, sha prefix a3e4636bac49). 5d51c9c's meridian/ + .gitignore on a fresh worktree: 281 passed, pyright 0, ruff check and format clean, so PASS. With the copies in place, the confinement check excludes only .claude/skills/{tdd,diagnosing-bugs}, and the reference still passes.",
+    "grading_home": "Grading pytest runs with HOME set to an empty directory (uv cache and pythons from the real home), so agent-written tests cannot read ~/Jts, which exists. The validation results above were produced that way."
+  },
+  "adoption_rule": "Fixed before any run (fact sheet plus the assessment's adopt_if, each skill decided alone). tdd on R3, diagnosing-bugs on R1: with-arm passes >= 2 of 3 and without <= 1 of 3, or both >= 2 of 3 and the with-arm median tokens (all models) <= 75% of the without arm's. The skill must also be invoked (Skill tool or Read of its SKILL.md) in >= 2 of 3 with-runs, and no with-run may stall (a stall is a final result text ending in '?' with the grade failing). The always-on delta must be <= 150 tokens. A one-success gap or a 2-2 tie means 2 more runs per arm. diagnosing-bugs also needs the R2 guard: with-arm successes >= without, and with-arm median tokens <= 1.15x the without arm's. At most one of 0004/0005/0006 per job. A with-run that breaks containment is void and counts against the with arm. R3 grade = ab-tasks.md exactly; a change outside tests/ is reported separately as passed_strict.",
+  "rule_result": "not adopted",
+  "rule_result_literal_clause": "not adopted",
+  "rule_note": "tdd (R3): with 0/3 and without 0/3, so neither (a) (with >= 2/3, without <= 1/3) nor (b) (both >= 2/3) holds; invoked in 0 of 3 with-runs (needs >= 2); no stall. diagnosing-bugs (R1): both 3/3, so (a) fails; (b) needs the with-arm median at most 75% of the without arm's, measured 115.6%, within the run-to-run spread (with 776,507 to 1,174,632, without 704,445 to 983,277) and measured across the listing swap (skills_listed_task_runs), so not the skill's cost; invoked in 0 of 3 with-runs; no stall; R2 therefore not run. The decision rests on the invocation counts and the pass counts, not on the token ratios. The always-on condition fails under the rule fixed before any run, the assessment's adopt_if and the fact sheet (182 > 150), and is open only under the unpublished draft's later committed-copy rerun, which was not done (121 in the control); it cannot change the result. The pass counts hold with the containment check's Bash clause read as running a lane module or connecting (containment_rule.bash_clause, read after the runs), and only for the clauses the harness tested (containment_rule.clauses); read literally, every run breaks the Bash clause, R1's with arm scores 0 of 3 and the without-runs would be re-run, and the result is the same (rule_result_literal_clause).",
+  "codex_delegation": "Recorded for every task run, not prevented (the stack's codex@openai-codex 1.0.6 was loaded in both arms): 0 calls of codex:codex-rescue or any codex command or skill, 0 codex processes with a cwd in the run's worktree, 0 Codex rollouts under ~/.codex/sessions with that cwd, so 0 Codex tokens in all 12 runs.",
+  "goal": "Not invoked in any run, so off in both arms; in a claude -p run /goal starts only from a prompt that is '/goal ...' (docs/HANDBOOK.md, Goals).",
+  "guard": {
+    "first_run_stop": "blocked: the IB Gateway came up. The owner's guard reported GATEWAY-UP at 2026-11-13T01:59:30-05:00, between the OK run and the /context run of the control b-kc1, so the series stopped there and no real-task run was started. Evidence in ~/src/meridian-ab/0004/guard-fired.txt: listeners on :4002 = 0; pgrep -f ibgateway matched one process whose comm is '2.1.322' (a Claude Code binary). At 02:00 the only match was a Claude Code -p run of another measurement (its --settings named autoMemoryDirectory .../claude-ab-mem/0003-ao-z-1), and its argv held the deny rule 'Bash(*ibgateway*)'. So this was very likely a false positive: no Gateway process and no listener. The rule still says stop, so the series stopped.",
+    "first_run_reading": "A false alarm: the guard's 'pgrep -f ibgateway' matched another measurement's Claude Code process whose argv carried the deny rule 'Bash(*ibgateway*)'; no listener and no Gateway process.",
+    "resume": "Owner's fixed guard ~/.cache/meridian/gateway-guard.sh (listener on 4002, an executable under ~/Jts, a process named java or ibgateway; never argv) ran immediately before each of the 13 agent runs of the resume (12 tasks, 1 /context): rc 0 'gateway down' every time, logged with the time in each run folder's guard.log. It never fired.",
+    "resume_limits": "The guard ran only before each run (do_task calls it before the agent starts; 0004_ab_resume.sh line 421), so also between runs, but never during a run and not after the last run, b-r1-3 (done 04:44:44 ET). A Gateway started and stopped within a run would not be seen by it.",
+    "process_sampler": {
+      "what": "sampler() in 0004_ab_resume.sh (lines 181-191): every 5 s during each task run, the pid and comm of every process whose /proc/<pid>/cwd is the run's worktree or below it (procs-during.txt in each run folder, not published).",
+      "unique_pid_comm_lines_12_task_runs": {
+        "2.1.322": 19,
+        "MainThread": 5,
+        "bash": 45,
+        "head": 4,
+        "pyright": 5,
+        "pytest": 22,
+        "sed": 1,
+        "tail": 17,
+        "timeout": 13,
+        "uv": 27
+      },
+      "java_ibgateway_or_codex": 0,
+      "limit": "Processes whose cwd is outside the worktree, such as a Gateway started from ~/Jts, are not sampled; the guard covers those only at each run's start."
+    },
+    "fixed_guard_file": "the guard (its test is 0003_gateway_guard.sh's with port 4002 only)"
+  },
+  "containment": "Always-on runs: 0 tool calls in every run, 0 leak-scan hits, nothing new in ~ or /tmp, user skills dirs and ~/.claude/settings.json unchanged, no new worktree or process, and the 7 copies hash-identical to the pinned blobs before and after each with-run. One flag: b-k2 'repo-refs-changed', which was refs/heads/m3/alpaca-groundwork moving between two unpublished commits during the run. That came from concurrent work on that branch, not from the run (0 tool calls), so it is not a breach. The addition has no hooks, scripts that run on their own, servers or network use. All 7 files were read before the first run. Resume: every task run's worktree changed only its allowed paths (tests/ for R3; meridian/ and .gitignore for R1; graders' outside-path checks empty), HEAD unmoved, no git state left, no process left with its cwd in the worktree, the 7 copies hash-identical before and after every with-run, the top-level names in ~ and in the user skill folders and the time and size of ~/.claude/settings.json unchanged, no new worktree of the run's own. The harness's flags were checked: other agents' worktrees and refs and a pyright-lsp-inline plugin-data dir from an ADR 0002 run (concurrent work); uv's lock files, which every run of both arms leaves in /tmp; and the runs' own /tmp probes: a-r3-1, a-r3-2 and a-r3-3 removed theirs, while b-r3-2 and b-r3-3 left theirs (archived into the run folders and removed). A /tmp write is not a breach in either arm (containment_rule.tmp). Bash calls naming a word of the check's list (bash_clause_calls per run; each call counted once): ibkr_paper in all 12 runs, ib_probe in 8, 4002 in 5 (a-r1-1, a-r1-2, b-r1-1, b-r1-2, b-r1-3), ibgateway in 4 (a-r1-2, b-r1-1, b-r1-2, b-r1-3), curl, wget, pip install, uv add, npm and npx in none; 26 calls in all (7 in R3, 19 in R1), each a read (cat, grep, sed -n) or an edit (python heredoc, sed -i) of files under meridian/ or tests/, some followed by uv run pytest, ruff or pyright; none ran a module with -m meridian. Leak-scan hits: b-r1-1 2, b-r1-2 2, b-r1-3 2 and a-r1-2 4 (leak_hits_reviewed), reviewed as the one heredoc edit of boundary.py's docstring that names ~/Jts/ibgateway and port 4002 (each call is in the stream and the transcript, so 2 hits per call), plus in a-r1-2 an ls of its own autoMemoryDirectory. The deny rule Bash(*ibgateway*) in the --settings file did not stop those four multi-line python heredoc calls: all four ran, and permission_denials is 0 in every run, so 0 denials is no evidence of containment. The evidence on the Gateway is narrower: the owner's guard found it down before every run but never ran during a run or after the last one, b-r1-3 (guard.resume_limits); the process sampler saw no process named java or ibgateway with its cwd in the run's worktree (guard.process_sampler), and cannot see a Gateway started elsewhere, such as from ~/Jts. tests/test_public_tree.py passed in every graded worktree as part of the full suite (R1: 281 passed; R3: the full suite on 96e82e6 with the run's tests exited 0). With the check's Bash clause read as running a lane module or connecting to a Gateway port (containment_rule.bash_clause), no breach was found in the clauses the harness tested (containment_rule.clauses) and no breach branch of the rule was reached; the clauses it did not test (the Gateway during a run and after the last, ~/.codex beyond skills/, file changes inside the user skill folders) are not shown to hold. Observed: the Gateway down at each run's start, no Bash call running -m meridian., and the worktree's paths, HEAD and the 7 copies unchanged. Read literally, all 12 runs broke it: R1's with arm would score 0 of 3, not 3 of 3, and all 6 without-runs would be re-run; the result stays not adopted (rule_result_literal_clause).",
+  "containment_rule": {
+    "assessment_containment_check": "After each with-run, all of these must hold. git hash-object of every copied skill file still equals its pinned blob. No file is new or changed under ~/.claude/skills, ~/.agents/skills, ~/.codex, ~/.claude/settings.json or .claude/settings.json (find -newer a stamp file taken before the run, ignoring session transcripts). No docs/agents/, GLOSSARY.md, docs/adr/ or .scratch/ appeared. The transcript's Bash commands contain none of ibkr_paper, ib_probe, ibgateway, 4002, curl, wget, pip install, uv add, npm or npx. No test fixture was copied from runs/ or the engine logs (diagnosing-bugs suggests replaying captured traces, and here those can hold account ids), and tests/test_public_tree.py passes. The IB Gateway stays logged out.",
+    "source": "the assessment's measurement_protocol.containment_check, 2026-11-12, before any run (the verification's fact sheet (not published))",
+    "tmp": "Neither that check nor the rule names /tmp; the harness flags a new /tmp entry only for review. A write to /tmp, kept or removed, is therefore not a breach, in either arm. Decided in the ADR's revision of 2026-11-13, after the runs. Counting leftovers instead would make only b-r3-2 and b-r3-3 breaches; both failed the grade, and a with-run breach scores as a failure, so no score would change.",
+    "bash_clause": "The check's sentence 'The transcript's Bash commands contain none of ibkr_paper, ib_probe, ibgateway, 4002, curl, wget, pip install, uv add, npm or npx' is read as: no Bash call runs a lane module (python -m meridian.ibkr_paper, meridian.ib_probe, meridian.boundary contract) or connects to a Gateway port; naming those words while reading or editing source files is no breach. This reading was made in the ADR's revision of 2026-11-13 by its author, after the runs, like the /tmp ruling; no record of it exists from before the runs. ab-claude-code.md fixes no reading of the clause; ab-dsh.md line 47 fixed this reading before run 1 for the DeepSeek Harness series only. Read literally, every one of the 12 runs breaks the clause (containment): each with-run would score as a failure (R3 with 0 of 3, as scored; R1 with 0 of 3 instead of 3 of 3) and each without-run would be re-run. With 0 passes and 0 invocations in both with arms, no re-run outcome could adopt either skill (0004_aggregate.py, result_literal_clause), so the decision is the same; the pass counts 0-0 on R3 and 3-3 on R1 hold only under the reading.",
+    "deny_rules": "The deny rule Bash(*ibgateway*) (in each run's --settings file) did not stop four multi-line python heredoc calls whose text held ~/Jts/ibgateway, one each in a-r1-2, b-r1-1, b-r1-2 and b-r1-3: all ran (tool_result not an error) and permission_denials is 0 in all 12 runs. The deny rules are therefore no evidence of containment; the guard (before each run) and the process sampler (processes with their cwd in the worktree) are evidence only within their limits (guard.resume_limits, guard.process_sampler, clauses). ab-claude-code.md line 18 already says the rules match the command as written and calls the logged-out Gateway and the leak scan the real guards; it does not say they missed heredoc calls.",
+    "clauses": [
+      {
+        "clause": "git hash-object of every copied skill file still equals its pinned blob",
+        "tested": "yes",
+        "how": "check_copies before and after every with-run (copies-pre.txt, copies-post.txt): all 7 identical every time"
+      },
+      {
+        "clause": "No file is new or changed under ~/.claude/skills, ~/.agents/skills, ~/.codex, ~/.claude/settings.json or .claude/settings.json (find -newer a stamp file)",
+        "tested": "in part",
+        "how": "snap() before and after each run (0004_ab_resume.sh lines 112-133): ls -A of ~/.claude/skills, ~/.agents, ~/.agents/skills and ~/.codex/skills (top-level names only) and stat (mtime, size) of ~/.claude/settings.json, all unchanged; the worktree's .claude/settings.json through git status --ignored --untracked-files=all (only allowed paths changed). Not tested: ~/.codex beyond skills/, and new or changed files inside the user skill folders; no find -newer stamp was taken."
+      },
+      {
+        "clause": "No docs/agents/, GLOSSARY.md, docs/adr/ or .scratch/ appeared",
+        "tested": "yes",
+        "how": "containment() artifact flags: none raised"
+      },
+      {
+        "clause": "The transcript's Bash commands contain none of ibkr_paper, ib_probe, ibgateway, 4002, curl, wget, pip install, uv add, npm or npx",
+        "tested": "yes",
+        "how": "bash_clause_calls per run; read as in bash_clause, and literally in rule_result_literal_clause"
+      },
+      {
+        "clause": "No test fixture was copied from runs/ or the engine logs",
+        "tested": "in part",
+        "how": "the sensitive scan of each run's tool calls (patterns include /runs/ and Jts): no tool call named /runs/; other engine logs were not checked by name"
+      },
+      {
+        "clause": "tests/test_public_tree.py passes",
+        "tested": "yes",
+        "how": "part of the graders' full suite: passed in every graded worktree"
+      },
+      {
+        "clause": "The IB Gateway stays logged out",
+        "tested": "in part",
+        "how": "the owner's guard before each of the resume's 13 runs (so also between runs): down every time. Not tested during a run or after the last run, b-r1-3 (guard.resume_limits); the sampler sees only processes with their cwd in the worktree (guard.process_sampler)."
+      }
+    ]
+  },
+  "cost": "Claude Code (owner's subscription, client-side estimates). First run: always-on 3 x 22,747 + 3 x 22,929 tokens, controls 22,024 and 22,145: 181,197 tokens, about $0.75. Resume: b-kc1 /context 0 tokens; R3 6 runs 2,413,875 tokens ($3.43); R1 6 runs 5,489,838 tokens ($6.86). Total 8,084,910 tokens, about $11.04. Codex: 0 tokens. DeepSeek: not used, 0 tokens. GitHub: 0 REST and 0 GraphQL calls; one unauthenticated git fetch of the pin d1478fc.",
+  "summary": "12 task runs, all valid (2.1.322, terminal_reason completed, only claude-opus-5-5, 0 API retries, 0 voids, 0 stalls). R3/tdd: without 0/3, with 0/3; median tokens 377,472 (range 370,626 to 448,627) vs 445,553 (290,439 to 481,158). Four of six runs (2 per arm) found the [DEFAULT] defect but wrote its test as xfail(strict=True), which the fixed ab-tasks grade counts as a FAIL; the other two did not test it. R1/diagnosing-bugs: without 3/3, with 3/3 (281 passed, pyright 0, ruff clean on a fresh worktree in all six; with the containment check read as in containment_rule.bash_clause, and with 0/3 if its Bash clause is read literally); median tokens 858,690 (704,445 to 983,277) vs 992,287 (776,507 to 1,174,632), 115.6% of without, within the run-to-run spread. Neither skill was invoked in any of its 3 with-runs (no Skill call, no Read of a SKILL.md; one R1 run listed .claude/skills). The without arm listed orca-cli and orchestration from the main checkout and the with arm the copies instead (skills_listed_task_runs), so the token medians are not a clean measure of the skills' cost. No run handed work to Codex.",
+  "scripts": {
+    "0004_ab.sh": {
+      "sha256": "0f1119785825612cae4b30fde17a1321d552df09adbe9892e013c2734e1c42bd",
+      "origin": "harness of the first run (always-on, control pair, grader validation), ab0004.sh (sha256 441a170f2726afe5085c9123bdd3f41f41ae44259f5805dfcf296296eaa78621) with the home written as $HOME"
+    },
+    "0004_ab_resume.sh": {
+      "sha256": "7bcb65dceb827111f5fe3b92ba76794bf39e48608b8eb7cf9a1e3dc4c7feaa5a",
+      "origin": "harness of the resume (task runs, the control's /context run), ab0004r.sh (sha256 31fb1ea444e4913798c4fe11ca6c46ef9c31f373c7ec915e6b245b7062f6e8cd) with the home written as $HOME: ab0004.sh plus the fixed guard, a binary-gone check, a /proc sampler and a Codex-use record, none seen by the agent"
+    },
+    "0004_collect.sh": {
+      "sha256": "e7f59b59d567ceef59c8da7a9a7355d8c59c974d0d31f9898c58df1b9b852a8f",
+      "origin": "collector of the first run, byte-identical"
+    },
+    "0004_collect_resume.sh": {
+      "sha256": "9c2c843a21ad06964b327b28b9495a145747a0893feb0b127ba78f561d286ec4",
+      "origin": "collector of the resume, byte-identical to scripts/collect-r.sh in the measurement's work folder on the owner's Windows side (modified 2026-11-13 04:08:52 ET, during the first task run and before any collection; measure2's raw_location lists that folder's scripts/). It is not in the raw run's scripts/ folder in the distro."
+    },
+    "0004-deny.json": {
+      "sha256": "508b175c6f6d8064cf734acb6b18b20548c18e326eb70b0b303c258973db2bc7",
+      "origin": "deny rules in each run's --settings file (scripts/deny.json, sha256 cadf59ed1d90089bc0da86d2b3bbcad8688d45c6b6da61c254448f3891b8192f) with the home written as /home/<user>; a staging script (not published) writes the home back (with the operator's home the result is byte-identical to scripts/deny.json)"
+    },
+    "0004-leak-patterns.txt": {
+      "sha256": "9d42d0c90374800b29dd8cfeef169521fd80ab5cb9d1e46822aff58c4fc91051",
+      "origin": "leak-scan patterns ($SCR/leak-patterns.txt), byte-identical"
+    },
+    "0004-addition-hashes.txt": {
+      "sha256": "7b113392855cbd8ae241b4a306066da0999589d8c00a96c47f341ae8c5f0a55c",
+      "origin": "the 7 pinned blob ids ($ADDN/hashes.txt), byte-identical"
+    },
+    "0004-key.txt": {
+      "sha256": "3a102b9ca7ec6ca4ea5747c2585f2febe4bcdce5fe36cbc22e0033475ef0cb0e",
+      "origin": "arm key, byte-identical"
+    },
+    "0004-prereg.txt": {
+      "sha256": "646fc7120045a97ea998360fda2eecb61072a5e02efe949c285c018f96ea12fc",
+      "origin": "the rule as applied, written before the first task run, byte-identical"
+    },
+    "0004-brief-R1.txt": {
+      "sha256": "789791805eceb05d233fb1fc0d1c0ebefaed5d84d8f95612476bacb4a4feabc4",
+      "origin": "brief ($AB/briefs/r1.txt), byte-identical"
+    },
+    "0004-brief-R2.txt": {
+      "sha256": "9d0b472a179056bea86dfcaf334754667d0fd3de7aac764abd945da6b952e8ed",
+      "origin": "brief ($AB/briefs/r2.txt), byte-identical; R2 was not run"
+    },
+    "0004-brief-R3.txt": {
+      "sha256": "242fd3159197344f0c6f361d5a3c919e9a58e2585f3f18b8b29b26bfee940da0",
+      "origin": "brief ($AB/briefs/r3.txt), byte-identical"
+    },
+    "0004_count_tokens.py": {
+      "sha256": "a8dcf1e4dedd1ded41652e6b3a3291094279b4857cf0d6c1e3ea587bc80f7502",
+      "origin": "offline o200k_base counter, byte-identical to the one used. It needs OpenAI's o200k_base.tiktoken (https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken, 3,613,922 bytes, sha256 446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d, the pin in tiktoken 0.14.0, tiktoken_ext/openai_public.py lines 95-99) in a folder outside the repository, passed as --vocab-dir, and checks that hash; --self-test also needs cl100k_base.tiktoken there (https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken, sha256 223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7, lines 75-79). Not its default docs/adr/vocab/: that folder is not gitignored, and the o200k_base file holds lines the paper-only scan reads as live ports, so uv run pytest fails with it there. The default is left as it ran, so the file stays byte-identical."
+    },
+    "0004_aggregate.py": {
+      "sha256": "ab37f30ea575dcb2ba3265d79bf33287e5930c3ad3c7be24ad7860ba8c143eef",
+      "origin": "written for the ADR after the runs, extended in its revisions of 2026-11-13: recomputes the always-on medians from the run lists, the delta, the control's delta and the condition; every per_task field from task_runs, the token ranges (min_tokens, max_tokens) among them (with-arm passes count only runs with containment_ok); the rule as applied and with the containment check's Bash clause read literally; and fails on a per_task field recorded but not recomputed, or recomputed but not recorded. Run fields and free text are taken as recorded. Its docstring names only the assessment's adopt_if and the fact sheet as the rule fixed before any run for the always-on condition."
+    },
+    "the verification's fact sheet (not published)": {
+      "origin": "the assessment and verification excerpts (A) and (V)"
+    }
+  },
+  "raw_location": "The owner's machine (the WSL distro), not published: per-run folders with streams, transcripts, tool calls, leak and sensitive scans, guard logs, process samples, Codex-use records, grader output and patches. Meant for the private meridian-evidence repository, which is not cloned there yet.",
+  "rerun_preconditions": {
+    "reproduces": "the method; these numbers only if the user-level state below is the same, and neither the stage script nor the harness pins it",
+    "main_checkout": "~/src/meridian at 9c5daaa with Orca's two skills in .claude/skills (orca-cli, orchestration): every without-run listed them from there (skills_listed_task_runs); 0004_ab_resume.sh line 31 sets REPO to it",
+    "user_plugins": "codex@openai-codex 1.0.6 the only user-installed plugin, beside the five built into the 2.1.322 binary (run_settings)",
+    "hooks": "the same two SessionStart:startup hooks that ran in every task run (source not checked; run_settings)",
+    "claude_code": "2.1.322 at ~/.local/share/claude/versions/2.1.322 (0004_ab_resume.sh line 32); prep() stops with exit 4 if it is gone (line 100), the self-updating runtime may prune it, and nothing fetches it back",
+    "checked": "2026-11-13, after the runs: the main checkout at 9c5daaa with .claude/skills orca-cli and orchestration, and the 2.1.322 binary present; plugins and hooks as recorded in run_settings during the runs (not rechecked)"
+  },
+  "deviations": {
+    "worktrees": "Every run's worktree was added and removed with git -C ~/src/meridian worktree add/remove (0004_ab.sh lines 22, 46 and 52; 0004_ab_resume.sh lines 31, 59 and 65), as ab-tasks.md line 3 as then drafted prescribes for Claude Code; that writes, then removes, the main checkout's .git/worktrees/<name>. The measurement's cleanup note ('No owner file, config or the main checkout was touched') does not count these metadata writes.",
+    "sign_in": "Every model run used the owner's Claude Code sign-in (the real HOME; cost note 'owner's subscription'); only grading ran pytest under an empty HOME.",
+    "approval": "The assessment prescribed both; neither it nor the verification asked for the owner's approval. ADR 0002 records the same two facts as deviations its verification raised. No owner ratification of these runs is on record; a later series should use a separate clone, as ab-codex.md does."
+  },
+  "terminology": "In the ADR and in the unpublished draft's rule, 'void' means not scored and re-run in its slot (a run that read the fix, as ab-tasks.md and ab-claude-code.md use it). pre_registration.first_run_record and adoption_rule quote the first run's record, which wrote 'A with-run that breaks containment is void and counts against the with arm'; the unpublished draft (03:30 ET) and the ADR call that run failed (containment), not void. No run was void or failed on containment under the reading the ADR uses (containment_rule)."
+}

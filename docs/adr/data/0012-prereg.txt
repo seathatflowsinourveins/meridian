@@ -1,0 +1,141 @@
+ADR 0012 pre-registration of the always-on series, published copy (assembled 2026-11-13 after
+the always-on series, for this repository; edited the same day after the real-task series).
+
+This file was not itself committed before the always-on runs. Part A is copied verbatim from a
+file written before the first run of either series; part B restates records the second series
+wrote at its setup, before its first run. The source files of parts A and B stay on the owner's
+machine because they name home-directory paths; their sha256 and times are given. Times are ET.
+Edited after the real-task series: part C, an R2 protocol that never ran, was removed with the
+two scripts it named, and a commit id that is not on the public remote was removed. R2 ran under
+0012-real-prereg.txt and its amendment 1.
+
+  [F] the re-check of 2026-11-13 with its fact sheet: sha256
+      fbd605a73d5dd915194f99ae0e3ec10e84813390b73bf904442e87747b37ab44, last changed 01:45:28
+  [M] method-dsh, first version: sha256 5ca972cdd0c1e8be8b6650febef352a648492cfbb84fc33a096f507c244df6c1,
+      21:42:47 on 2026-11-12; its checked form is described, as
+      revised after the series, in docs/adr/data/ab-dsh.md
+  [T] the task sheet, described, as revised after the series, in docs/adr/data/ab-tasks.md
+  [K] the arm key, 0012-key.txt, written 01:57:29 for the first series and reused by the second
+      (always-on only; R2 drew its own: 0012-real-key.txt)
+  [B] the R2 brief, docs/adr/data/0012-brief-R2.txt: 326 bytes, no final newline, sha256
+      9d0b472a179056bea86dfcaf334754667d0fd3de7aac764abd945da6b952e8ed
+  [G] the guard's lib/heuristics.js at 71c2f93: git blob 012da526026372480613021768dfaf273f6e5340,
+      sha256 aa341d51bedcd893c79238aaffd20eac1c596078708ddcb1c89b5d18d85b180c
+  First series: start stamp 01:58:07, its one probe 01:58:53 to 01:58:55, stopped at 01:59.
+  Second series: start stamp 04:08:08, first agent start 04:08:43.
+
+== PART A. The fact sheet [F], verbatim (written before either series)
+
+# ADR 0012 fact sheet: dsh-early-stop-guard (DeepSeek Harness), verified, read 2026-11-13
+
+## Pin
+- No tag, no GitHub release, no npm package (registry.npmjs.org: 404 for `dsh-early-stop-guard` and `@pf-sjtu/dsh-early-stop-guard`). Pin = master HEAD commit `71c2f93be2645351424d2730998f3fa88f432f3f`, 2026-11-01T06:03:17Z, still HEAD on 2026-11-13 (`git ls-remote https://github.com/pf-sjtu/dsh-early-stop-guard.git`). package.json: `dsh-early-stop-guard` 0.1.0.
+- Listed in awesome-dsh-plugin@`891b3e37d0a05ee0dd11d748a75895803681f42c` (main HEAD, 2026-11-12T23:43:00Z): `data/plugins/pf-sjtu__dsh-early-stop-guard.yml`, category agi, README L125. Added by `43c4ff1` (#11245, pf-sjtu, 2026-11-02T17:03:07Z). List licence CC0-1.0.
+- Runtime context: dsh 0.2.2-rc.1 installed (`dsh --version`), tag `dsh-v0.2.2-rc.1` = `66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db`; npm latest = 0.2.2-rc.1, next = 0.2.2-rc.2 (GitHub release 2026-11-11). pnpm 11.28.9, Node v24.22.3.
+
+## Licence
+- No LICENSE file in the tree at 71c2f93; GitHub `licenseInfo` null, `repos/.../license` HTTP 404. Declared MIT only in package.json and README L204-206. No copyright notice to carry. dsh itself: MIT (repo licenseInfo; npm 0.2.2-rc.1).
+
+## Maintainers and activity
+- One individual (GitHub user pf-sjtu, "Asher Peng", account 2017-07-07, 7 followers, 37 public repos per GraphQL 2026-11-13). 11 commits, all 2026-11-01 01:34:31Z-06:03:17Z, one author, unsigned; none since. 0 issues, 0 PRs, 0 stars, 0 forks, no `.github/` (no CI), Dependabot alerts off. Source: clone + GraphQL `repository(pf-sjtu/dsh-early-stop-guard)`.
+
+## Advisories (GraphQL first, then REST; read 2026-11-13)
+- GraphQL `securityVulnerabilities(ecosystem:NPM)` for dsh-early-stop-guard, @deepseek-ai/{schemastery,cordis,dsh-agent,dsh-llm,dsh-session,dsh,cosmokit}, @standard-schema/spec: 0 each. zod: GHSA-mrhx-c7xc-m3w5 (high, < 4.6.6, CVE-2023-54404) and GHSA-m95q-7qp3-xv42 (moderate, <= 3.22.2). react/react-dom: only ranges far below 19.3.1.
+- REST `advisories?ecosystem=npm&affects=<the 9 packages>` with type=malware, unreviewed, reviewed: [] each (positive control with zod returned the 2 zod GHSAs). `affects=zod@4.4.3` -> GHSA-mrhx-c7xc-m3w5. Repo security advisories: 0 for the plugin and for deepseek-ai/deepseek-harness.
+- Host-side exposure without the plugin: the installed dsh 0.2.2-rc.1 pins zod 4.4.3 in dsh-agent, dsh-llm and other packages (`~/.local/lib/node_modules/@deepseek-ai/dsh/node_modules`).
+
+## What it installs and sends (all from lib/*.js at 71c2f93, every file read)
+- One Cordis row `early-stop-guard` (cordis.patch.yml L4-6), `inject ['llm']`. Listeners: `agent/turn-stopping` (dsh serial, awaited before the turn closes; index.js L82-127), `session/event` turn/end cleanup (L129-135), `dispose` (L302-305). No tool, skill, command, system-prompt section, MCP server or child process.
+- Six HTTP routes `/api/early-stop-guard/*` only when a connection service exists (index.js L139-299); the headless bundle mounts no HTTP server (headless/cordis.patch.yml L2). Web-only Settings tab (client.js).
+- Acts only when the last step had no tool call and an earlier step did (heuristics.js L56-66). Regex triage (L78-85): only `forward` reaches the judge; wait/ask/done/gray end the turn with no model call; no text at all -> continue without a judge.
+- Judge default chain: bamboonode (third party, skipped with no key: providers.js L402-412), then session LLM: one `ctx.llm.stream` request, 600 max tokens, temperature 0, 20 s timeout (providers.js L349-381, L420). Same DeepSeek key and quota (README L181). Not in the session log or `--json` usage.
+- On "continue": `agent.steer(createUserMessage(...source {kind:'plugin'}))`, at most 3 per turn, none after a steer with no tool call (config.js L143, decide.js L50-64).
+- Writes `os.homedir()/.dsh/early-stop-guard/events.jsonl` (on by default, up to 240 chars of assistant text and 160 of the request; logs.js L17-19, decide.js L98-110), not DSH_HOME. `secrets.json` (plaintext, 0600) only via POST /secret.
+- Install network (pnpm 11.28.9 source): a 40-char SHA skips `git ls-remote` (resolveRef), an HTTPS check that the repo is public, then a codeload.github.com tarball filtered to package.json `files` (packlist); no clone. dsh profiles set `autoInstallPeers: false`, hoisted linker; peers come from the installation's runtime resolution (app-boot profile.ts L180-189). Registry: @deepseek-ai/schemastery.
+- DeepSeek package-inventory metadata: off on this machine. `~/.dsh/cordis.patch.yml` L7-9 sets `plugin-package-inventory-deepseek` `enabled: false`, and the home layer applies to every profile (apps/cli/src/profile-boot.ts L67-75, L211-224).
+
+## Model-visible text (o200k_base, counted with tools/count_tokens.py, self-test OK)
+| Text | When | Chars | Tokens | c/t |
+|---|---|---|---|---|
+| Always-on static | never | 0 | 0 | - |
+| Steer (Chinese, config.js L20-24) | per steer, <= 3/turn | 106 | 79 | 1.34 |
+| LLM judge system prompt (providers.js L18-30) | per judge call, separate request | 682 | 167 | 4.08 |
+| Judge state, R2 example with ab-tasks brief | per judge call | 628 | 181 | 3.47 |
+| Judge state cap (4,000 + 18-char marker) | worst case | 4,018 | 1,421 (synthetic) | 2.83 |
+| Decision questions (keyed providers only) | not by default | 819 | 159 | 5.15 |
+- Baseline: AGENTS.md on main 9c5daaa: 126 lines, 8,318 chars, 2,159 tokens. Always-on ratio 0/2,159 = 0%. One steer = 79 tokens (3.7% of baseline) when it fires.
+
+## Overlap
+- dsh built-ins in the installation, mounted by dsh-base: dsh-goal, goal-round-driver, command-goal (`/goal`), tool-goal (base cordis.patch.yml L327-334, L444-445; 256-round default). Same job at round granularity once a goal is set.
+- In the stack today: Orca's row `orca-agent-hooks` -> @deepseek-ai/dsh-hooks-claude-code 0.2.2-rc.1 (home patch L17-23; installed in dsh-tui). It runs Stop hooks on the same `agent/turn-stopping` + `agent.steer` seam (hooks-claude-code index.ts L272-282, no cap). Two steerers would share one seam in dsh-tui.
+- Also in the installation: experimental ralph bundle/tool (human-requested fresh-agent rounds). In the list (10,778 entries): about 20 other entries named as continue/stop/nudge variants (names only, not read), among them nlflora/dsh-empty-turn-guard, KunKun24/dsh-until-done, TCY07/dsh-dont-stop, MichengAI/dsh-pua, LLL-lyh0/dsh-continue-guard (names only).
+- Complementary, not the same job: 0010 dsh-gungnir and 0011 goalloop gate false "done" claims. The guard leaves those alone (README L171-181).
+
+## Outcome evidence
+- None. 100 node:test cases with stubs (test/*.js). README L37-45: five example probabilities. L138: an unpublished 13-sample set on another harness. Regex triage misses English: "...to confirm the fix" -> ask; "I will run ruff next" -> gray; "...make sure all tests pass" -> done. All three end the turn with no judge (scripts/classify_v3.py).
+
+## Pinned install and removal (not run)
+- Install: `dsh plugin --profile <p> add github:pf-sjtu/dsh-early-stop-guard#71c2f93be2645351424d2730998f3fa88f432f3f </dev/null`. GIT_SHORTHAND accepted (install-spec.ts L22). Compatibility is judged after the fetch (plugin-manager README L77); peers ^0.2.1-rc.5 pass 0.2.2-rc.1 only with includePrerelease, which dsh uses (semver 7.8.6: plain false, includePrerelease true).
+- Remove: `dsh plugin --profile <p> remove dsh-early-stop-guard` (README L186). `~/.dsh/early-stop-guard/` stays: archive it, then delete.
+
+## Measurement protocol (to run in the meridian distro, following method-dsh.json)
+- Profiles `ab-0012-without` and `ab-0012-with`, both made from the headless template. Shared overlay in both arms: uploads off, `orca-agent-hooks` disabled, session-title-llm and tool-web disabled, model rows as in dsh-tui. The with-arm also gets a `session-llm`-only providers row.
+- Run each with `env -u DSH_HOME -u DSH_AGENTS_HOME -u DSH_PERMISSION_MODE -u DEEPSEEK_API_KEY DSH_TELEMETRY_DISABLED=1 timeout --signal=INT --kill-after=60 600`. Require `test ! -e .env` and gate on `dsh --version` = 0.2.2-rc.1.
+- Always-on: OK probe per arm; compare the rows diff and the first-step inputTokens (prediction: +0).
+- Real task: ab-tasks.md R2. Worktree at 96e82e6 plus 39cb68e's tests/, `uv sync --locked`. Use the R1 brief limited to `meridian/boundary.py` (keeping ruff check, ruff format --check, pyright, the never-run clause and connect to nothing). Grade as R1: apply the patch to a fresh worktree and require `ruff check && ruff format --check && pyright && pytest` to exit 0.
+- Runs: 3 per arm, interleaved a1 b1 b2 a2 a3 b3, with neutral names `ab-0012-a-N`/`-b-N`; the key stays outside the run folders. Add 2 runs per arm on a one-success difference or a 2-2 tie. A run is void if it reads the fix (git history, `~/src/meridian`, another run). Raw streams go to meridian-evidence.
+- Adoption rule: always-on +0; with-arm successes >= without + 2; no rise in false done claims; cost per success, judge included, not higher. Count steers and judge calls from events.jsonl.
+
+## Provisional verdict
+- Keep assessing, not adoptable now: there is no outcome evidence, no licence text and a single one-day author; the regex triage is weak on English text and overlaps the goal loop and Orca's Stop-hook seam. The A/B may run only after the protocol above replaces the assessor's version.
+
+## Open questions
+- Does the guard run alongside Orca's hooks-claude-code Stop listener in dsh-tui? What do Orca's hooks do at Stop? configPath not read.
+- In a live host, `apply()` reads `config.logs` without unwrapping the volatile node (index.js L59-64 vs config.js L133-137). Can logs.enabled/path be set at all?
+- Is the `--json` sessionId (agent.id) the same as the guard's logged `agent.session.id`?
+- Owner: ab profiles and the plugin log are written under ~/.dsh. Approve before any run.
+
+== PART B. The always-on series as fixed at its setup (second series, 2026-11-13 04:08)
+
+Written by 0012_setup_a.sh (not published) into its setup folder at 04:08:08, before the first agent start
+(04:08:43); the files named are the published 0012_<name> copies (see 0012-results.json for the
+two whose published bytes differ from the run's).
+
+scripts.sha256 (as run):
+  96341d207df6b24693ca95853523bef869a6374087d513f2f160ffa0ab1c901d  analyze_capture.py
+  3f6a1484480ce15fbee4f7dbe4e92fcd57ae53e86518348bd93fbd3b9fc6dbe4  capture_server.py
+  308a715356e8d04c2663a3a9f104af2f5f421251cf46d64da7544655a85d330f  compare_runs.py
+  a8dcf1e4dedd1ded41652e6b3a3291094279b4857cf0d6c1e3ea587bc80f7502  count_tokens.py
+  855b4b4906dbc5532c6784aaa6dcd752343a9d346a3b725c10b2a2a5b662679a  dsh_run_usage.py
+  519b19d8f1d17db5936fe4383de7c008a703b8323a2bc94d56c462b5257df4b4  dsh_session_log.py
+  0d604265c9d795b6dad5645cff8cf88fd6a7c06887ff16c742a127abb171d727  inner.sh
+  4a2f4c1891d896594a488506d3a0d82644a52a555927a9f5a51b228d9a547a34  run_one.sh
+  98897cb7adda14acd494cd7577b0b666e9a76eed05dca31ab5ab8113a2d6f50a  setup_b.sh
+  5eee1c26b7166994ba8e2b92b62119546917833315fde0d27db1619ce21285e6  wait_ready.py
+inputs.sha256 (setup_b.sh, before the first agent start):
+  8013cab46f99ff3a9ae167ef2b99843db315eb5c7980e7155e4b321f7c5dcdfd  probe.txt (= 0012-probe.txt)
+  1898f43a322b2653ae5de0726c71d4e7b8961e83d6c2071cd4bde1e3d72618f8  ab-overlay.cordis.yml (written by
+      setup_b.sh; it holds the run folder's absolute path, so a re-run's hash differs)
+  39cfa1d673bf2830a0f517c80ce2c8133102d7c7b9d49c48ff4019f699f11748  with-only.cordis.yml (= 0012-with-only.cordis.yml)
+The guard's package: git archive of 71c2f93 (tree 7b62f331044d815b92f1f299b2f163f0fdbd08eb) holding
+package.json and its files list, sha256 34184aacfed6eb831fa5fb3b7460fc368149b450e28cb5469404b7767ab8e2fe.
+The Gateway guard: 0012_gateway_guard.sh, sha256 12bbc82389ebe3bb30df285cbc7844dfb1d0e85757fe62ceb5e1f078729d9fec.
+
+Design: 3 probes per arm, one at a time, in the order a1' b1 b2 a2 a3 b3 (ab-tasks.md's order; a1
+of the first series, measured another way, is re-run as a1'), a = without, b = with [K]. Each run:
+0012_run_one.sh (not published) <letter> <n> b, which gates on dsh --version 0.2.2-rc.1, makes a fresh worktree from
+the scratch clone at 96e82e6 with 39cb68e's tests/, runs the Gateway guard (stop on a non-zero
+exit), then 0012_inner.sh (not published) inside bwrap --unshare-net: a capture stub on 127.0.0.1 answers 400 to
+everything, and dsh runs with a placeholder key and DEEPSEEK_BASE_URL pointing at the stub. Measure:
+the first POST */v1/messages, split by 0012_analyze_capture.py into system text, tools as wire JSON
+(compact, key order as sent) and message texts, counted with o200k_base offline; the arm's figure
+is the median of its 3 runs and the delta is median(with) - median(without). Rule item fixed here:
+the always-on criterion of [F], "always-on +0". Nothing else was decided by this series.
+
+After the series, not part of it (diag-scripts.sha256, written 04:10:58):
+  8d3f99b64ed7d38cabc984ff5af1efd7513dbb7f3b10158fd26d6d27c54a7f72  trace_guard_load.mjs
+  f16c3dc6bacb6f861a87a6f1a4fc37d8edf9861dccd5c4ef865519d08dad3f51  diag_load.sh
+One load check per arm (diag-b, then diag-a), excluded from the medians.
+
+== PART C. Removed on 2026-11-13 after the real-task series. It was an R2 protocol that never ran;
+R2 ran under 0012-real-prereg.txt and its amendment 1 instead.

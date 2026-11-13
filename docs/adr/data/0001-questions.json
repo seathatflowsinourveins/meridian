@@ -1,0 +1,258 @@
+{
+  "schema": "meridian.adr-0001.questions/1",
+  "adr": "docs/adr/0001-semble-code-search.md",
+  "frozen_commit": "f65d835ee39ca716ee0348db33e173d896ba3b47",
+  "written": "2026-11-12, before either method was run; answers checked by hand against the code at the frozen commit",
+  "match_rule": "A result matches an answer when it is in the answer's file and its lines overlap the answer's span. A Python symbol's span runs from its def or class line (decorators included) to its last line, as Python's ast reports it. A bash function runs from 'name() {' to its closing '}'. Other answers state their lines and an anchor text that must be on the first of them. A question is answered at k when any of its answers matches one of the first k results.",
+  "decision_rule": "Primary measure: questions answered within the top 3 results, out of 30. semble is adopted only if it answers at least 5 more questions within the top 3 than ripgrep plus pyright, and no fewer within the top 1 and within the top 5. Any other outcome: not adopted.",
+  "questions": [
+    {
+      "id": "Q01",
+      "category": "check",
+      "question": "Where does the lane refuse to start when the IB Gateway is not logged in to Paper Trading?",
+      "answers": [
+        {"file": "meridian/boundary.py", "symbol": "require_paper_login"},
+        {"file": "meridian/boundary.py", "symbol": "gateway_trading_mode"}
+      ]
+    },
+    {
+      "id": "Q02",
+      "category": "check",
+      "question": "Where is it enforced that the Gateway listens on the paper port and on no other port?",
+      "answers": [{"file": "meridian/boundary.py", "symbol": "require_gateway_on_paper_port_only"}]
+    },
+    {
+      "id": "Q03",
+      "category": "check",
+      "question": "Where is the account the Gateway reports checked to have the paper form?",
+      "answers": [{"file": "meridian/boundary.py", "symbol": "single_paper_form_account"}]
+    },
+    {
+      "id": "Q04",
+      "category": "check",
+      "question": "Where is the reported account compared with the owner's optional allowlist?",
+      "answers": [{"file": "meridian/boundary.py", "symbol": "allowed_account"}]
+    },
+    {
+      "id": "Q05",
+      "category": "check",
+      "question": "What refuses a boundary contract file that is present but malformed, or whose host or port is not the paper target?",
+      "answers": [{"file": "meridian/boundary.py", "symbol": "load_contract"}]
+    },
+    {
+      "id": "Q06",
+      "category": "check",
+      "question": "Where does order mode insist that a person at a terminal types the confirmation word?",
+      "answers": [
+        {"file": "meridian/ibkr_paper.py", "symbol": "owner_confirms"},
+        {"file": "meridian/ibkr_paper.py", "symbol": "_at_terminal"}
+      ]
+    },
+    {
+      "id": "Q07",
+      "category": "check",
+      "question": "Where are the paper checks run a second time after the owner confirms, so that a Gateway that changed while the prompt waited is refused?",
+      "answers": [{"file": "meridian/ibkr_paper.py", "symbol": "main"}]
+    },
+    {
+      "id": "Q08",
+      "category": "check",
+      "question": "Where does the lane decide that a run failed, for example because the order filled or never reached a terminal state?",
+      "answers": [{"file": "meridian/ibkr_paper.py", "symbol": "RunRecord.problems"}]
+    },
+    {
+      "id": "Q09",
+      "category": "check",
+      "question": "What stops a risk-engine bypass or another instrument set in the shell environment from reaching the engine?",
+      "answers": [{"file": "meridian/ibkr_node.py", "symbol": "build"}]
+    },
+    {
+      "id": "Q10",
+      "category": "check",
+      "question": "Where does the strategy refuse to submit when the account already has an open order or position in the instrument?",
+      "answers": [{"file": "meridian/ibkr_node.py", "symbol": "OneDayLimit.on_start"}]
+    },
+    {
+      "id": "Q11",
+      "category": "calls",
+      "question": "Outside the tests, which functions call `gate`?",
+      "answers": [
+        {"file": "meridian/ibkr_paper.py", "symbol": "main"},
+        {"file": "meridian/ibkr_paper.py", "symbol": "_run_node"}
+      ]
+    },
+    {
+      "id": "Q12",
+      "category": "calls",
+      "question": "Outside the tests, what calls `require_paper_login`?",
+      "answers": [
+        {"file": "meridian/boundary.py", "symbol": "local_paper_checks"},
+        {"file": "meridian/boundary.py", "symbol": "_contract"}
+      ]
+    },
+    {
+      "id": "Q13",
+      "category": "calls",
+      "question": "Where does this repo's own code subclass upstream's `IbV2OrderStrategy`?",
+      "answers": [{"file": "meridian/ibkr_node.py", "symbol": "OneDayLimit"}]
+    },
+    {
+      "id": "Q14",
+      "category": "calls",
+      "question": "Outside the tests, what calls `managed_accounts`?",
+      "answers": [
+        {"file": "meridian/ibkr_paper.py", "symbol": "gate"},
+        {"file": "meridian/boundary.py", "symbol": "_contract"}
+      ]
+    },
+    {
+      "id": "Q15",
+      "category": "upstream",
+      "question": "Where is the cancel-on-acceptance behaviour that the lane relies on implemented?",
+      "answers": [
+        {
+          "file": "upstream/nautilus_trader/v2.0.0rc9/examples/live/interactive_brokers/ib_v2_order_strategies.py",
+          "symbol": "IbV2OrderStrategy.on_order_accepted"
+        }
+      ]
+    },
+    {
+      "id": "Q16",
+      "category": "upstream",
+      "question": "Where is the account id turned into the form the engine's adapter uses, which is why a hyphen in the id is refused?",
+      "answers": [
+        {
+          "file": "upstream/nautilus_trader/v2.0.0rc9/examples/live/interactive_brokers/_common.py",
+          "symbol": "ib_account_id"
+        }
+      ]
+    },
+    {
+      "id": "Q17",
+      "category": "record",
+      "question": "Where is the scrubbed run record written to evidence/?",
+      "answers": [{"file": "meridian/ibkr_paper.py", "symbol": "RunRecord.write"}]
+    },
+    {
+      "id": "Q18",
+      "category": "record",
+      "question": "Where is a run record refused because it contains an account identifier?",
+      "answers": [{"file": "meridian/ibkr_paper.py", "symbol": "scrubbed_json"}]
+    },
+    {
+      "id": "Q19",
+      "category": "record",
+      "question": "Where is the engine's own output sent to a local log file instead of the terminal?",
+      "answers": [
+        {"file": "meridian/ibkr_node.py", "symbol": "_output_to"},
+        {"file": "meridian/ibkr_node.py", "symbol": "run"}
+      ]
+    },
+    {
+      "id": "Q20",
+      "category": "record",
+      "question": "Where is the order's limit price computed from the bid?",
+      "answers": [{"file": "meridian/ibkr_node.py", "symbol": "OneDayLimit.submit_example_orders"}]
+    },
+    {
+      "id": "Q21",
+      "category": "record",
+      "question": "Where does the account probe enforce one deadline for the whole call rather than a timeout per read?",
+      "answers": [
+        {"file": "meridian/ib_probe.py", "symbol": "_recv_exact"},
+        {"file": "meridian/ib_probe.py", "symbol": "managed_accounts"}
+      ]
+    },
+    {
+      "id": "Q22",
+      "category": "test",
+      "question": "Which test makes sure a live login in jts.ini stops the lane before it connects to the Gateway?",
+      "answers": [
+        {
+          "file": "tests/test_boundary.py",
+          "symbol": "test_lane_refuses_unless_jts_says_paper_and_never_contacts_the_gateway"
+        }
+      ]
+    },
+    {
+      "id": "Q23",
+      "category": "test",
+      "question": "Which test shows that the account probe sends nothing that could be an order?",
+      "answers": [
+        {"file": "tests/test_ib_probe.py", "symbol": "test_sends_the_handshake_and_start_api_and_nothing_after"}
+      ]
+    },
+    {
+      "id": "Q24",
+      "category": "test",
+      "question": "Which test checks that what the engine prints, including the account id, stays out of the terminal?",
+      "answers": [
+        {
+          "file": "tests/test_ibkr_node_offline.py",
+          "symbol": "test_engine_output_goes_to_the_local_log_not_the_terminal"
+        }
+      ]
+    },
+    {
+      "id": "Q25",
+      "category": "test",
+      "question": "Which test checks that a filled order makes the run fail?",
+      "answers": [
+        {"file": "tests/test_run_record.py", "symbol": "test_a_fill_is_named_as_the_problem"},
+        {
+          "file": "tests/test_run_record.py",
+          "symbol": "test_an_order_run_that_misses_a_condition_fails_and_writes_no_evidence"
+        },
+        {"file": "tests/test_run_record.py", "symbol": "filled"}
+      ]
+    },
+    {
+      "id": "Q26",
+      "category": "test",
+      "question": "Which test covers a Gateway that restarts while the engine runs, so that the run leaves no evidence?",
+      "answers": [
+        {"file": "tests/test_boundary.py", "symbol": "test_no_evidence_when_the_gateway_restarts_during_the_run"}
+      ]
+    },
+    {
+      "id": "Q27",
+      "category": "ops",
+      "question": "Where is the IB Gateway installer's checksum verified before it runs?",
+      "answers": [{"file": "deploy/wsl/setup.sh", "symbol": "cmd_gateway"}]
+    },
+    {
+      "id": "Q28",
+      "category": "ops",
+      "question": "Where does CI scan the git history for secrets?",
+      "answers": [
+        {
+          "file": ".github/workflows/ci.yml",
+          "symbol": "step: gitleaks",
+          "lines": [32, 39],
+          "anchor": "- name: gitleaks"
+        }
+      ]
+    },
+    {
+      "id": "Q29",
+      "category": "ops",
+      "question": "Where is uv told not to resolve package releases newer than seven days?",
+      "answers": [
+        {"file": "pyproject.toml", "symbol": "[tool.uv]", "lines": [17, 22], "anchor": "[tool.uv]"}
+      ]
+    },
+    {
+      "id": "Q30",
+      "category": "ops",
+      "question": "Where does the distro definition switch off Ubuntu Insights?",
+      "answers": [
+        {
+          "file": "deploy/wsl/meridian.user-data",
+          "symbol": "runcmd: Ubuntu Insights",
+          "lines": [104, 112],
+          "anchor": "# Ubuntu Insights"
+        }
+      ]
+    }
+  ]
+}

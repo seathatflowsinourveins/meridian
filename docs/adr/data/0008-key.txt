@@ -1,0 +1,2 @@
+omx_arm=b drawn=2026-11-13T04:12:48-05:00 method=python secrets.choice('ab')
+[Published copy of the arm key written 2026-11-13 04:12:48 ET, before run 2's first run, and kept outside the run folders. Letter b ran with oh-my-codex 0.22.6 (project scope), letter a without. This line is added.]

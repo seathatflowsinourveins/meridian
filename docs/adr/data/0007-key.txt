@@ -1,0 +1,5 @@
+ADR 0007 series key (kept outside the run folders).
+a = without: Codex CLI 0.167.2 as installed, owner's ~/.codex, no addition.
+b = with: codex-security from openai/plugins d420d13051bffe4543ed39e30fa46b87148e47dd via local marketplace ab-0007-pinned.
+b cannot be built on this machine: /etc/codex/requirements.toml pins features.plugins=false and an empty [mcp_servers];
+in a throwaway CODEX_HOME `codex plugin add codex-security@ab-0007-pinned` fails "not found in marketplace" (2026-11-13).

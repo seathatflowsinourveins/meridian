@@ -1,0 +1,4 @@
+- id: early-stop-guard
+  config:
+    providers:
+      - {id: session-llm, label: session-llm, kind: llm, protocol: systemone, timeoutMs: 20000, enabled: true}

@@ -1,0 +1,1010 @@
+{
+ "adr": "0002",
+ "what": "Aggregates and per-run figures of the ADR 0002 measurement on 2026-11-13: the always-on runs 01:55-01:56 ET, R1 a-1 and b-1 01:56-02:04 ET, then, after a guard stop, b-2 (output folder b-2r), a-2, a-3 and b-3 04:07-04:23 ET, all on the same Claude Code binary. Built from the exports of 0002_collect.sh (always-on runs, first sitting) and 0002_collect_r2.sh (all six R1 runs) by an unpublished scratch step, with 'arm' from the key and the notes, readings and the other text fields written by hand, leaving out home and worktree paths, tool-call text and transcripts. The per-run 'distinct_tool_calls', 'leak_hits' and 'leak_hits_with_jts_pattern' were recounted after the series by 0002_rescan.py from the raw runs (one count per tool_use id; the export's counts, from the runners' leak_scan as run, were about twice as large). 0002_aggregate.py recomputes 'figures' (always-on, R1 and cost) from 'ok' and 'r1' and exits 1 on any difference; it checks this file's own consistency, not the chain from the raw runs.",
+ "recompute": "python3 -I docs/adr/data/0002_aggregate.py docs/adr/data/0002-results.json",
+ "candidate": "pyright-lsp 1.0.0 from anthropics/claude-plugins-official at f75f5b25ae94f4332be4ff5f18435741d2589bdb (still main HEAD by git ls-remote before each sitting), loaded per session with --plugin-dir from a copy of plugins/pyright-lsp fetched with unauthenticated git: plugin.json sha256 2cf083ce0ec6aa27c25ba7dd3b1cc37868f899f1bd77a9431949703e888c4c1d, LICENSE cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30, README.md 06831f5f4397506f295857d4de98bd0ceeeb23b2546168c3c0029c5e03782cf0",
+ "runtime": "Claude Code 2.1.322, called by its versioned path ~/.local/share/claude/versions/2.1.322 (the only version on disk; sha256 bfb3703ad5380242328459bc62ada4bde8ae7ba57c6e1eeadb9c00e08874c478 by the verification); claude_code_version 2.1.322 in all 12 runs' init events",
+ "run_settings": "Both arms: claude-opus-5-5 (the only modelUsage key in every run), --effort high, --permission-mode bypassPermissions, --max-turns 1 (always-on) or 100 (R1), a fresh autoMemoryDirectory per run, DISABLE_AUTOUPDATER=1, PATH=<worktree>/.venv/bin:$PATH with VIRTUAL_ENV unset (pyright-langserver resolved to the worktree's .venv in every run), --debug-file in the run folder, 9 deny rules (0002-deny.json) in a --settings file and the 8 without 'ibgateway' also in --disallowedTools. The arm with the plugin adds --plugin-dir. The stack's codex plugin (openai/codex-plugin-cc) and five built-in plugins loaded in both arms.",
+ "key": "a = with pyright-lsp, b = without (0002-key.txt)",
+ "order": {
+  "always_on": "a-k1 b-k1 b-k2 a-k2 a-k3 b-k3, 01:55:13-01:56:05 ET",
+  "r1": "a-1 b-1 b-2 a-2 a-3 b-3 (b-2 stopped by the guard at 02:04:08 ET before any model call; resumed 04:07:38 ET into b-2r)"
+ },
+ "brief_sha256": "789791805eceb05d233fb1fc0d1c0ebefaed5d84d8f95612476bacb4a4feabc4",
+ "scripts": {
+  "0002_ab.sh": "runner for the always-on runs, a-1, b-1 and the grader check (home directory written as $HOME; leak_scan corrected after the series, see its header)",
+  "0002_ab_r2.sh": "runner for b-2r, a-2, a-3, b-3: 0002_ab.sh with changes outside the measured process only (home directory written as $HOME; leak_scan corrected after the series; its header names each $SCR file and the guard, and gives the steps that made the plugin copy)",
+  "0002_rescan.py": "recounts each run's tool calls by tool_use id and rescans them with the run's leak patterns and with 'Jts|jts\\.ini' added: python3 -I 0002_rescan.py 0002-leak-patterns.txt <run folder>... (needs the raw runs, which are not published)",
+  "the guard (its test is 0003_gateway_guard.sh's with port 4002 only)": "the guard 0002_ab_r2.sh ran before each run, byte for byte (sha256 12bbc82389ebe3bb30df285cbc7844dfb1d0e85757fe62ceb5e1f078729d9fec)",
+  "0002_collect.sh": "first-sitting export, byte for byte (sha256 215bdec894ccc924d208916e349bf6f4c4ffecbe45c1cc55ee41e97a85533bbf)",
+  "0002_collect_r2.sh": "export of all six R1 runs, byte for byte (sha256 4e58941b1fc4b72bfe3b764dc78e12db3f2399a3695ed5bac32f0e8313222a23)",
+  "0002_aggregate.py": "recomputes 'figures' from this file",
+  "0002_count_tokens.py": "the o200k_base counter for 'static_o200k' (reads OpenAI's o200k_base.tiktoken, sha256 446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d, from --vocab-dir; its default, a vocab folder beside its parent folder, is docs/adr/vocab, which is not in the repository)"
+ },
+ "marker_wording": "2.1.322 prints 'Starting LSP server instance: plugin:pyright-lsp:pyright', not the fact sheet's 'Starting LSP server instance: pyright'. 0002_ab.sh's lsp_markers counts the fact sheet's wording, so its own count is 0 in every run; 'r1.*.lsp' comes from 0002_collect_r2.sh, which counts the 2.1.322 wording. The always-on runs' 'lsp_markers' leave that count out. So 'valid_under_fact_sheet_marker_rule' applies the fact sheet's rule with its start marker read in 2.1.322's wording, a reading fixed after the first run (0002-prereg.txt); read word for word, no run with the plugin is valid: the fact sheet's start marker occurs 0 times in all six R1 debug logs.",
+ "grader_check": {
+  "no_change": "72 failed, 209 passed; pyright 4 errors; not passed",
+  "reference_fix_5d51c9c": "281 passed; pyright 0 errors; passed"
+ },
+ "plugin_validate": "claude plugin validate <copy> --strict on 2.1.322: verdict line 'Validation passed', exit 0. Its one warning (ICON_MISSING, no icon) is listed under 'Plugin directory checks', which the output says 'do not change the result below'; an 'Advice' block (the README has no marketplace install line) 'does not change the verdict'.",
+ "plugin_details": "claude --plugin-dir <copy> plugin details pyright-lsp: Skills (0), Agents (0), Hooks (0), MCP servers (0), LSP servers (1) pyright '(out-of-process tooling; no model context cost)'; 'Always-on: ~0 tok'",
+ "ok": {
+  "a-k1": {
+   "arm": "with",
+   "claude_code_version": "2.1.322",
+   "model": "claude-opus-5-5",
+   "plugins": [
+    "pyright-lsp",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_tools": 25,
+   "lsp_tool_listed": true,
+   "subtype": "success",
+   "is_error": false,
+   "terminal_reason": "completed",
+   "num_turns": 1,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11479,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "result_input_all": 22747,
+   "first_assistant_input_all": 22747,
+   "tokens_all": 22751,
+   "total_cost_usd": 0.0941732,
+   "api_retries": 0,
+   "lsp_markers": {
+    "loaded_1": 1,
+    "delivering": 0
+   },
+   "containment_flags": "plugin-data-created,claude-json-new-keys",
+   "context_command": {
+    "local_command": "context",
+    "total_cost_usd": 0
+   },
+   "context_total_tokens": 16444,
+   "context_categories": {
+    "System prompt": 2625,
+    "System tools": 7473,
+    "System tools (deferred)": 14484,
+    "Custom agents": 85,
+    "Memory files": 3185,
+    "Skills": 3066,
+    "Messages": 10,
+    "Autocompact buffer": 33000,
+    "Free space": 950556
+   }
+  },
+  "b-k1": {
+   "arm": "without",
+   "claude_code_version": "2.1.322",
+   "model": "claude-opus-5-5",
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_tools": 24,
+   "lsp_tool_listed": false,
+   "subtype": "success",
+   "is_error": false,
+   "terminal_reason": "completed",
+   "num_turns": 1,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11475,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "result_input_all": 22743,
+   "first_assistant_input_all": 22743,
+   "tokens_all": 22747,
+   "total_cost_usd": 0.09414120000000001,
+   "api_retries": 0,
+   "lsp_markers": {
+    "loaded_1": 0,
+    "delivering": 0
+   },
+   "containment_flags": "",
+   "context_command": {
+    "local_command": "context",
+    "total_cost_usd": 0
+   },
+   "context_total_tokens": 16444,
+   "context_categories": {
+    "System prompt": 2625,
+    "System tools": 7473,
+    "System tools (deferred)": 13844,
+    "Custom agents": 85,
+    "Memory files": 3185,
+    "Skills": 3066,
+    "Messages": 10,
+    "Autocompact buffer": 33000,
+    "Free space": 950556
+   }
+  },
+  "b-k2": {
+   "arm": "without",
+   "claude_code_version": "2.1.322",
+   "model": "claude-opus-5-5",
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_tools": 24,
+   "lsp_tool_listed": false,
+   "subtype": "success",
+   "is_error": false,
+   "terminal_reason": "completed",
+   "num_turns": 1,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11475,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "result_input_all": 22743,
+   "first_assistant_input_all": 22743,
+   "tokens_all": 22747,
+   "total_cost_usd": 0.09414120000000001,
+   "api_retries": 0,
+   "lsp_markers": {
+    "loaded_1": 0,
+    "delivering": 0
+   },
+   "containment_flags": "",
+   "context_command": {
+    "local_command": "context",
+    "total_cost_usd": 0
+   },
+   "context_total_tokens": 16444,
+   "context_categories": {
+    "System prompt": 2625,
+    "System tools": 7473,
+    "System tools (deferred)": 13844,
+    "Custom agents": 85,
+    "Memory files": 3185,
+    "Skills": 3066,
+    "Messages": 10,
+    "Autocompact buffer": 33000,
+    "Free space": 950556
+   }
+  },
+  "a-k2": {
+   "arm": "with",
+   "claude_code_version": "2.1.322",
+   "model": "claude-opus-5-5",
+   "plugins": [
+    "pyright-lsp",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_tools": 25,
+   "lsp_tool_listed": true,
+   "subtype": "success",
+   "is_error": false,
+   "terminal_reason": "completed",
+   "num_turns": 1,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11479,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "result_input_all": 22747,
+   "first_assistant_input_all": 22747,
+   "tokens_all": 22751,
+   "total_cost_usd": 0.0941732,
+   "api_retries": 0,
+   "lsp_markers": {
+    "loaded_1": 1,
+    "delivering": 0
+   },
+   "containment_flags": "",
+   "context_command": {
+    "local_command": "context",
+    "total_cost_usd": 0
+   },
+   "context_total_tokens": 16444,
+   "context_categories": {
+    "System prompt": 2625,
+    "System tools": 7473,
+    "System tools (deferred)": 14484,
+    "Custom agents": 85,
+    "Memory files": 3185,
+    "Skills": 3066,
+    "Messages": 10,
+    "Autocompact buffer": 33000,
+    "Free space": 950556
+   }
+  },
+  "a-k3": {
+   "arm": "with",
+   "claude_code_version": "2.1.322",
+   "model": "claude-opus-5-5",
+   "plugins": [
+    "pyright-lsp",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_tools": 25,
+   "lsp_tool_listed": true,
+   "subtype": "success",
+   "is_error": false,
+   "terminal_reason": "completed",
+   "num_turns": 1,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11479,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "result_input_all": 22747,
+   "first_assistant_input_all": 22747,
+   "tokens_all": 22751,
+   "total_cost_usd": 0.0941732,
+   "api_retries": 0,
+   "lsp_markers": {
+    "loaded_1": 1,
+    "delivering": 0
+   },
+   "containment_flags": "",
+   "context_command": {
+    "local_command": "context",
+    "total_cost_usd": 0
+   },
+   "context_total_tokens": 16444,
+   "context_categories": {
+    "System prompt": 2625,
+    "System tools": 7473,
+    "System tools (deferred)": 14484,
+    "Custom agents": 85,
+    "Memory files": 3185,
+    "Skills": 3066,
+    "Messages": 10,
+    "Autocompact buffer": 33000,
+    "Free space": 950556
+   }
+  },
+  "b-k3": {
+   "arm": "without",
+   "claude_code_version": "2.1.322",
+   "model": "claude-opus-5-5",
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_tools": 24,
+   "lsp_tool_listed": false,
+   "subtype": "success",
+   "is_error": false,
+   "terminal_reason": "completed",
+   "num_turns": 1,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11475,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "result_input_all": 22743,
+   "first_assistant_input_all": 22743,
+   "tokens_all": 22747,
+   "total_cost_usd": 0.09414120000000001,
+   "api_retries": 0,
+   "lsp_markers": {
+    "loaded_1": 0,
+    "delivering": 0
+   },
+   "containment_flags": "",
+   "context_command": {
+    "local_command": "context",
+    "total_cost_usd": 0
+   },
+   "context_total_tokens": 16444,
+   "context_categories": {
+    "System prompt": 2625,
+    "System tools": 7473,
+    "System tools (deferred)": 13844,
+    "Custom agents": 85,
+    "Memory files": 3185,
+    "Skills": 3066,
+    "Messages": 10,
+    "Autocompact buffer": 33000,
+    "Free space": 950556
+   }
+  }
+ },
+ "r1": {
+  "a-1": {
+   "arm": "with",
+   "output_folder": "a-1",
+   "planned_name": "a-1",
+   "started_at": "2026-11-13T01:56:48-05:00",
+   "claude_code_version": "2.1.322",
+   "init_model": "claude-opus-5-5",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "pyright_lsp_in_init_plugins": true,
+   "plugin_errors": null,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "api_retries": 0,
+   "num_turns": 36,
+   "duration_ms": 221208,
+   "wall_s": 222,
+   "modelUsage": {
+    "input": 36,
+    "cache_creation": 87101,
+    "cache_read": 1186228,
+    "output": 23139,
+    "thinking_reported": 7095
+   },
+   "tokens_all": 1296504,
+   "total_cost_usd": 1.3969776,
+   "passed": true,
+   "grade": {
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": "",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations",
+    "pytest_tail": "281 passed in 4.35s",
+    "changed": "M .gitignore,M meridian/boundary.py,M meridian/ibkr_node.py,M meridian/ibkr_paper.py"
+   },
+   "lsp": {
+    "loaded_1": 1,
+    "started": 1,
+    "first_start": "2026-11-13T06:59:02.066Z",
+    "delivering": 1,
+    "delivered_diagnostics": 1,
+    "received": 19,
+    "received_nonzero": 11,
+    "lsp_tool_calls": 0
+   },
+   "distinct_tool_calls": {
+    "Bash": 14,
+    "Edit": 19,
+    "Read": 2
+   },
+   "permission_denials": 1,
+   "leak_hits": 2,
+   "leak_hits_with_jts_pattern": 4,
+   "leak_hits_note": "2 tool calls hit the run's patterns, both the boundary.py docstring text (the Gateway's folder, 'port 4002') in the model's own edits (the denied heredoc and the Edit after it); 'Jts|jts\\.ini' adds 2: a test command whose description names the jts.ini tests, and an Edit carrying the paper-check message that names jts.ini. No read of the fix, git history, another run or the Gateway's folder",
+   "codex": {
+    "codex_agent_skill_or_command_calls": 0,
+    "tool_calls_mentioning_codex": 0,
+    "codex_process_samples_in_worktree": null,
+    "codex_sessions_in_worktree": null,
+    "codex_tokens": 0,
+    "stop_review_gate_hook": "finished with status 0 (50ms)",
+    "sampling": "none in the first sitting"
+   },
+   "guard": [
+    "ab.sh guard (no listener on 4002, no 'pgrep -f ibgateway' match): ok"
+   ],
+   "containment": {
+    "flags": "tmp-entry-from-addition",
+    "flag_note": "flag tmp-entry-from-addition: /tmp/node-addon-native-custom-loader-0 belongs to DeepSeek Harness, run by a parallel series (measurement), not to this run",
+    "plugin_records_settings_hashes": "same",
+    "claude_json_key_changes": "none",
+    "processes_left_in_worktree": "none",
+    "language_server_left": "none"
+   },
+   "void": null,
+   "invalid": null,
+   "version_mismatch": null,
+   "permission_denial": "Bash: a python3 heredoc edit of meridian/boundary.py, 10,306 characters, whose text quoted the boundary.py docstring naming the Gateway's folder; denied by Bash(*ibgateway*). The same text in heredocs ran without denial in the other five runs; why the match differed was not established. The rule was in all six runs' settings, so it fired on 1 of 6 Bash commands that contained the word, each a multi-line python heredoc quoting '~/Jts/ibgateway' twice (b-1 call 12, b-2r call 13, a-2 call 10, a-3 call 8, b-3 call 18; this one is call 11). The one visible difference: only this command continues after its heredoc with '&&' ('uv run ruff format meridian/boundary.py && uv run pytest ...'); b-1 and b-3 end at EOF, and b-2r, a-2 and a-3 go on with a new line (a pipe in b-2r and a-3). Cause not proven.",
+   "delivered_diagnostic": "one block, a pyright Hint (star) in ibkr_node.py at line 197: the function 'contextmanager' is deprecated; 'Annotating the return type as `-> Iterator[Foo]` with `@contextmanager` is deprecated. Use `-> Generator[Foo]` instead.' The model then made an Iterator-to-Generator edit outside the reference fix.",
+   "valid_under_fact_sheet_marker_rule": true
+  },
+  "b-1": {
+   "arm": "without",
+   "output_folder": "b-1",
+   "planned_name": "b-1",
+   "started_at": "2026-11-13T02:00:44-05:00",
+   "claude_code_version": "2.1.322",
+   "init_model": "claude-opus-5-5",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "pyright_lsp_in_init_plugins": false,
+   "plugin_errors": null,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "api_retries": 0,
+   "num_turns": 17,
+   "duration_ms": 190193,
+   "wall_s": 191,
+   "modelUsage": {
+    "input": 26,
+    "cache_creation": 84197,
+    "cache_read": 822860,
+    "output": 19129,
+    "thinking_reported": 8841
+   },
+   "tokens_all": 926212,
+   "total_cost_usd": 1.220832,
+   "passed": true,
+   "grade": {
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": "",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations",
+    "pytest_tail": "281 passed in 4.39s",
+    "changed": "M .gitignore,M meridian/boundary.py,M meridian/ibkr_node.py,M meridian/ibkr_paper.py"
+   },
+   "lsp": {
+    "loaded_1": 0,
+    "started": 0,
+    "first_start": "",
+    "delivering": 0,
+    "delivered_diagnostics": 0,
+    "received": 0,
+    "received_nonzero": 0,
+    "lsp_tool_calls": 0
+   },
+   "distinct_tool_calls": {
+    "Bash": 12,
+    "Read": 4
+   },
+   "permission_denials": 0,
+   "leak_hits": 1,
+   "leak_hits_with_jts_pattern": 2,
+   "leak_hits_note": "1 tool call hit the run's patterns: the boundary.py docstring text (the Gateway's folder, 'port 4002') in the model's own heredoc edit; 'Jts|jts\\.ini' adds 1, the paper-check message naming jts.ini in another of its edits. No read of the fix, git history, another run or the Gateway's folder",
+   "codex": {
+    "codex_agent_skill_or_command_calls": 0,
+    "tool_calls_mentioning_codex": 0,
+    "codex_process_samples_in_worktree": null,
+    "codex_sessions_in_worktree": null,
+    "codex_tokens": 0,
+    "stop_review_gate_hook": "finished with status 0 (49ms)",
+    "sampling": "none in the first sitting"
+   },
+   "guard": [
+    "ab.sh guard (no listener on 4002, no 'pgrep -f ibgateway' match): ok"
+   ],
+   "containment": {
+    "flags": "",
+    "flag_note": null,
+    "plugin_records_settings_hashes": "same",
+    "claude_json_key_changes": "none",
+    "processes_left_in_worktree": "none",
+    "language_server_left": "none"
+   },
+   "void": null,
+   "invalid": null,
+   "version_mismatch": null
+  },
+  "b-2r": {
+   "arm": "without",
+   "output_folder": "b-2r",
+   "planned_name": "b-2",
+   "started_at": "2026-11-13T04:07:39-05:00",
+   "claude_code_version": "2.1.322",
+   "init_model": "claude-opus-5-5",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "pyright_lsp_in_init_plugins": false,
+   "plugin_errors": null,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "api_retries": 0,
+   "num_turns": 18,
+   "duration_ms": 191618,
+   "wall_s": 192,
+   "modelUsage": {
+    "input": 30,
+    "cache_creation": 77089,
+    "cache_read": 858495,
+    "output": 17638,
+    "thinking_reported": 7962
+   },
+   "tokens_all": 953252,
+   "total_cost_usd": 1.141291,
+   "passed": true,
+   "grade": {
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": "",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations",
+    "pytest_tail": "281 passed in 4.38s",
+    "changed": "M .gitignore,M meridian/boundary.py,M meridian/ibkr_node.py,M meridian/ibkr_paper.py"
+   },
+   "lsp": {
+    "loaded_1": 0,
+    "started": 0,
+    "first_start": "",
+    "delivering": 0,
+    "delivered_diagnostics": 0,
+    "received": 0,
+    "received_nonzero": 0,
+    "lsp_tool_calls": 0
+   },
+   "distinct_tool_calls": {
+    "Bash": 17
+   },
+   "permission_denials": 0,
+   "leak_hits": 1,
+   "leak_hits_with_jts_pattern": 2,
+   "leak_hits_note": "1 tool call hit the run's patterns: the boundary.py docstring text (the Gateway's folder, 'port 4002') in the model's own heredoc edit; 'Jts|jts\\.ini' adds 1, the paper-check message naming jts.ini in another of its edits. No read of the fix, git history, another run or the Gateway's folder",
+   "codex": {
+    "codex_agent_skill_or_command_calls": 0,
+    "tool_calls_mentioning_codex": 0,
+    "codex_process_samples_in_worktree": 0,
+    "codex_sessions_in_worktree": 0,
+    "codex_tokens": 0,
+    "stop_review_gate_hook": "finished with status 0 (46ms)",
+    "sampling": "every 2 s, process names with cwd in the worktree"
+   },
+   "guard": [
+    "exit=0 gateway down"
+   ],
+   "containment": {
+    "flags": "",
+    "flag_note": null,
+    "plugin_records_settings_hashes": "same",
+    "claude_json_key_changes": "none",
+    "processes_left_in_worktree": "none",
+    "language_server_left": "none"
+   },
+   "void": null,
+   "invalid": null,
+   "version_mismatch": null
+  },
+  "a-2": {
+   "arm": "with",
+   "output_folder": "a-2",
+   "planned_name": "a-2",
+   "started_at": "2026-11-13T04:11:25-05:00",
+   "claude_code_version": "2.1.322",
+   "init_model": "claude-opus-5-5",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "pyright_lsp_in_init_plugins": true,
+   "plugin_errors": null,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "api_retries": 0,
+   "num_turns": 17,
+   "duration_ms": 193780,
+   "wall_s": 194,
+   "modelUsage": {
+    "input": 30,
+    "cache_creation": 77722,
+    "cache_read": 924762,
+    "output": 18009,
+    "thinking_reported": 7963
+   },
+   "tokens_all": 1020523,
+   "total_cost_usd": 1.1670284,
+   "passed": true,
+   "grade": {
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": "",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations",
+    "pytest_tail": "281 passed in 4.52s",
+    "changed": "M .gitignore,M meridian/boundary.py,M meridian/ibkr_node.py,M meridian/ibkr_paper.py"
+   },
+   "lsp": {
+    "loaded_1": 1,
+    "started": 0,
+    "first_start": "",
+    "delivering": 0,
+    "delivered_diagnostics": 0,
+    "received": 0,
+    "received_nonzero": 0,
+    "lsp_tool_calls": 0
+   },
+   "distinct_tool_calls": {
+    "Bash": 16
+   },
+   "permission_denials": 0,
+   "leak_hits": 1,
+   "leak_hits_with_jts_pattern": 2,
+   "leak_hits_note": "1 tool call hit the run's patterns: the boundary.py docstring text (the Gateway's folder, 'port 4002') in the model's own heredoc edit; 'Jts|jts\\.ini' adds 1, the paper-check message naming jts.ini in another of its edits. No read of the fix, git history, another run or the Gateway's folder",
+   "codex": {
+    "codex_agent_skill_or_command_calls": 0,
+    "tool_calls_mentioning_codex": 0,
+    "codex_process_samples_in_worktree": 0,
+    "codex_sessions_in_worktree": 0,
+    "codex_tokens": 0,
+    "stop_review_gate_hook": "finished with status 0 (51ms)",
+    "sampling": "every 2 s, process names with cwd in the worktree"
+   },
+   "guard": [
+    "exit=0 gateway down"
+   ],
+   "containment": {
+    "flags": "plugin-data-created",
+    "flag_note": "flag plugin-data-created: Claude Code's own empty ~/.claude/plugins/data/pyright-lsp-inline, recreated by the --plugin-dir load (foreseen; removed after the series)",
+    "plugin_records_settings_hashes": "same",
+    "claude_json_key_changes": "none",
+    "processes_left_in_worktree": "none",
+    "language_server_left": "none"
+   },
+   "void": null,
+   "invalid": null,
+   "version_mismatch": null,
+   "valid_under_fact_sheet_marker_rule": false
+  },
+  "a-3": {
+   "arm": "with",
+   "output_folder": "a-3",
+   "planned_name": "a-3",
+   "started_at": "2026-11-13T04:15:51-05:00",
+   "claude_code_version": "2.1.322",
+   "init_model": "claude-opus-5-5",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "pyright_lsp_in_init_plugins": true,
+   "plugin_errors": null,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "api_retries": 0,
+   "num_turns": 14,
+   "duration_ms": 200686,
+   "wall_s": 202,
+   "modelUsage": {
+    "input": 26,
+    "cache_creation": 77232,
+    "cache_read": 774476,
+    "output": 18677,
+    "thinking_reported": 8620
+   },
+   "tokens_all": 870411,
+   "total_cost_usd": 1.1463952,
+   "passed": true,
+   "grade": {
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": "",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations",
+    "pytest_tail": "281 passed in 4.32s",
+    "changed": "M .gitignore,M meridian/boundary.py,M meridian/ibkr_node.py,M meridian/ibkr_paper.py"
+   },
+   "lsp": {
+    "loaded_1": 1,
+    "started": 0,
+    "first_start": "",
+    "delivering": 0,
+    "delivered_diagnostics": 0,
+    "received": 0,
+    "received_nonzero": 0,
+    "lsp_tool_calls": 0
+   },
+   "distinct_tool_calls": {
+    "Bash": 13
+   },
+   "permission_denials": 0,
+   "leak_hits": 1,
+   "leak_hits_with_jts_pattern": 2,
+   "leak_hits_note": "1 tool call hit the run's patterns: the boundary.py docstring text (the Gateway's folder, 'port 4002') in the model's own heredoc edit (tool call 8). The patterns did not cover the Gateway's folder, ~/Jts: tool call 12 of 13, a Bash call described as 'List jts.ini section names and where tradingMode appears', read the IB Gateway's settings file ~/Jts/jts.ini with a Python one-liner (test -f, then read_text) and printed its section names and the section that holds tradingMode, no values; it ran without error. 'Jts|jts\\.ini' finds it. No read of the fix, git history or another run, so not void under the method's rules (ab-claude-code.md line 33)",
+   "outside_reads": "~/Jts/jts.ini, the IB Gateway's settings file (tool call 12 of 13; see leak_hits_note). The containment check covers writes and processes, not reads, so its flags stayed empty.",
+   "codex": {
+    "codex_agent_skill_or_command_calls": 0,
+    "tool_calls_mentioning_codex": 0,
+    "codex_process_samples_in_worktree": 0,
+    "codex_sessions_in_worktree": 0,
+    "codex_tokens": 0,
+    "stop_review_gate_hook": "finished with status 0 (51ms)",
+    "sampling": "every 2 s, process names with cwd in the worktree"
+   },
+   "guard": [
+    "exit=0 gateway down"
+   ],
+   "containment": {
+    "flags": "",
+    "flag_note": null,
+    "plugin_records_settings_hashes": "same",
+    "claude_json_key_changes": "none",
+    "processes_left_in_worktree": "none",
+    "language_server_left": "none"
+   },
+   "void": null,
+   "invalid": null,
+   "version_mismatch": null,
+   "valid_under_fact_sheet_marker_rule": false
+  },
+  "b-3": {
+   "arm": "without",
+   "output_folder": "b-3",
+   "planned_name": "b-3",
+   "started_at": "2026-11-13T04:19:39-05:00",
+   "claude_code_version": "2.1.322",
+   "init_model": "claude-opus-5-5",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "pyright_lsp_in_init_plugins": false,
+   "plugin_errors": null,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "api_retries": 0,
+   "num_turns": 25,
+   "duration_ms": 223718,
+   "wall_s": 224,
+   "modelUsage": {
+    "input": 38,
+    "cache_creation": 78604,
+    "cache_read": 1259926,
+    "output": 22617,
+    "thinking_reported": 9567
+   },
+   "tokens_all": 1361185,
+   "total_cost_usd": 1.3333092,
+   "passed": true,
+   "grade": {
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": "",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations",
+    "pytest_tail": "281 passed in 4.39s",
+    "changed": "M .gitignore,M meridian/boundary.py,M meridian/ibkr_node.py,M meridian/ibkr_paper.py"
+   },
+   "lsp": {
+    "loaded_1": 0,
+    "started": 0,
+    "first_start": "",
+    "delivering": 0,
+    "delivered_diagnostics": 0,
+    "received": 0,
+    "received_nonzero": 0,
+    "lsp_tool_calls": 0
+   },
+   "distinct_tool_calls": {
+    "Bash": 24
+   },
+   "permission_denials": 0,
+   "leak_hits": 1,
+   "leak_hits_with_jts_pattern": 2,
+   "leak_hits_note": "1 tool call hit the run's patterns: the boundary.py docstring text (the Gateway's folder, 'port 4002') in the model's own heredoc edit; 'Jts|jts\\.ini' adds 1, the paper-check message naming jts.ini in another of its edits. No read of the fix, git history, another run or the Gateway's folder",
+   "codex": {
+    "codex_agent_skill_or_command_calls": 0,
+    "tool_calls_mentioning_codex": 0,
+    "codex_process_samples_in_worktree": 0,
+    "codex_sessions_in_worktree": 0,
+    "codex_tokens": 0,
+    "stop_review_gate_hook": "finished with status 0 (67ms)",
+    "sampling": "every 2 s, process names with cwd in the worktree"
+   },
+   "guard": [
+    "exit=0 gateway down"
+   ],
+   "containment": {
+    "flags": "",
+    "flag_note": null,
+    "plugin_records_settings_hashes": "same",
+    "claude_json_key_changes": "none",
+    "processes_left_in_worktree": "none",
+    "language_server_left": "none"
+   },
+   "void": null,
+   "invalid": null,
+   "version_mismatch": null
+  }
+ },
+ "first_sitting_stop": "The guard before b-2 (2026-11-13 02:04:08 ET) printed GATEWAY-UP and the series stopped before any model call. Its record shows listeners_4002=0 and one 'pgrep -f ibgateway' match: a parallel series' Claude Code process (an R5 supply-chain run on the same versioned binary). The record cuts the matched command line at 300 characters, before its deny rules, so that the word came from its --disallowedTools rule Bash(*ibgateway*) is the most likely cause, not a read one. The Gateway was not touched.",
+ "figures": {
+  "always_on": {
+   "median_with": 22747,
+   "median_without": 22743,
+   "delta": 4,
+   "delta_pct_of_without": 0.02,
+   "n_tools_with": 25,
+   "n_tools_without": 24,
+   "context_deferred_tools_with": 14484,
+   "context_deferred_tools_without": 13844,
+   "context_total_with": 16444,
+   "context_total_without": 16444,
+   "per_session_at_median_r1_turns_without": 72
+  },
+  "r1": {
+   "with": {
+    "runs": [
+     "a-1",
+     "a-2",
+     "a-3"
+    ],
+    "passed": 3,
+    "tokens": [
+     1296504,
+     1020523,
+     870411
+    ],
+    "median_tokens": 1020523,
+    "mean_tokens": 1062479.3,
+    "turns": [
+     36,
+     17,
+     14
+    ],
+    "median_turns": 17,
+    "duration_s": [
+     221.2,
+     193.8,
+     200.7
+    ],
+    "median_duration_s": 200.7,
+    "server_started_runs": 1,
+    "diagnostics_delivered": 1,
+    "lsp_tool_calls": 0,
+    "runs_with_edit_tool": 1
+   },
+   "without": {
+    "runs": [
+     "b-1",
+     "b-2r",
+     "b-3"
+    ],
+    "passed": 3,
+    "tokens": [
+     926212,
+     953252,
+     1361185
+    ],
+    "median_tokens": 953252,
+    "mean_tokens": 1080216.3,
+    "turns": [
+     17,
+     18,
+     25
+    ],
+    "median_turns": 18,
+    "duration_s": [
+     190.2,
+     191.6,
+     223.7
+    ],
+    "median_duration_s": 191.6,
+    "server_started_runs": 0,
+    "diagnostics_delivered": 0,
+    "lsp_tool_calls": 0,
+    "runs_with_edit_tool": 0
+   },
+   "median_token_change_pct": 7.1,
+   "condition_2_needs_with_median_at_most": 714939
+  },
+  "cost": {
+   "with": {
+    "tokens": 3255691,
+    "usd_estimate": 3.99
+   },
+   "without": {
+    "tokens": 3308890,
+    "usd_estimate": 3.98
+   },
+   "total": {
+    "tokens": 6564581,
+    "usd_estimate": 7.97
+   }
+  }
+ },
+ "rule": {
+  "as_fixed": "Fact sheet: adopt only if the method's rule holds (2 of 3 vs at most 1, or equal and at least 25% fewer median tokens) and the venv binary and setup.sh change are in place; with-arm valid only with 'Loaded', 'Starting' and at least one 'Delivering'. Assessment: all with-arm runs valid, an invalid run repeated, not counted; also required that Orca can start Claude Code with the worktree's .venv on PATH. Default rule: always-on delta at most 2,000 tokens unless the first condition holds. Tie rule: one success apart, or 2 each, adds 2 runs per arm. Verbatim in 0002-prereg.txt.",
+  "intent_to_treat": "Post hoc (not pre-registered): all six runs scored. Passes 3 of 3 and 3 of 3: no tie-rule runs. Condition 1 fails (the arm without passed 3, not at most 1). Condition 2 fails: the plugin's median, 1,020,523, is 7.1% above 953,252, where at most 714,939 was needed. The always-on delta, +4, is within 2,000.",
+  "validity_rule": "As pre-registered, with the start marker read in 2.1.322's wording (see marker_wording; read word for word, no with-arm run is valid and condition 1 still fails): a-2 and a-3 never started the server, so they do not count and were to be repeated; only a-1 is valid (passed, 1,296,504 tokens), and the median comparison is undefined until replacements exist. Condition 1 still fails. Condition 2 would need two replacement runs that both pass at no more than 714,939 tokens each, fewer than any of the six runs (870,411 to 1,361,185). The replacement runs were not made.",
+  "orca_and_setup_condition": "Not shown to hold. As the fact sheet words it ('in place'), no candidate could meet it before an adoption makes those changes, so it rules nothing out. As the assessment words it ('Orca can start Claude Code with that PATH'), no route was found in Orca 1.4.257's server or the orca.yaml keys it reads, none was tested, and routes outside Orca were not examined (see orca_path); that is not shown to fail either. deploy/wsl/setup.sh lines 344-345 at 9c5daaa still accept no enabled plugin but codex@openai-codex. The rule adopts only if the condition is shown to hold.",
+  "result": "not adopted"
+ },
+ "orca_path": "Checked read-only on 2026-11-13: the installed Orca server 1.4.257 (/opt/orca-server/1.4.257, node_modules included) has 0 files that contain 'VIRTUAL_ENV' or '.venv/bin'. The orca.yaml keys it reads are scripts (setup, archive), setupAgentStartupPolicy, issueCommand, defaultTabs, environmentRecipes and worktree.sharedDirectories; a default tab has title, color and command, and an environment recipe id, name, create, checkoutMode, description, suspend, resume, destroy and timeoutSeconds: no key is an environment or PATH setting. A default tab can run a command, but the repo's orca.yaml at 9c5daaa gives the agent's tab none ('The desktop composer gives the first tab to the agent, so it has no command'); it sets scripts.setup (uv sync --locked), setupAgentStartupPolicy and defaultTabs. No route was tested and no Orca launch was measured.",
+ "static_o200k": {
+  "how": "Texts reconstructed from the 2.1.322 binary by the assessment and the verification (Claude Code's own text, not published, so these figures cannot be recomputed from the repository); counted with 0002_count_tokens.py --vocab-dir <folder holding o200k_base.tiktoken>, o200k_base, as a proxy for Claude's tokenizer, which is not available offline; recounted 2026-11-13. Characters first, then tokens.",
+  "AGENTS.md at 9c5daaa (git show 9c5daaa:AGENTS.md)": [
+   8318,
+   2159
+  ],
+  "LSP line in the deferred-tools list, every request": [
+   4,
+   3
+  ],
+  "late deferred-tools delta, once, if announced late (not seen: LSP is in the first list)": [
+   289,
+   63
+  ],
+  "LSP tool definition after ToolSearch, compact JSON": [
+   2305,
+   510
+  ],
+  "LSP tool definition, indented JSON (assessment)": [
+   2723,
+   627
+  ],
+  "diagnostics, one pyright error, illustrative": [
+   390,
+   103
+  ],
+  "diagnostics at the caps (30, body cut at 4,000 characters), illustrative": [
+   4124,
+   1239
+  ],
+  "reload notice after compaction, only with flag tengu_radiant_lemur on (default off)": [
+   363,
+   84
+  ]
+ },
+ "containment": "No breach by the addition in any run. settings.json, installed_plugins.json and known_marketplaces.json hashed the same before and after every run; the plugin cache and marketplaces stayed openai-codex only; no language server or process was left in a worktree; no ~/.claude/debug. Exceptions, written by Claude Code itself because a --plugin-dir LSP plugin was loaded: an empty ~/.claude/plugins/data/pyright-lsp-inline (a-k1, again in a-2; removed after each sitting) and, in the owner's ~/.claude.json, a new top-level key pluginUsageLspGraceAppliedIds and a pluginUsage entry, both naming pyright-lsp@inline (a-k1, flag claude-json-new-keys); still there, values not read, left for the owner. git worktree add and remove wrote the main checkout's .git/worktrees metadata, as the shared method does. Reads are not part of this check: in a-3 the model read the IB Gateway's settings file ~/Jts/jts.ini (see r1.a-3), which no deny rule and no leak pattern covered.",
+ "leak_scan": "As run, the leak scan (0002_ab.sh, 0002_ab_r2.sh) kept {name,input} with sort -u over the stream and the transcript; in 5 of the 6 R1 runs 2.1.322's transcript holds each tool call twice, the second copy of a Bash call with a 'cd <worktree> && ' prefix and of an Edit with its input keys in another order, so those runs counted each Bash and Edit call twice (b-2r's transcript has no such prefix, and its repeated copies are identical). Its patterns (0002-leak-patterns.txt, the same file as the 0004 and 0005 series) name the Gateway's process and port, not its folder ~/Jts. 0002_rescan.py recounts by tool_use id and adds 'Jts|jts\\.ini'; the runners' published leak_scan now does the same. Across the six R1 runs the rescan finds one read outside the worktree, a-3's read of ~/Jts/jts.ini; every other hit is text in the model's own edits or test commands.",
+ "owner_approvals": "The verification asked for the owner's approval before git worktree add on the main checkout (or a separate clone) and for the owner's go-ahead before model runs on the owner's sign-in. The measurement notes record neither, so both count as deviations from the verified protocol; a later series should use a separate clone, as ab-tasks.md has the Codex and DeepSeek Harness methods do.",
+ "not_measured": [
+  "an interactive session or an Orca launch (the official marketplace would register itself in an interactive session)",
+  "the LSP tool: no run called it",
+  "the LSP tool in subagents (anthropics/claude-code#84125)",
+  "when an edit's diagnostics arrive (anthropics/claude-code#93321): one delivery in six runs",
+  "memory of the language server under Orca's parallel worktrees",
+  "whether the LSP telemetry events leave the distro"
+ ],
+ "blocked_by": "Nothing: --plugin-dir is allowed by the machine policy (managed settings hold only disableClaudeAiConnectors), the managed MCP file covers MCP servers, not language servers, and no DeepSeek or Codex run was needed.",
+ "parallel_load": "Other series (0003, 0004, 0005, 0006, 0007, a DeepSeek Harness run) shared the account and machine; the interleaved order spreads their load and the 1-hour cache over both arms.",
+ "raw_location": "Streams, transcripts, debug logs and per-run folders stay on the owner's machine (WSL distro, private folder), not published and not yet in the private meridian-evidence repository that ab-tasks.md names."
+}

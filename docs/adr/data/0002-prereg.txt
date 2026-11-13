@@ -1,0 +1,39 @@
+ADR 0002 pre-registration. Published copy, assembled on 2026-11-13 after the series from records written before its first run (a-k1, started 2026-11-13 01:55:13 ET). No record below was committed before that run; the method sheets were committed afterwards, in the branch that adds this ADR. Times are file times, ET.
+
+RECORDS
+- The shared method sheets ab-claude-code.md and ab-tasks.md as the series used them (2026-11-12 22:42), written from the verified Claude Code method sheet (2026-11-12 22:34). Those versions hold local paths and are not published; the copies in docs/adr/data/ are descriptions revised after the series. The lines this series used from them are quoted below.
+- The 0002 assessment (2026-11-12 21:35; sha256 d5eaa5db90bd6b0e66cff23203214001e0a1be668cf78ca4f51c5c5790b4d6aa) and the 0002 verification with its fact sheet (2026-11-13 01:46; sha256 07fad0ce8475f30e1a9ea5795fce1090f1c6aec8e963564c8381c2877c60ed5e). Both hold local paths and are not published; the lines this series used are quoted below. The verification replaced the assessment's protocol (its brief, grading, names and flags) with the shared method.
+- The brief, 0002-brief-R1.txt (01:52; sha256 789791805eceb05d233fb1fc0d1c0ebefaed5d84d8f95612476bacb4a4feabc4, the ab-tasks.md R1 brief word for word). The arm key, 0002-key.txt (01:52). The deny rules, 0002-deny.json, the leak patterns, 0002-leak-patterns.txt, and the runner, 0002_ab.sh (01:54). The published deny rules and runner write the home directory as ~ or $HOME where the copies that ran had the absolute path, and the published runner's leak_scan was corrected after the series (below); the brief and the leak patterns are byte for byte.
+
+RULE (verification fact sheet, "Measurement protocol", verbatim)
+- With-arm valid only if --debug-file shows 'Loaded 1 LSP server(s) from plugin: pyright-lsp', 'Starting LSP server instance: pyright' and at least one 'LSP Diagnostics: Delivering'.
+- Adopt only if the method's rule holds (2 of 3 vs at most 1, or equal and at least 25% fewer median tokens) and the venv binary and setup.sh change are in place.
+
+THE SAME CONDITIONS IN THE ASSESSMENT (measurement_protocol.adopt_if, and the last two sentences of runs_and_metrics, verbatim)
+Decided before running: adopt only if all with-arm runs are valid and either (a) with-arm success in at least 2 of 3 runs while the without-arm succeeds in at most 1 of 3, or (b) equal success counts and median total tokens at least 25% lower in the with-arm. The always-on cost (about 3 tokens per request) and every diagnostics injection are already inside the measured totals. Also required: pyright-langserver comes from the worktree's .venv (pyright 1.1.414 = uv.lock = CI), and Orca can start Claude Code with that PATH without a global pyright. Otherwise not adopted.
+Validity of a with-arm run: the debug log contains 'Loaded 1 LSP server(s) from plugin: pyright-lsp' and 'Starting LSP server instance: pyright', and at least one delivery. An invalid run is repeated, not counted.
+
+DEFAULT RULE (ab-claude-code.md as used, verbatim)
+Adopt only if the arm with the addition passes in at least 2 of 3 runs and the arm without in at most 1; or both pass in at least 2 of 3 and the arm with the addition uses at least 25% fewer median tokens; and in either case the always-on delta is at most 2,000 tokens unless the first condition holds.
+
+TIE RULE (ab-tasks.md as used, verbatim)
+3 runs per arm, one at a time, interleaved (a1, b1, b2, a2, a3, b3), with the same binary, model, effort and flags in both arms. If the arms differ by one success, or tie with 2 each, run 2 more per arm.
+
+PROTOCOL (verification fact sheet, "Measurement protocol", the other lines, verbatim)
+- Load only with --plugin-dir <plugins/pyright-lsp at f75f5b2>; allowed by policy (no disableSideloadFlags; managed MCP does not cover LSP). PATH="$WT/.venv/bin:$PATH" in both arms; check command -v pyright-langserver.
+- Always-on: method command with -p 'Reply with the single word OK. Do not use any tools.' --max-turns 1, 3 per arm; split with -p '/context'. No interactive session.
+- Real task R1 (replay of 5d51c9c): setup at 27aa964 with 5d51c9c's tests/, verbatim brief, method flags and deny list, neutral names, order a1 b1 b2 a2 a3 b3, tie rule.
+- Grade: patch replay on a fresh worktree; ruff check, ruff format --check, pyright, pytest exit 0; tests/ unchanged.
+
+CHOICES MADE BEFORE THE FIRST RUN THAT DEPART FROM THE RECORDS ABOVE (the same in both arms; measurement notes and 0002_ab.sh)
+- Always-on base: main 9c5daaa, the commit the series ran against.
+- VIRTUAL_ENV unset next to the fact sheet's PATH, so the worktree's .venv/bin decides which pyright-langserver starts.
+- --debug-file into the run folder, for the validity markers, so that nothing is written to ~/.claude/debug.
+- Deny rules: the method's 6 plus Bash(*npm install*), Bash(*pip install*) and Bash(*pipx install*) (the plugin README's global installs). All 9 went into a per-run --settings file and the 8 without "ibgateway" also into --disallowedTools (the method puts its 6 in --disallowedTools only), because a Bash(*ibgateway*) argument on a command line trips concurrent agents' "pgrep -f ibgateway" guards.
+- The binary is called by its versioned path, ~/.local/share/claude/versions/2.1.322, and the runner stops if the launcher points anywhere else.
+
+FOUND OR CHANGED AFTER THE FIRST RUN (measurement notes; not part of the pre-registration)
+- 2.1.322 prints 'Starting LSP server instance: plugin:pyright-lsp:pyright', not the fact sheet's wording. 0002_ab.sh counts the fact sheet's wording, so its own count is 0 in every run; 0002_collect_r2.sh counts the 2.1.322 wording, and the results use that count.
+- After the guard stop before b-2 (02:04:08 ET), the series resumed at 04:07 ET with 0002_ab_r2.sh: the same binary (the runner now requires versions/2.1.322 to exist and report 2.1.322, and each run's init event to show 2.1.322), key, brief, flags, deny rules, grading and leak scan; a guard that reads a listener on port 4002, process names and executables, never command lines (the test of the published 0003_gateway_guard.sh without its second port); b-2's output went to a new folder, b-2r, because the b-2 folder holds the stop; process sampling and a Codex delegation check were added.
+- a-2 and a-3 never started the language server (the model made no Edit or Write of a .py file), so under the validity rule above they do not count. The replacement runs the assessment calls for were not made. The results report both readings: the validity rule applied, as pre-registered, and every run scored, which is post hoc.
+- Found by a review after the series, not in the measurement notes: the leak scan as run counted most tool calls twice (the transcript repeats them in another form) and its patterns left out the Gateway's folder, ~/Jts; in a-3 the model read ~/Jts/jts.ini (section names and where tradingMode sits, no values). After the series, 0002_rescan.py recounted every run by tool_use id with 'Jts|jts\.ini' added, and the published runners' leak_scan was corrected the same way.

@@ -1,0 +1,603 @@
+{
+ "adr": "0009",
+ "what": "Real task R4 (a review of meridian/boundary.py at 96e82e6) run on DeepSeek Harness without and with dsh-codex-peer, 3 runs per arm, plus 3 runs of Codex alone as the reference. Measured on 2026-11-13. It measures only: nothing was adopted or installed.",
+ "status": "measured",
+ "pre_registration": {
+  "file": "0009-real-prereg.txt",
+  "sha256": "268aa64edf2822a1c2c217c1b2a205993053972002f8f4539a18d87234a35371",
+  "written": "2026-11-13T09:05:50-05:00",
+  "first_run_started": "2026-11-13T09:05:57-05:00",
+  "note": "Both times come from the owner's machine and cannot be proved from the repository. Four checks with other prompts ran before the file was written and are listed in it and under checks_before_the_pre_registration."
+ },
+ "versions": {
+  "dsh": "0.2.2-rc.1 before and after every run",
+  "codex": "codex-cli 0.167.2 before and after every run",
+  "dsh_model": "deepseek-flash (provider deepseek-official), thinking enabled, reasoning effort max, both dsh arms",
+  "codex_model": "gpt-6-astra, effort high: given on the command line in the reference arm; the owner's Codex default in the addition's Codex child (read from each run's own turn context)",
+  "addition": "dsh-codex-peer v0.3.4 = f4882df301c063481a80014ab9e6f99845e4bc94, tree 2a32d9dcb833b1cc943649fe3801a22f994cbe82, loaded from its git source as a local module through the with profile's own patch layer"
+ },
+ "method": {
+  "profiles": "two temporary profiles in the owner's dsh home (the owner's decision of 2026-11-13), made from dsh's headless template and removed after the series; the with profile's row sets stateDir (in the run folder), codexHome, workspaceDir '' and extraArgs ['--disable', 'hooks']",
+  "command": "the same for both dsh arms: dsh --profile <profile> --patch <overlay> --json --permission-mode read-only --approval-policy never - <brief, inside a mount namespace with the dsh home read-only; wall clock 1800 s, at most 4 goal rounds",
+  "reference": "codex exec --json -m gpt-6-astra -c model_reasoning_effort=high -s read-only --skip-git-repo-check --disable hooks -C <tree> -o <answer> - <brief, in the same kind of namespace with the dsh home empty",
+  "tree": "each run in a fresh tree built from the base commit alone (shallow fetch from the public repository), uv sync --locked",
+  "masked_in_every_run": "the Windows drives and interop, every other checkout and run folder (so the fix is not on disk), the Gateway's settings folder, and the owner's other sign-in folders; the network is not confined",
+  "brief_sha256": "e0807f47b7003c5340cb16b9df4ab2874d97c6eac1054835c6b84238d20bb5c2",
+  "rubric_sha256": "3210a767bab5eef7e1e45a91122283940a204193be9be5497437dcf727626e10",
+  "grading": "by the measuring agent after each run, from the final answer, against the code at 96e82e6, the fix's message and diff, and a grading aid; not blind"
+ },
+ "order_run": "a1 b1 b2 a2 a3 b3, then c1 c2 c3. The extension rule did not apply: one passed run in each dsh arm.",
+ "key": "0009-real-key.txt: profile b had the addition, profile a had none, c is Codex alone",
+ "runs": [
+  {
+   "run": "ab-0009-a-1",
+   "arm": "without",
+   "started": "2026-11-13T09:05:57-05:00",
+   "exit": 0,
+   "duration_s": 455.6,
+   "turn_completed": true,
+   "void": null,
+   "target_reported_in_answer": true,
+   "passed": true,
+   "findings": {
+    "real": 9,
+    "false": 0,
+    "out_of_scope": 1
+   },
+   "deepseek": {
+    "billed_tokens": 1525428,
+    "model_calls": 20,
+    "calls_without_usage": 0,
+    "turns": 1,
+    "steps": 20,
+    "input_uncached": 75669,
+    "cache_read": 1375616,
+    "cache_write": 0,
+    "output": 74143,
+    "compactions": 0,
+    "first_call_prompt_tokens": 6820
+   },
+   "codex": null,
+   "tool_calls": {
+    "bash": 16,
+    "read": 13
+   },
+   "addition_acted": null,
+   "checkout_unchanged": true,
+   "gitleaks_findings": 0,
+   "flags_reviewed": 1,
+   "note": "Passed. No network use. Reported the [DEFAULT] inheritance (its own Python probe), 9 real findings, 0 false."
+  },
+  {
+   "run": "ab-0009-b-1",
+   "arm": "with",
+   "started": "2026-11-13T09:14:53-05:00",
+   "exit": 0,
+   "duration_s": 274.5,
+   "turn_completed": true,
+   "void": "rule 9(a) of the pre-registration: the run's shell commands read the fix over the network",
+   "target_reported_in_answer": true,
+   "passed": false,
+   "findings": null,
+   "deepseek": {
+    "billed_tokens": 1307492,
+    "model_calls": 22,
+    "calls_without_usage": 0,
+    "turns": 1,
+    "steps": 22,
+    "input_uncached": 61315,
+    "cache_read": 1204224,
+    "cache_write": 0,
+    "output": 41953,
+    "compactions": 0,
+    "first_call_prompt_tokens": 9367
+   },
+   "codex": null,
+   "tool_calls": {
+    "read": 3,
+    "bash": 33
+   },
+   "addition_acted": false,
+   "checkout_unchanged": true,
+   "gitleaks_findings": 0,
+   "flags_reviewed": 19,
+   "note": "Void: from step 11 on its shell commands read the public repository with curl, the fix's patch included. The addition's five tools were offered and none was called. Its own [DEFAULT] probe (step 7) came before those reads."
+  },
+  {
+   "run": "ab-0009-b-2",
+   "arm": "with",
+   "started": "2026-11-13T09:20:19-05:00",
+   "exit": 0,
+   "duration_s": 205.8,
+   "turn_completed": true,
+   "void": "rule 9(a) of the pre-registration: the run's shell commands read the fix over the network",
+   "target_reported_in_answer": true,
+   "passed": false,
+   "findings": null,
+   "deepseek": {
+    "billed_tokens": 1431451,
+    "model_calls": 21,
+    "calls_without_usage": 0,
+    "turns": 1,
+    "steps": 21,
+    "input_uncached": 70118,
+    "cache_read": 1331584,
+    "cache_write": 0,
+    "output": 29749,
+    "compactions": 0,
+    "first_call_prompt_tokens": 9367
+   },
+   "codex": null,
+   "tool_calls": {
+    "read": 5,
+    "bash": 32
+   },
+   "addition_acted": false,
+   "checkout_unchanged": true,
+   "gitleaks_findings": 0,
+   "flags_reviewed": 14,
+   "note": "Void: git ls-remote and curl reads of the public repository from step 11 on, the fix's patch included. No tool of the addition was called. Its own [DEFAULT] probe (step 6) came before those reads."
+  },
+  {
+   "run": "ab-0009-a-2",
+   "arm": "without",
+   "started": "2026-11-13T09:24:07-05:00",
+   "exit": 0,
+   "duration_s": 198.8,
+   "turn_completed": true,
+   "void": "rule 9(a) of the pre-registration: the run's shell commands read the fix over the network",
+   "target_reported_in_answer": true,
+   "passed": false,
+   "findings": null,
+   "deepseek": {
+    "billed_tokens": 1456126,
+    "model_calls": 21,
+    "calls_without_usage": 0,
+    "turns": 1,
+    "steps": 21,
+    "input_uncached": 86240,
+    "cache_read": 1341952,
+    "cache_write": 0,
+    "output": 27934,
+    "compactions": 0,
+    "first_call_prompt_tokens": 6820
+   },
+   "codex": null,
+   "tool_calls": {
+    "bash": 30,
+    "read": 4
+   },
+   "addition_acted": null,
+   "checkout_unchanged": true,
+   "gitleaks_findings": 0,
+   "flags_reviewed": 18,
+   "note": "Void: git ls-remote and curl reads of the public repository from step 10 on, the fix's patch included. It also tried to list the Gateway's settings folder and print the key names of its settings file; the scratch home and the mask left it nothing to read."
+  },
+  {
+   "run": "ab-0009-a-3",
+   "arm": "without",
+   "started": "2026-11-13T09:27:59-05:00",
+   "exit": 0,
+   "duration_s": 211.0,
+   "turn_completed": true,
+   "void": "rule 9(a) of the pre-registration: the run's shell commands read the fix over the network",
+   "target_reported_in_answer": true,
+   "passed": false,
+   "findings": null,
+   "deepseek": {
+    "billed_tokens": 1485481,
+    "model_calls": 25,
+    "calls_without_usage": 0,
+    "turns": 1,
+    "steps": 25,
+    "input_uncached": 61894,
+    "cache_read": 1395712,
+    "cache_write": 0,
+    "output": 27875,
+    "compactions": 0,
+    "first_call_prompt_tokens": 6820
+   },
+   "codex": null,
+   "tool_calls": {
+    "read": 5,
+    "bash": 30
+   },
+   "addition_acted": null,
+   "checkout_unchanged": true,
+   "gitleaks_findings": 0,
+   "flags_reviewed": 17,
+   "note": "Void: curl reads of the public repository from step 8 on, the fix included."
+  },
+  {
+   "run": "ab-0009-b-3",
+   "arm": "with",
+   "started": "2026-11-13T09:31:47-05:00",
+   "exit": 0,
+   "duration_s": 508.4,
+   "turn_completed": true,
+   "void": null,
+   "target_reported_in_answer": true,
+   "passed": true,
+   "findings": {
+    "real": 7,
+    "false": 0,
+    "out_of_scope": 1
+   },
+   "deepseek": {
+    "billed_tokens": 948435,
+    "model_calls": 15,
+    "calls_without_usage": 0,
+    "turns": 1,
+    "steps": 15,
+    "input_uncached": 44292,
+    "cache_read": 843264,
+    "cache_write": 0,
+    "output": 60879,
+    "compactions": 0,
+    "first_call_prompt_tokens": 9367
+   },
+   "codex": {
+    "tokens_input_plus_output": 253145,
+    "cached_input": 203904,
+    "reasoning_output": 761,
+    "runs": 1
+   },
+   "tool_calls": {
+    "bash": 20,
+    "read": 6,
+    "codex_review": 1
+   },
+   "addition_acted": true,
+   "checkout_unchanged": true,
+   "gitleaks_findings": 0,
+   "flags_reviewed": 9,
+   "note": "Passed. No network use. The dsh agent found the [DEFAULT] inheritance itself at step 5, then called codex_review once at step 11 (target meridian/boundary.py, with a focus text). One Codex child: read-only sandbox, started through dsh's subprocess service, 109 s, 7 command items, no web search; its review also listed the inheritance, as its fourth and least severe finding. Final answer: 7 real findings, 0 false."
+  },
+  {
+   "run": "ab-0009-c-1",
+   "arm": "codexdirect",
+   "started": "2026-11-13T09:41:27-05:00",
+   "exit": 0,
+   "duration_s": 95.7,
+   "turn_completed": true,
+   "void": null,
+   "target_reported_in_answer": true,
+   "passed": true,
+   "findings": {
+    "real": 5,
+    "false": 0,
+    "out_of_scope": 0
+   },
+   "deepseek": null,
+   "codex": {
+    "tokens_input_plus_output": 248758,
+    "cached_input": 202240,
+    "reasoning_output": 950,
+    "runs": 1
+   },
+   "tool_calls": null,
+   "addition_acted": null,
+   "checkout_unchanged": true,
+   "gitleaks_findings": 0,
+   "flags_reviewed": 0,
+   "note": "Passed. Reported the inheritance, 5 real findings, 0 false. 2 web-search items (IBKR's and Python's documentation), none of the repository."
+  },
+  {
+   "run": "ab-0009-c-2",
+   "arm": "codexdirect",
+   "started": "2026-11-13T09:43:24-05:00",
+   "exit": 0,
+   "duration_s": 86.0,
+   "turn_completed": true,
+   "void": null,
+   "target_reported_in_answer": true,
+   "passed": true,
+   "findings": {
+    "real": 6,
+    "false": 0,
+    "out_of_scope": 0
+   },
+   "deepseek": null,
+   "codex": {
+    "tokens_input_plus_output": 198306,
+    "cached_input": 153216,
+    "reasoning_output": 728,
+    "runs": 1
+   },
+   "tool_calls": null,
+   "addition_acted": null,
+   "checkout_unchanged": true,
+   "gitleaks_findings": 0,
+   "flags_reviewed": 3,
+   "note": "Passed. Reported the inheritance, 6 real findings, 0 false. 2 web-search items, none of the repository."
+  },
+  {
+   "run": "ab-0009-c-3",
+   "arm": "codexdirect",
+   "started": "2026-11-13T09:45:13-05:00",
+   "exit": 0,
+   "duration_s": 94.8,
+   "turn_completed": true,
+   "void": null,
+   "target_reported_in_answer": true,
+   "passed": true,
+   "findings": {
+    "real": 6,
+    "false": 0,
+    "out_of_scope": 0
+   },
+   "deepseek": null,
+   "codex": {
+    "tokens_input_plus_output": 234066,
+    "cached_input": 196096,
+    "reasoning_output": 391,
+    "runs": 1
+   },
+   "tool_calls": null,
+   "addition_acted": null,
+   "checkout_unchanged": true,
+   "gitleaks_findings": 0,
+   "flags_reviewed": 2,
+   "note": "Passed. Reported the inheritance, 6 real findings, 0 false. 2 web-search items, none of the repository."
+  }
+ ],
+ "arms": {
+  "without": {
+   "runs": 3,
+   "void": 2,
+   "counted": 1,
+   "passed": 1,
+   "defect_reported_in_counted_runs": 1,
+   "defect_reported_in_any_answer": 3,
+   "false_findings_in_counted_runs": 0,
+   "real_findings_in_counted_runs": [
+    9
+   ],
+   "median_duration_s": 211.0,
+   "deepseek_billed_tokens": [
+    1525428,
+    1456126,
+    1485481
+   ],
+   "codex_tokens": [],
+   "first_call_prompt_tokens": [
+    6820,
+    6820,
+    6820
+   ]
+  },
+  "with": {
+   "runs": 3,
+   "void": 2,
+   "counted": 1,
+   "passed": 1,
+   "defect_reported_in_counted_runs": 1,
+   "defect_reported_in_any_answer": 3,
+   "false_findings_in_counted_runs": 0,
+   "real_findings_in_counted_runs": [
+    7
+   ],
+   "median_duration_s": 274.5,
+   "deepseek_billed_tokens": [
+    1307492,
+    1431451,
+    948435
+   ],
+   "codex_tokens": [
+    253145
+   ],
+   "first_call_prompt_tokens": [
+    9367,
+    9367,
+    9367
+   ]
+  },
+  "codexdirect": {
+   "runs": 3,
+   "void": 0,
+   "counted": 3,
+   "passed": 3,
+   "defect_reported_in_counted_runs": 3,
+   "defect_reported_in_any_answer": 3,
+   "false_findings_in_counted_runs": 0,
+   "real_findings_in_counted_runs": [
+    5,
+    6,
+    6
+   ],
+   "median_duration_s": 94.8,
+   "deepseek_billed_tokens": [],
+   "codex_tokens": [
+    248758,
+    198306,
+    234066
+   ],
+   "first_call_prompt_tokens": []
+  }
+ },
+ "extension": {
+  "applies": false,
+  "passed_with": 1,
+  "passed_without": 1
+ },
+ "checks_before_the_pre_registration": [
+  {
+   "run": "smoke-c",
+   "exit": 1,
+   "duration_s": 158.0,
+   "deepseek": null,
+   "codex": {
+    "tokens_input_plus_output": 0,
+    "cached_input": 0,
+    "reasoning_output": 0,
+    "runs": 0
+   },
+   "gitleaks_findings": 0
+  },
+  {
+   "run": "smoke-c2",
+   "exit": 0,
+   "duration_s": 5.3,
+   "deepseek": null,
+   "codex": {
+    "tokens_input_plus_output": 15047,
+    "cached_input": 0,
+    "reasoning_output": 0,
+    "runs": 1
+   },
+   "gitleaks_findings": 0
+  },
+  {
+   "run": "smoke-a",
+   "exit": 0,
+   "duration_s": 7.7,
+   "deepseek": {
+    "billed_tokens": 14630,
+    "model_calls": 2,
+    "calls_without_usage": 0,
+    "turns": 1,
+    "steps": 2,
+    "input_uncached": 2001,
+    "cache_read": 11904,
+    "cache_write": 0,
+    "output": 725,
+    "compactions": 0,
+    "first_call_prompt_tokens": null
+   },
+   "codex": null,
+   "gitleaks_findings": 0
+  },
+  {
+   "run": "smoke-b",
+   "exit": 0,
+   "duration_s": 11.3,
+   "deepseek": {
+    "billed_tokens": 19197,
+    "model_calls": 2,
+    "calls_without_usage": 0,
+    "turns": 1,
+    "steps": 2,
+    "input_uncached": 8495,
+    "cache_read": 10496,
+    "cache_write": 0,
+    "output": 206,
+    "compactions": 0,
+    "first_call_prompt_tokens": 9381
+   },
+   "codex": {
+    "tokens_input_plus_output": 15384,
+    "cached_input": 12032,
+    "reasoning_output": 0,
+    "runs": 1
+   },
+   "gitleaks_findings": 0
+  }
+ ],
+ "always_on_provider_tokens": {
+  "basis": "the first model call's prompt tokens as DeepSeek reports them (inputTokens + cacheReadTokens + cacheWriteTokens of turn 1, step 1), same brief, base and folder-name length in both arms",
+  "without": [
+   6820,
+   6820,
+   6820
+  ],
+  "with": [
+   9367,
+   9367,
+   9367
+  ],
+  "delta": 2547,
+  "share_of_the_first_prompt": "+37.3 %",
+  "against_the_proxy": "the earlier offline count of the same five tool schemas was 2,172 o200k tokens; DeepSeek counts 375 more"
+ },
+ "rule": {
+  "text": "Adopt only if: with reports the [DEFAULT]-inheritance defect in >= 2/3 runs and without in <= 1/3; with has at most one more false finding than without; codexdirect reports it in <= 1/3 or has more false findings than with; always-on delta <= 2,500 provider tokens; nothing changes outside the plugin's state directory.",
+  "clauses": [
+   {
+    "clause": "with reports the defect in at least 2 of 3 runs",
+    "value": "1 of 3 counted; 2 runs void, which count against the arm with the addition",
+    "met": false
+   },
+   {
+    "clause": "without reports it in at most 1 of 3",
+    "value": "1 of 3 counted; 2 runs void and not counted",
+    "met": true
+   },
+   {
+    "clause": "with has at most one more false finding than without",
+    "value": "0 against 0",
+    "met": true
+   },
+   {
+    "clause": "codexdirect reports it in at most 1 of 3, or has more false findings than with",
+    "value": "3 of 3, 0 false findings against 0",
+    "met": false
+   },
+   {
+    "clause": "always-on delta at most 2,500 provider tokens",
+    "value": "2,547",
+    "met": false
+   },
+   {
+    "clause": "nothing changes outside the plugin's state directory, as written",
+    "value": "fails in every run of every arm: dsh itself writes sessions and storages outside it, and Codex writes under its own home",
+    "met": false
+   },
+   {
+    "clause": "the same clause as amendment (b) reads it",
+    "value": "the with arm's only changes that the without arm does not show: its state folder, inside the run folder, and Codex's own session file, state databases and caches under the Codex home, which the reference arm writes too. The Codex configuration file's sha256 was the same before and after every run; it was mounted read-only for every run, so it could not change, and no Codex process reported a refused write",
+    "met": true
+   }
+  ],
+  "result": "not adopted",
+  "result_note": "Three clauses fail on either reading of the last one. The answers themselves do not separate the arms: all three without answers, all three with answers and all three reference answers reported the defect, with no false finding in any graded answer."
+ },
+ "voids": {
+  "count": "4 of 6 dsh runs, 2 in each arm; 0 of 3 reference runs",
+  "cause": "the model's own shell commands. The base repository is public and the dsh shell tool has network access, so the fix is one request away: the runs compared the local file with the public main, listed the commits, and read the patches of the fix and of the next commit. The fix's own line reached the model in all four void runs and in neither counted run.",
+  "addition": "no part in it: in both void runs of the with arm no tool of the addition was called",
+  "effect_on_the_rule": "the pre-registered void rule counts the with arm's two voids against it and leaves the without arm's two uncounted, so the first clause fails for a behaviour that both arms showed equally. A 9(a) void in the without arm was not repeated: the pre-registration names no repeat for it.",
+  "github_calls_by_the_agents_under_test": "27 shell calls to the GitHub REST API without a sign-in, plus 30 reads of raw files and commit patches and 2 git ls-remote, over the four void runs"
+ },
+ "addition_use": {
+  "runs_in_which_it_was_called": "1 of 3 (b3)",
+  "calls": "1 codex_review; no codex_ask, codex_plan, codex_task or codex_status",
+  "codex_child": "mode ask, sandbox read-only, launched through dsh's subprocess service (which drops secret-named variables), argv exec --json -o <answer> --output-schema <schema> --skip-git-repo-check -C <tree> -s read-only --disable hooks -; 253,145 Codex tokens (input 249,644 of which 203,904 cached, output 3,501); 109.1 s",
+  "what_it_added": "the dsh agent had the defect before the call; the listener-identity finding (the Gateway on one loopback address, another process on the address the lane connects to) is in Codex's review and in the final answer",
+  "machine_policy": "no block: the Codex machine policy sets no sandbox or approval constraint, Codex was signed in, and Codex's own read-only sandbox works inside the run's namespace"
+ },
+ "containment": {
+  "checkout": "unchanged in all 9 runs (git status with ignored files, HEAD, empty diff)",
+  "home_directory": "no new top-level name; the scratch home and agents home of every run stayed empty",
+  "dsh_home": "written only inside the two temporary profile folders (dsh rewrites the profile's cordis.yml at every start; the with profile's patch layer was written before each of its runs). After removal, against the listing taken before: the profiles folder's time changed, and the owner's profile's cordis.yml has a new time and the same size, rewritten by a process this series did not start (its dsh processes had the home mounted read-only, and dsh --version does not touch that file). Nothing was undone by hand.",
+  "codex_home": "Codex's own session files (7 threads: 3 reference runs, 1 child of the addition, 3 from the checks), state databases and caches; the configuration file unchanged. Other Codex sessions on the machine wrote there during the series as well.",
+  "processes": "none left after any run",
+  "scans": "gitleaks on every run folder: 0 findings in 13 folders; 0 files with a key-shaped token; 0 tool calls that name the dsh home",
+  "secrets_and_lanes": "no tool call read a credential file, ran a lane module or connected to a Gateway port; none named an environment file, a key folder or the Codex home. Three runs (a1, a2, b3) listed the Gateway's settings folder under the scratch home, which is empty; contract and risk-folder names appear only as made-up paths in the agents' own Python probes."
+ },
+ "cost": {
+  "deepseek_billed_tokens": "8,188,240 in all: 8,154,413 in the 6 dsh runs (4,467,035 without, 3,687,378 with) and 33,827 in the two dsh checks; about 92 % of it cache reads",
+  "codex_tokens_input_plus_output": "964,706 in all: 681,130 in the 3 reference runs, 253,145 in the addition's one child, 30,431 in the two Codex checks",
+  "per_run_medians": "without 1,485,481 DeepSeek tokens, 211 s; with 1,307,492 DeepSeek tokens, 275 s; reference 234,066 Codex tokens, 95 s",
+  "github": "the measuring agent: unauthenticated git only, 0 REST calls"
+ },
+ "limits": [
+  "3 runs per arm, and after the voids one counted run in each dsh arm: the counts cannot separate the arms.",
+  "One grader, not blind; the with arm's counted answer cites its Codex review.",
+  "R4 leaves the addition nothing to gain: the arm without it, and Codex alone, already report the defect.",
+  "The dsh arms ran with a read-only permission mode in dsh's headless preset; the owner's interactive profile uses another preset and was not measured.",
+  "The first-call token delta is DeepSeek's own count for this brief; later calls in a session carry the same schemas.",
+  "The Codex configuration file was mounted read-only, so this series cannot show whether a Codex child of the addition would rewrite it in ordinary use."
+ ],
+ "found_on_the_way": [
+  "Hiding /mnt in the run namespace ends name resolution in this distro, because /etc/resolv.conf links into /mnt/wsl: the first Codex check timed out on every request until the resolver file was shown again.",
+  "The addition's review result prints 'resumed undefined' in its header line (the review's run record has no resumed-thread field).",
+  "The addition's version probe (codex_status with probe) starts Codex with dsh's whole process environment; its real runs go through dsh's subprocess service, which was the launcher in every recorded run."
+ ],
+ "files": "0009-real-prereg.txt, 0009-real-key.txt and the 0009_real_* scripts and templates in this folder; raw runs stay on the owner's machine",
+ "totals": {
+  "deepseek_billed_tokens": 8188240,
+  "codex_tokens_input_plus_output": 964706,
+  "deepseek_runs_only": 8154413,
+  "codex_runs_only": 934275
+ }
+}

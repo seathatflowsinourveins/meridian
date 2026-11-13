@@ -1,0 +1,27 @@
+# Shared last --patch layer for BOTH arms (dsh 0.2.2-rc.1, "ab-" profiles in the owner's dsh home).
+# @EV@ is replaced by the run series folder outside ~/.dsh. A patch replaces a row's whole config.
+# The first row is new for the profile route: ~/.dsh/cordis.patch.yml (home layer, applied to every
+# profile after the profile's own patch) inserts Orca's hook row; its package is installed only in
+# the dsh-tui profile, and Orca's hooks must not run in a measured session.
+- id: orca-agent-hooks
+  disabled: true
+- id: session-log-deepseek
+  config: {enabled: false}
+- id: plugin-package-inventory-deepseek
+  config: {enabled: false}
+- id: session-telemetry-otel
+  config: {mode: DISABLED}
+- id: session-title-llm
+  disabled: true
+- id: tool-web
+  disabled: true
+- id: agent-default-model
+  config: {provider: deepseek-official, model: deepseek-flash}
+- id: llm-deepseek
+  config: {thinking: enabled, reasoningEffort: max}
+- id: session-persistence-jsonl
+  config: {root: @EV@/sessions, compression: none}
+- id: storage-json
+  config: {root: @EV@/storages}
+- id: goal
+  config: {defaultMaxGoalRounds: @ROUNDS@}

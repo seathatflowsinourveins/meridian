@@ -1,0 +1,2 @@
+ADR 0002 key (drawn 2026-11-13 with secrets.choice): with = a, without = b
+[Published copy (docs/adr/data/0002-key.txt) of the key written 2026-11-13 01:52 ET, before the first run (a-k1, 01:55:13 ET), and kept outside the run folders; the original is the first line alone, ending with CR LF (sha256 9a06afc9d580b2870b8f41b7f7e492c83d84ae287d5596517e8f9e0c6449798f), this copy ends it with LF, and this line is added.]
