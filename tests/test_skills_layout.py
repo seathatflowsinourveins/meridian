@@ -14,12 +14,20 @@ from test_upstream_unmodified import git_blob_id
 SHARED = REPO_ROOT / ".agents" / "skills"
 CLAUDE = REPO_ROOT / ".claude" / "skills"
 
-# Copied unmodified from Orca 1.4.257 (git blob ids, as listed in UPSTREAM.md and NOTICE.md).
-# A new Orca copy changes these on purpose, together with its UPSTREAM.md row.
+# Copied unmodified from Orca 1.4.257 (git blob ids, as listed in UPSTREAM.md). A new Orca copy
+# changes these on purpose, together with its UPSTREAM.md row and NOTICE.md.
 UPSTREAM_SKILLS = {
     "orca-cli": "3b201f777ad807d104e8f87893f1e980f236c6c9",
     "orchestration": "8083c49535c17311585c7bffd177a8683464de46",
 }
+ORCA_TAG = "v1.4.257"
+ORCA_COMMIT = "b0570d90fc9af8c9e7e3566c0fb841d0884e2462"
+
+
+def test_the_notice_names_the_source_and_its_licence():
+    notice = (SHARED / "NOTICE.md").read_text(encoding="utf-8")
+    for text in (ORCA_TAG, ORCA_COMMIT, "MIT License", "Copyright (c) 2026 Lovecast Inc."):
+        assert text in notice, f"NOTICE.md does not say {text!r}"
 
 
 @pytest.mark.parametrize("name", sorted(UPSTREAM_SKILLS))

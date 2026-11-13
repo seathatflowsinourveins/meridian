@@ -9,25 +9,34 @@
 #   deploy/wsl/setup.sh agents        all of the following, in this order:
 #     claude        Claude Code, from Anthropic's signed release manifest
 #     codex         Codex CLI (npm)
-#     agy           Antigravity CLI (Google's release asset)
+#     agy           Antigravity CLI (its GitHub release asset)
 #     dsh           DeepSeek Harness and the terminal UI Orca launches for it (npm, pnpm)
 #     orca          Orca server, a loopback-only systemd user service (sudo for /opt)
 #     codex-bridge  the Codex review plugin for Claude Code
 #   deploy/wsl/setup.sh agents-check  verify the agent runtimes and their settings
 #   deploy/wsl/setup.sh signins       list the sign-ins left for the owner, with their commands
-#   deploy/wsl/setup.sh orca-pair     owner, once, in a terminal: pair the Windows Orca app
+#   deploy/wsl/setup.sh orca-pair     owner, once, in Windows Terminal: pair the Windows Orca app
 #
 # Order: check, uv, repo, gateway, then agents. Sign-ins are the owner's: see UPSTREAM.md.
 # Versions, checksums and the pages they were read from: UPSTREAM.md.
 set -euo pipefail
+# The tools below go to ~/.local/bin. Ubuntu's ~/.profile puts that on PATH only when it existed
+# at login, which on a fresh distro it did not.
+case ":${PATH}:" in
+  *":${HOME}/.local/bin:"*) ;;
+  *) export PATH="${HOME}/.local/bin:${PATH}" ;;
+esac
 
 UV_VERSION=0.13.7
 UV_INSTALLER_SHA256=d263ee68314cf5bea36b08e6bd9e2c4563240d7adb73756cf33af5c199b92db4
 NODE_VERSION=v24.22.3
 
 # Agent runtimes. By the owner's decision of 2026-11-12 they update themselves where the tool
-# can. What is pinned here is the release each one starts from: an exact version, checked
-# against its publisher's checksum before anything runs. `check` accepts that version or newer.
+# can, in sessions the owner starts (Orca's own launches switch the updaters off). What is
+# pinned here is the release each one starts from: an exact version whose own download is
+# checked against its publisher's checksum or registry integrity value before it runs. The
+# dependencies of an npm package resolve from the registry on the day of the install.
+# `agents-check` accepts the pinned version or newer.
 # (The 7-day wait for new releases still applies to the Python dependencies in pyproject.toml.)
 #
 # Claude Code: 2.1.321 is the first release that runs the lead model. The checksum is the
@@ -43,10 +52,12 @@ CODEX_INTEGRITY=sha512-6OFkr2ndzTdFb32OEiUlM9BgpeY8+wnMe8vRhuvt+22TnxVR39KnJ22Gh
 CODEX_LINUX_INTEGRITY=sha512-2Rw3VkWonMxwCSgOw+NkiKLOuOzyoQNWmxU7x8GniesdMfhKc4asNqOzTgQwJLKCrSlPc4/6fYTaH7fYcuGWGQ==
 CODEX_MODEL=gpt-6-astra
 # DeepSeek Harness: the engine (`dsh`), pnpm (dsh installs its profiles with it, and pins the
-# 11.x line), and the community terminal UI that Orca launches for it (`dsh-tui`). Registry
-# integrity values. The hook packages give Orca its status events; they follow the engine.
+# 11.x line), the community terminal UI that Orca launches for it (`dsh-tui`), and the two hook
+# packages that give Orca its status events (at the engine's version). Registry integrity values.
 DSH_VERSION=0.2.2-rc.1
 DSH_INTEGRITY=sha512-ijR9UEVYkG15Q/Q79JzvzLBzQOQfc63VLr9n6flpwHPhr5IKn2UxthnSoto/P9l7qGd7pPvI1Ra6TW7LH3oKpg==
+DSH_HOOKS_INTEGRITY=sha512-OhLHJRIlF6a8I0/P12liMzuss/6oeGplI1FM7IhOEPTzeI8BxMRdG7PmmeMik3s9QGt4OXpu5wO83WqoKf2o+A==
+DSH_HOOK_PROTOCOL_INTEGRITY=sha512-RbhsR5Y28PmkAEckKbBi1N666cF/Qjta2lfAYJNgN77y/tyfhjH6LtuXbOFO8RrgVojYiQZnrWEWBv41Hi5h3A==
 DSH_TUI_VERSION=0.20.0
 DSH_TUI_INTEGRITY=sha512-04K4E9nGBiefTerV2SaRjLYcDRGjwYXVNL0+tH/FCEdRhTnVDwMEADyC3a/etQ/NzoM2Sh1B+inb23T5Aqxcqw==
 PNPM_VERSION=11.28.9
@@ -61,10 +72,23 @@ ORCA_ROOT=/opt/orca-server
 # Loopback only, on a port of its own: with mirrored networking a listener on every interface
 # is reachable from the network, and 6768 is the Windows app's default port.
 ORCA_PORT=6790
+# The orca-serve unit's environment, which its terminal daemon and so every agent inherits:
+# telemetry off; DeepSeek Harness in the owner's bypass mode (Orca passes it no flag) and in
+# English; DeepSeek's two API endpoints fixed at the packages' own defaults, because the launch
+# environment outranks a .env file in the directory an agent starts in.
+ORCA_UNIT_ENV=(
+  ORCA_TELEMETRY_DISABLED=1
+  DSH_PERMISSION_MODE=danger-full-access
+  DSH_TUI_LANG=en
+  DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic
+  DEEPSEEK_SEARCH_BASE_URL=https://api.deepseek.com/anthropic/v1
+)
 # Claude Code plugin for cross-family review (/codex:review): openai/codex-plugin-cc from its
 # default branch. Its first install here was this commit (tag v1.0.6); it updates with upstream.
 CODEX_BRIDGE_COMMIT=db52e28f4d9ded852ab3942cea316258ae4ef346
-# Antigravity CLI (`agy`): Google's release asset on GitHub, by its published SHA-256.
+# Antigravity CLI (`agy`): the GitHub release asset of this version, by the SHA-256 digest
+# GitHub shows for it. (Google's install.sh and agy's own updater take the build named in their
+# updater service's manifest instead, checked against the SHA-512 in that manifest.)
 AGY_VERSION=1.5.7
 AGY_SHA256=d6150a8d2a9e29a3d171b2325d6f66b6e7059628f4799a20c069b8ed8f78fdbb
 AGY_URL="https://github.com/google-antigravity/antigravity-cli/releases/download/${AGY_VERSION}/agy_cli_linux_x64.tar.gz"
@@ -93,7 +117,8 @@ version_ge() {
 }
 
 # Global npm installs, and the updates the tools make to themselves later, go to ~/.local
-# (the owner's, and on PATH through Ubuntu's ~/.profile), not into the Node tree under /opt.
+# (the owner's; on PATH from the next login, and in this script through the lines at the top),
+# not into the Node tree under /opt.
 npm_user_prefix() {
   [ "$(npm config get prefix)" = "${HOME}/.local" ] || npm config set prefix "${HOME}/.local"
   install -d "${HOME}/.local/lib" "${HOME}/.local/bin"
@@ -137,10 +162,11 @@ cmd_check() {
   ok "time zone America/New_York, not inherited from Windows"
   jq -e '.disableClaudeAiConnectors == true' "${HOME}/.claude/settings.json" >/dev/null \
     || fail "disableClaudeAiConnectors is not true in ~/.claude/settings.json"
-  jq -e '.disableClaudeAiConnectors == true' /etc/claude-code/managed-settings.json >/dev/null \
-    || fail "disableClaudeAiConnectors is not true in /etc/claude-code/managed-settings.json"
-  ok "claude.ai connectors disabled for Claude Code in this distro (user and machine-wide settings)"
+  check_claude_managed
+  ok "claude.ai connectors and every MCP server off for Claude Code in this distro (user and machine-wide)"
   echo "note: that setting does not cover connectors the Claude desktop app itself attaches to a session"
+  check_codex_requirements
+  ok "Codex: every MCP server, ChatGPT apps, plugins and memories off machine-wide"
   for source in linux wsl_setup ubuntu_release_upgrader; do
     ubuntu-insights consent "${source}" 2>/dev/null | grep -qx "${source}: false" \
       || fail "Ubuntu Insights consent for ${source} is not recorded as false"
@@ -157,7 +183,7 @@ cmd_uv() {
   tmp="$(mktemp -d)"
   curl -fsSLo "${tmp}/uv-installer.sh" "https://astral.sh/uv/${UV_VERSION}/install.sh"
   echo "${UV_INSTALLER_SHA256}  ${tmp}/uv-installer.sh" | sha256sum -c -
-  # No shell files are edited: Ubuntu's ~/.profile already puts ~/.local/bin on PATH.
+  # No shell files are edited: Ubuntu's ~/.profile puts ~/.local/bin on PATH from the next login.
   UV_NO_MODIFY_PATH=1 sh "${tmp}/uv-installer.sh"
   rm -rf "${tmp}"
   "${HOME}/.local/bin/uv" --version
@@ -190,6 +216,16 @@ claude_settings() {
 }
 
 claude_version() { "${HOME}/.local/bin/claude" --version 2>/dev/null | cut -d' ' -f1; }
+
+# The machine-wide files deploy/wsl/meridian.user-data writes for Claude Code: no claude.ai
+# connectors, and an empty managed MCP list, which takes exclusive control of MCP so that no
+# server starts from a project's .mcp.json, the user's config, a plugin or --mcp-config.
+check_claude_managed() {
+  jq -e '.disableClaudeAiConnectors == true' /etc/claude-code/managed-settings.json >/dev/null 2>&1 \
+    || fail "disableClaudeAiConnectors is not true in /etc/claude-code/managed-settings.json"
+  jq -e '.mcpServers == {}' /etc/claude-code/managed-mcp.json >/dev/null 2>&1 \
+    || fail "/etc/claude-code/managed-mcp.json does not switch every MCP server off (see meridian.user-data)"
+}
 
 cmd_claude() {
   # The pinned binary comes straight from the release bucket and is checked against Anthropic's
@@ -233,14 +269,22 @@ cmd_claude() {
 check_claude() {
   version_ge "$(claude_version)" "${CLAUDE_VERSION}" \
     || fail "Claude Code is older than ${CLAUDE_VERSION} or missing (run: deploy/wsl/setup.sh claude)"
+  # The one plugin allowed is the Codex review plugin (setup.sh codex-bridge).
   jq -e --arg model "${CLAUDE_MODEL}" --arg floor "${CLAUDE_VERSION}" '
     .disableClaudeAiConnectors == true and .syncClaudeAiPlugins == false
     and .syncClaudeAiSkills == false and .minimumVersion == $floor
+    and .autoUpdatesChannel == "latest"
     and .model == $model and .modelSettings[$model].effortLevel == "high"
     and .permissions.defaultMode == "bypassPermissions"
+    and .skipDangerousModePermissionPrompt == true
+    and (["Edit(//**/risk/**)", "Edit(//**/*.contract.json)", "Read(//**/.env)", "Read(//**/.env.*)"]
+      - (.permissions.deny // []) == [])
+    and ([.enabledPlugins // {} | to_entries[] | select(.value == true) | .key]
+      - ["codex@openai-codex"] == [])
   ' "${HOME}/.claude/settings.json" >/dev/null \
     || fail "~/.claude/settings.json is not what deploy/wsl/setup.sh claude writes"
-  ok "Claude Code $(claude_version): ${CLAUDE_MODEL} at high effort, no claude.ai connectors or sync"
+  check_claude_managed
+  ok "Claude Code $(claude_version): ${CLAUDE_MODEL} at high effort, no claude.ai connectors, sync or MCP server"
 }
 
 codex_version() {
@@ -259,26 +303,53 @@ cmd_codex() {
   check_codex
 }
 
-# codex_feature_off FILE NAME: `NAME = false` in the [features] table, added if it is missing.
+# codex_feature_off FILE NAME: `NAME = false` in the file's [features] table. A line that sets
+# NAME there is rewritten, a missing one is added under the header, and the result is parsed
+# before it replaces the file. A file without a [features] table is an error.
 codex_feature_off() {
-  python3 -I - "$1" "$2" <<'PY' && return 0
+  python3 -I - "$1" "$2" <<'PY' || fail "cannot set $2 = false in the [features] table of $1"
+import os
+import re
 import sys
 import tomllib
 
-with open(sys.argv[1], "rb") as f:
-    sys.exit(0 if tomllib.load(f).get("features", {}).get(sys.argv[2]) is False else 1)
+path, name = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as f:
+    text = f.read()
+if tomllib.loads(text).get("features", {}).get(name) is False:
+    sys.exit(0)
+lines = text.splitlines(keepends=True)
+header = next(
+    (i for i, line in enumerate(lines) if re.fullmatch(r"\s*\[\s*features\s*\]\s*(#.*)?\n?", line)),
+    None,
+)
+if header is None:
+    sys.exit(f"{path} has no [features] table")
+end = next((i for i in range(header + 1, len(lines)) if re.match(r"\s*\[", lines[i])), len(lines))
+key = re.compile(rf"\s*{re.escape(name)}\s*=")
+hits = [i for i in range(header + 1, end) if key.match(lines[i])]
+for i in reversed(hits):
+    del lines[i]
+lines.insert(hits[0] if hits else header + 1, f"{name} = false\n")
+new = "".join(lines)
+if tomllib.loads(new).get("features", {}).get(name) is not False:
+    sys.exit(f"{path}: {name} is set outside the [features] table")
+with open(f"{path}.new", "w", encoding="utf-8") as f:
+    f.write(new)
+os.chmod(f"{path}.new", 0o600)
+os.replace(f"{path}.new", path)
 PY
-  sed -i "/^\[features\]\$/a $2 = false" "$1"
 }
 
 codex_config() {
   # Written once; Orca later adds its own [hooks.state.*] and [projects.*] tables to this file.
-  # The [features] switches are re-applied on every run.
+  # The [features] switches are re-applied on every run. /etc/codex/requirements.toml pins the
+  # same four off in every config layer, a project's .codex/config.toml included.
   local file="${HOME}/.codex/config.toml" feature
   if [ ! -e "${file}" ]; then
     codex_config_file
   fi
-  for feature in apps plugins skill_mcp_dependency_install; do
+  for feature in apps plugins skill_mcp_dependency_install memories; do
     codex_feature_off "${file}" "${feature}"
   done
 }
@@ -297,10 +368,12 @@ sandbox_mode = "danger-full-access"
 [features]
 # ChatGPT apps (account connectors) stay off, as claude.ai connectors do for Claude Code, so no
 # account-linked tool (a broker connector among them) reaches an agent here. Plugins, and the MCP
-# servers a skill can ask for, stay off until an evidence record adds one (plan 8.6).
+# servers a skill can ask for, stay off until an evidence record adds one (plan 8.6). So does
+# Codex's own memory: the memory layer is chosen by evidence record too (plan 8.7).
 apps = false
 plugins = false
 skill_mcp_dependency_install = false
+memories = false
 
 [analytics]
 enabled = false
@@ -323,33 +396,66 @@ import tomllib
 
 with open(sys.argv[1], "rb") as f:
     cfg = tomllib.load(f)
+features = cfg.get("features", {})
+profiles = cfg.get("profiles", {})
+off = ("apps", "plugins", "skill_mcp_dependency_install", "memories")
 problems = [
     name
     for name, bad in [
         ("model", cfg.get("model") != sys.argv[2]),
-        ("[features] apps", cfg.get("features", {}).get("apps") is not False),
-        ("[features] plugins", cfg.get("features", {}).get("plugins") is not False),
-        (
-            "[features] skill_mcp_dependency_install",
-            cfg.get("features", {}).get("skill_mcp_dependency_install") is not False,
-        ),
-        ("MCP servers configured", bool(cfg.get("mcp_servers"))),
+        ("model_reasoning_effort", cfg.get("model_reasoning_effort") != "high"),
         ("approval_policy", cfg.get("approval_policy") != "never"),
+        ("sandbox_mode", cfg.get("sandbox_mode") != "danger-full-access"),
+        *[(f"[features] {name}", features.get(name) is not False) for name in off],
+        ("[features] connectors (the old name of apps)", "connectors" in features),
+        ("MCP servers configured", bool(cfg.get("mcp_servers"))),
+        (
+            "a profile sets features or MCP servers",
+            any("features" in p or "mcp_servers" in p for p in profiles.values()),
+        ),
         ("[analytics] enabled", cfg.get("analytics", {}).get("enabled") is not False),
+        ("[feedback] enabled", cfg.get("feedback", {}).get("enabled") is not False),
+        ("[otel] metrics_exporter", cfg.get("otel", {}).get("metrics_exporter") != "none"),
     ]
     if bad
 ]
 sys.exit(f"config.toml: {', '.join(problems)}" if problems else 0)
 PY
-  ok "Codex CLI $(codex_version): ${CODEX_MODEL} at high effort, no ChatGPT apps, plugins or MCP server"
+  check_codex_requirements
+  ok "Codex CLI $(codex_version): ${CODEX_MODEL} at high effort, no ChatGPT apps, plugins, memories or MCP server"
+}
+
+# /etc/codex/requirements.toml, written by deploy/wsl/meridian.user-data: an empty MCP allowlist
+# (no server starts from any config layer) and the account-linked features pinned off.
+check_codex_requirements() {
+  python3 -I - <<'PY' || fail "/etc/codex/requirements.toml does not switch every MCP server and the account features off"
+import sys
+import tomllib
+
+try:
+    with open("/etc/codex/requirements.toml", "rb") as f:
+        req = tomllib.load(f)
+except (OSError, tomllib.TOMLDecodeError) as error:
+    sys.exit(str(error))
+features = req.get("features", {})
+off = ("apps", "plugins", "skill_mcp_dependency_install", "memories")
+sys.exit(0 if req.get("mcp_servers") == {} and all(features.get(name) is False for name in off) else 1)
+PY
 }
 
 cmd_codex_bridge() {
   local claude="${HOME}/.local/bin/claude" mp="${HOME}/.claude/plugins/marketplaces/openai-codex"
   local settings="${HOME}/.claude/settings.json" tmp
   export CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1
+  # The marketplace first; the plugin is installed only once its history has been checked.
+  [ -d "${mp}/.git" ] || "${claude}" plugin marketplace add openai/codex-plugin-cc --scope user </dev/null
+  # Claude Code clones a marketplace with --depth 1, which hides the commit checked for.
+  [ "$(git -C "${mp}" rev-parse --is-shallow-repository)" = false ] || git -C "${mp}" fetch --quiet --unshallow
+  if ! git -C "${mp}" merge-base --is-ancestor "${CODEX_BRIDGE_COMMIT}" HEAD; then
+    "${claude}" plugin disable codex@openai-codex --scope user </dev/null >/dev/null 2>&1 || true
+    fail "the codex-plugin-cc checkout does not descend from ${CODEX_BRIDGE_COMMIT}; the plugin is left disabled"
+  fi
   if ! "${claude}" plugin list --json </dev/null | jq -e '.[] | select(.id == "codex@openai-codex")' >/dev/null; then
-    "${claude}" plugin marketplace add openai/codex-plugin-cc --scope user </dev/null
     "${claude}" plugin install codex@openai-codex --scope user </dev/null
   fi
   # It follows upstream, as the runtimes do (the owner's decision of 2026-11-12).
@@ -357,8 +463,6 @@ cmd_codex_bridge() {
   jq '.extraKnownMarketplaces["openai-codex"].autoUpdate = true' "${settings}" > "${tmp}"
   install -m 0644 "${tmp}" "${settings}"
   rm -f "${tmp}"
-  git -C "${mp}" merge-base --is-ancestor "${CODEX_BRIDGE_COMMIT}" HEAD \
-    || fail "the codex-plugin-cc checkout does not descend from ${CODEX_BRIDGE_COMMIT}"
   check_codex_bridge
 }
 
@@ -366,6 +470,8 @@ check_codex_bridge() {
   "${HOME}/.local/bin/claude" plugin list --json </dev/null \
     | jq -e '.[] | select(.id == "codex@openai-codex" and .enabled)' >/dev/null \
     || fail "the Codex plugin is not installed in Claude Code (run: deploy/wsl/setup.sh codex-bridge)"
+  jq -e '.extraKnownMarketplaces["openai-codex"].autoUpdate == true' "${HOME}/.claude/settings.json" >/dev/null \
+    || fail "the openai-codex marketplace does not follow upstream (run: deploy/wsl/setup.sh codex-bridge)"
   # The plugin's automatic review gate stays off: it is on only where a state file says so.
   local state
   for state in "${HOME}/.claude/plugins/data/codex-openai-codex" /tmp/codex-companion; do
@@ -383,8 +489,8 @@ agy_version() {
 
 cmd_agy() {
   # Google's install.sh always takes the newest release and then edits shell profiles
-  # (`agy install`). This is the same download done by hand: the release asset at its pinned
-  # checksum, unpacked to ~/.local/bin/agy, no profile edits. agy then updates itself.
+  # (`agy install`). Instead: the GitHub release asset of the pinned version at its checksum,
+  # unpacked to ~/.local/bin/agy, no profile edits. agy then updates itself.
   if version_ge "$(agy_version)" "${AGY_VERSION}"; then
     ok "Antigravity CLI $(agy_version) is already installed"
     check_agy
@@ -405,13 +511,20 @@ check_agy() {
   version_ge "$(agy_version)" "${AGY_VERSION}" \
     || fail "Antigravity CLI is older than ${AGY_VERSION} or missing (run: deploy/wsl/setup.sh agy)"
   # No MCP server and no plugin: nothing here may give an agent a broker or an order tool.
-  # (~/.gemini/config/hooks.json is Orca's status hook once Orca has started an agy session.)
-  local path
+  # agy has no machine-wide setting for that, so its user config and every worktree of the
+  # repo are checked. (~/.gemini/config/hooks.json is Orca's status hook once Orca has started
+  # an agy session.)
+  local path tree
   for path in "${HOME}/.gemini/config/mcp_config.json" "${HOME}/.gemini/config/plugins" \
     "${HOME}/.gemini/settings.json"; do
     [ ! -e "${path}" ] || fail "${path} exists: agy would load MCP servers or plugins from it"
   done
-  ok "Antigravity CLI $(agy_version): no MCP server, no plugin"
+  while read -r tree; do
+    for path in "${tree}/.agents/mcp_config.json" "${tree}/.agents/plugins" "${tree}/.agents/hooks.json"; do
+      [ ! -e "${path}" ] || fail "${path} exists: agy would load MCP servers, plugins or hooks from it"
+    done
+  done < <(git -C "${REPO_DIR}" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')
+  ok "Antigravity CLI $(agy_version): no MCP server, plugin or workspace hook, in its config or the repo's worktrees"
 }
 
 dsh_version() { "${HOME}/.local/bin/dsh" --version 2>/dev/null </dev/null | head -n 1; }
@@ -435,6 +548,8 @@ cmd_dsh() {
     npm_pinned "@deepseek-harness-tui/dsh-tui@${DSH_TUI_VERSION}" "${DSH_TUI_INTEGRITY}"
     # The TUI lives in its own dsh profile; the global copy is the launcher on PATH (dsh-tui, dst).
     "${HOME}/.local/bin/dsh" plugin --profile dsh-tui add "@deepseek-harness-tui/dsh-tui@${DSH_TUI_VERSION}" </dev/null
+    npm_pinned "@deepseek-ai/dsh-hooks-claude-code@${DSH_VERSION}" "${DSH_HOOKS_INTEGRITY}"
+    npm_pinned "@deepseek-ai/dsh-hook-protocol@${DSH_VERSION}" "${DSH_HOOK_PROTOCOL_INTEGRITY}"
     "${HOME}/.local/bin/dsh" plugin --profile dsh-tui add \
       "@deepseek-ai/dsh-hooks-claude-code@${DSH_VERSION}" "@deepseek-ai/dsh-hook-protocol@${DSH_VERSION}" </dev/null
     npm install -g --strict-allow-scripts --legacy-peer-deps "@deepseek-harness-tui/dsh-tui@${DSH_TUI_VERSION}"
@@ -484,6 +599,9 @@ YAML
   fi
 }
 
+# dsh_row CONFIG ID: the lines of one row of `dsh --dump-config`, up to the next row.
+dsh_row() { printf '%s\n' "$1" | awk -v id="- id: $2" '$0 == id { f = 1; next } /^- / { f = 0 } f'; }
+
 check_dsh() {
   version_ge "$(dsh_version)" "${DSH_VERSION}" \
     || fail "DeepSeek Harness is older than ${DSH_VERSION} or missing (run: deploy/wsl/setup.sh dsh)"
@@ -493,12 +611,15 @@ check_dsh() {
   config="$("${HOME}/.local/bin/dsh" --profile dsh-tui --dump-config </dev/null 2>/dev/null)" \
     || fail "dsh cannot build its configuration for the dsh-tui profile"
   for row in session-log-deepseek plugin-package-inventory-deepseek; do
-    printf '%s\n' "${config}" | grep -A6 -x -- "- id: ${row}" | grep -qx '    enabled: false' \
-      || fail "the ${row} upload is not off"
+    dsh_row "${config}" "${row}" | grep -qx '    enabled: false' || fail "the ${row} upload is not off"
   done
-  printf '%s\n' "${config}" | grep -A6 -x -- '- id: session-telemetry-otel' | grep -qx '    mode: DISABLED' \
+  dsh_row "${config}" session-telemetry-otel | grep -qx '    mode: DISABLED' \
     || fail "the OTel feedback upload is not off"
-  ok "DeepSeek Harness $(dsh_version) with dsh-tui $(dsh_tui_version): uploads to DeepSeek off"
+  # The profile ships the plugin manager's agent tools switched off; an agent could install
+  # plugins with them.
+  dsh_row "${config}" tool-plugin-manager | grep -qx '  disabled: true' \
+    || fail "the plugin manager's tools are on in the dsh-tui profile"
+  ok "DeepSeek Harness $(dsh_version) with dsh-tui $(dsh_tui_version): uploads to DeepSeek off, no plugin tools"
 }
 
 orca_cli() { "${ORCA_ROOT}/current/bin/orca-ide" "$@" </dev/null; }
@@ -518,40 +639,53 @@ cmd_orca() {
   fi
   sudo ln -sfn "${dir}" "${ORCA_ROOT}/current"
   ln -sfn "${ORCA_ROOT}/current/bin/orca-ide" "${HOME}/.local/bin/orca-ide"
-  # Inherited by every agent the server starts. A drop-in, so `service install` keeps it.
-  # DeepSeek Harness gets the owner's bypass mode here because Orca passes it no flag.
+  # ORCA_UNIT_ENV, as a drop-in, so `service install` keeps it. A change reaches agents only once
+  # the terminal daemon restarts (its scope outlives a restart of the service), which ends the
+  # sessions running in it.
   install -d "${dropins}"
-  cat > "${dropins}/meridian.conf" <<'UNIT'
-[Service]
-Environment=ORCA_TELEMETRY_DISABLED=1
-Environment=DSH_PERMISSION_MODE=danger-full-access
-Environment=DSH_TUI_LANG=en
-UNIT
-  # Lingering keeps the user service running without a login session.
+  { echo '[Service]'; printf 'Environment=%s\n' "${ORCA_UNIT_ENV[@]}"; } > "${dropins}/meridian.conf"
+  # Lingering starts the user service at boot without a login session. WSL still stops the whole
+  # distro about 15 s after its last WSL session ends (instanceIdleTimeout in the owner's
+  # .wslconfig on Windows); keeping it up is the owner's setting there (see UPSTREAM.md).
   [ "$(loginctl show-user "$(id -un)" -p Linger --value)" = yes ] || sudo loginctl enable-linger "$(id -un)"
+  # This writes the unit, reloads systemd and restarts the service.
   orca_cli serve service install --command "${ORCA_ROOT}/current/bin/orca-ide" \
     --port "${ORCA_PORT}" --bind 127.0.0.1 --pairing-address 127.0.0.1 --refuse-public
-  systemctl --user daemon-reload
-  systemctl --user restart orca-serve.service
-  sleep 5
+  orca_wait
   check_orca
+}
+
+# orca_wait: up to 30 s for a server that was just started to answer.
+orca_wait() {
+  local _
+  for _ in $(seq 30); do
+    orca_cli status --json 2>/dev/null | jq -e '.result.runtime.reachable == true' >/dev/null && return 0
+    sleep 1
+  done
 }
 
 cmd_orca_pair() {
   # The owner's one-time step that gives the Windows app access. `orca-ide pair` would first
   # open the server to the network, which the loopback-only service refuses, so the pairing link
-  # comes from one foreground run on loopback instead. The link grants shell access as the
-  # owner: it is printed to this terminal only.
+  # comes from one foreground run on loopback instead, with the service's environment. The link
+  # grants shell access as the owner: it is printed to this terminal only, never to a terminal
+  # Orca started, whose output other Orca sessions can read (`orca-ide terminal read`).
   [ -t 0 ] && [ -t 1 ] || fail "run this in your own terminal: it prints a pairing link"
+  [ "${TERM_PROGRAM:-}" != Orca ] && [ -z "${ORCA_TERMINAL_HANDLE:-}" ] \
+    || fail "run this in Windows Terminal (wsl -d meridian), not in a terminal Orca started"
   systemctl --user stop orca-serve.service
+  # However this ends (Ctrl+C, a closed window, a kill), the service starts again.
+  trap 'systemctl --user start orca-serve.service' EXIT
+  trap 'exit 129' HUP
+  trap 'exit 143' TERM
   echo "Paste the pairing link below into the Windows app (Settings > Remote Orca Servers >"
   echo "Add Server), connect, then press Ctrl+C here to hand back to the service."
   trap 'true' INT
-  ORCA_TELEMETRY_DISABLED=1 "${ORCA_ROOT}/current/bin/orca-ide" serve --port "${ORCA_PORT}" \
+  env "${ORCA_UNIT_ENV[@]}" "${ORCA_ROOT}/current/bin/orca-ide" serve --port "${ORCA_PORT}" \
     --bind 127.0.0.1 --pairing-address 127.0.0.1 --refuse-public || true
   trap - INT
   systemctl --user start orca-serve.service
-  sleep 5
+  orca_wait
   check_orca
 }
 
@@ -559,18 +693,25 @@ check_orca() {
   version_ge "$(orca_version)" "${ORCA_VERSION}" \
     || fail "the Orca server is older than ${ORCA_VERSION} or missing (run: deploy/wsl/setup.sh orca)"
   systemctl --user is-active --quiet orca-serve.service || fail "the orca-serve user service is not running"
-  local listeners cgroup pids exposed
+  local listeners pids exposed unit_env var
   listeners="$(ss -ltnH "( sport = :${ORCA_PORT} )" | awk '{print $4}' | sort -u | tr '\n' ' ')"
   [ "${listeners}" = "127.0.0.1:${ORCA_PORT} " ] \
     || fail "Orca must listen on 127.0.0.1:${ORCA_PORT} only; found: ${listeners:-nothing}"
-  # Every other socket the service's processes listen on must be loopback too.
-  cgroup="$(systemctl --user show orca-serve.service -p ControlGroup --value)"
-  pids="$(paste -sd'|' "/sys/fs/cgroup${cgroup}/cgroup.procs")"
-  exposed="$(ss -ltnpH | grep -E "pid=(${pids})," | awk '{print $4}' \
-    | grep -v -E '^(127\.0\.0\.1|\[::1\]):' | tr '\n' ' ' || true)"
-  [ -z "${exposed}" ] || fail "Orca listens beyond loopback: ${exposed}"
-  orca_cli status --json >/dev/null 2>&1 || fail "orca-ide status cannot reach the server"
-  ok "Orca server $(orca_version) on 127.0.0.1:${ORCA_PORT} only, telemetry off"
+  # Every other TCP or UDP socket of Orca's processes must be loopback too: the service, its
+  # terminal daemon's scope, and the slices its terminals, and so every agent, run in.
+  pids="$(grep -lE '/(orca-serve\.service|orca-daemon-[^/]*\.scope|orca_ptys_[^/]*\.slice)(/|$)' \
+    /proc/[0-9]*/cgroup 2>/dev/null | cut -d/ -f3 | paste -sd'|' || true)"
+  exposed="$(ss -ltunpH | grep -E "pid=(${pids:-0})," | awk '{print $1 " " $5}' \
+    | grep -v -E ' (127\.[0-9.]+|\[::1\])(%[^:]*)?:' | tr '\n' ' ' || true)"
+  [ -z "${exposed}" ] || fail "an Orca process or agent listens beyond loopback: ${exposed}"
+  unit_env="$(systemctl --user show orca-serve.service -p Environment --value | tr ' ' '\n')"
+  for var in "${ORCA_UNIT_ENV[@]}"; do
+    grep -qxF -- "${var}" <<<"${unit_env}" \
+      || fail "the orca-serve unit does not set ${var} (run: deploy/wsl/setup.sh orca)"
+  done
+  orca_cli status --json 2>/dev/null | jq -e '.result.runtime.reachable == true' >/dev/null \
+    || fail "orca-ide status cannot reach the server"
+  ok "Orca server $(orca_version) on 127.0.0.1:${ORCA_PORT} only, telemetry off, DeepSeek endpoints fixed"
 }
 
 cmd_signins() {
@@ -585,7 +726,7 @@ cmd_signins() {
     "agy acp --login   (then in agy: /config, telemetry off; agy models)"
   say "[ -s ${HOME}/.dsh/.env ]" "DeepSeek API key" \
     "install -d -m 700 ~/.dsh && ( umask 077 && read -rsp 'DeepSeek API key: ' k && echo && printf 'DEEPSEEK_API_KEY=%s\\n' \"\$k\" > ~/.dsh/.env && unset k )"
-  echo "once   Orca window: deploy/wsl/setup.sh orca-pair   (the link it prints grants shell access: paste it only into the Windows app)"
+  echo "once   Orca window, in Windows Terminal: deploy/wsl/setup.sh orca-pair   (the link it prints grants shell access: paste it only into the Windows app)"
 }
 
 cmd_repo() {
@@ -645,5 +786,5 @@ case "${1:-}" in
     ;;
   repo) cmd_repo ;;
   gateway) cmd_gateway ;;
-  *) sed -n '2,22p' "$0"; exit 2 ;;
+  *) sed -n '2,21p' "$0"; exit 2 ;;
 esac
