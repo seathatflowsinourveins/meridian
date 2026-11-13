@@ -148,6 +148,10 @@ def _is_full_listing(command: Any) -> bool:
     return not command.open_only and not _bounds(command)
 
 
+def _engine_filled(order: Any) -> Decimal:
+    return Decimal(0) if order is None else order.filled_qty.as_decimal()
+
+
 class AlpacaPaperExecutionClient(ExecutionClient):
     def __init__(
         self,
@@ -356,6 +360,19 @@ class AlpacaPaperExecutionClient(ExecutionClient):
             ts_init=self.clock.timestamp_ns(),
         )
 
+    def _engine_order(self, venue_id: str, client_order_id: object) -> Any:
+        """The engine's own record of a venue order, found as the engine finds a report's
+        order: by client order id, else by venue id. None for one it does not hold."""
+        order = None
+        if isinstance(client_order_id, ClientOrderId):
+            order = self.cache.order(client_order_id)
+        elif isinstance(client_order_id, str) and client_order_id:
+            order = self.cache.order(ClientOrderId(client_order_id))
+        if order is None:
+            found = self.cache.client_order_id(VenueOrderId(venue_id))
+            order = None if found is None else self.cache.order(found)
+        return order
+
     def _volunteer(self, report: Any) -> bool:
         """Hand the engine a status report it did not ask for, unless it claims fills the
         engine has not received: those come from the stream, or from a later full read.
@@ -545,12 +562,23 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         # began (SNAPSHOT_MARGIN_NS). For that order this read would show the engine nothing:
         # not a fill it lacks, and not a status the stream did not deliver. Read again. A fill
         # the engine infers from a recovery read counts as such an execution (_know_fills).
+        # A read showing an order with less filled than the engine has or was handed is not
+        # handed over either: the engine would void fills on a lagging listing or on a
+        # correction Alpaca does not document. Read again; new orders stay denied meanwhile.
         for report in orders:
-            last = self._last_execution.get(report.venue_order_id.value, 0)
+            venue_id = report.venue_order_id.value
+            order = self._engine_order(venue_id, report.client_order_id)
+            last = self._last_execution.get(venue_id, 0)
             if last >= ts_init - SNAPSHOT_MARGIN_NS:
                 self._log().warning(
                     "Alpaca recovery reads again: a fill reached the engine during the read "
                     "or just before it"
+                )
+                return False
+            known = max(self._known_filled.get(venue_id, Decimal(0)), _engine_filled(order))
+            if report.filled_qty.as_decimal() < known:
+                self._log().warning(
+                    "Alpaca recovery reads again: the venue shows less filled than the engine has"
                 )
                 return False
         mass = ExecutionMassStatus(self.client_id, self.account_id, VENUE, ts_init)

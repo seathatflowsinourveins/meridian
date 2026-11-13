@@ -1292,6 +1292,49 @@ def test_a_read_begun_just_after_a_recovery_read_showed_a_fill_is_read_again(
     assert box["holding"] == [("AAPL.ALPACA", filled)]
 
 
+def test_a_recovery_read_showing_fewer_fills_than_the_engine_has_is_not_handed_over():
+    """Both shares of a 2-share order fill and are handed on. The venue then lists the order
+    with one share filled (a correction Alpaca does not document, or a listing behind the
+    stream), with an update the lane cannot classify. Handed over, that read would make the
+    engine void a fill, and the share filling again would then be dropped as known. It is not
+    handed over, and new orders are denied. When the venue fills the share again, its
+    execution sits at the quantity the engine holds and is not handed on; the next read shows
+    what the engine holds and is handed over."""
+    rig = Rig()
+
+    def on_start(running, box):
+        two_share_order(running, box)
+        box["second"] = limit_order(running, 2)
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, row = rig.clients[0], rig.venue.orders[-1]
+        rig.stream.push(one_more_share(rig, row))
+        rig.stream.push(one_more_share(rig, row))
+        await until(lambda: status() == OrderStatus.FILLED)
+        row.update(status="partially_filled", filled_qty="1")
+        rig.venue.positions[:] = [position_row(qty="1")]
+        rig.stream.push(update("trade_bust", row))  # not an event the lane classifies
+        await until(lambda: client.failures)
+        await asyncio.sleep(1.5)  # recovery has read the venue twice
+        box["while_lower"] = (engine_holds(client), client.coverage_complete, client.recoveries)
+        box["strategy"].submit_order(box["second"])
+        await until(lambda: status(2) in (OrderStatus.DENIED, OrderStatus.ACCEPTED))
+        box["second_status"] = status(2)
+        rig.stream.push(one_more_share(rig, row))  # the venue fills the share again
+        await until(lambda: client.coverage_complete)
+        await asyncio.sleep(0.3)  # long enough for the engine to reconcile the read
+        box["covered"] = (status(), engine_holds(client), [row["filled_qty"]], client.recoveries)
+
+    box = drive(rig, script, on_start=on_start)
+    assert box["error"] is None
+    assert box["while_lower"] == (["2"], False, 0)
+    assert box["second_status"] == OrderStatus.DENIED
+    assert box["covered"] == (OrderStatus.FILLED, ["2"], ["2"], 1)
+    assert rig.clients[0].known_executions == 1
+    assert box["holding"] == [("AAPL.ALPACA", "2")]
+
+
 def test_startup_reads_wait_for_the_venues_subscription_acknowledgement():
     rig = Rig()
     rig.stream.ack = False  # the venue never confirms trade_updates
