@@ -1,5 +1,8 @@
 """Independent reconstruction of the per-call Codex stdin texts and output schemas of dsh-codex-peer @f4882df.
 
+Published copy: it differs from the file as it ran in one respect only. It ran beside its helper
+as extract_tools.py; this copy loads the helper under its published name, 0009_extract_tools.py.
+
 Parses string-array literals and object literals out of lib/argv.js, lib/review.js and lib/plan.js
 as TEXT (no execution) and re-assembles them the way buildPrompt / buildReviewPrompt / buildPlanPrompt
 and JSON.stringify(schema, null, 2) + '\n' (runner.js writeFileAtomic) do.
@@ -12,7 +15,7 @@ import re
 import sys
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location('xt', str(Path(__file__).resolve().parent / 'extract_tools.py'))
+spec = importlib.util.spec_from_file_location('xt', str(Path(__file__).resolve().parent / '0009_extract_tools.py'))
 xt = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(xt)
 

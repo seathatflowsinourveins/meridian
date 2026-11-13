@@ -1,6 +1,7 @@
 # Meridian
 
 A paper-trading harness on NautilusTrader. One repo, one WSL2 distro (`meridian`). Paper only.
+Lanes, rules, budgets and run records: `docs/HANDBOOK.md`. Size limits: `size-budget.toml`.
 
 ## Boundaries (set by the owner; not yours to change)
 
@@ -43,15 +44,14 @@ A paper-trading harness on NautilusTrader. One repo, one WSL2 distro (`meridian`
 | Path | What it is |
 |---|---|
 | `deploy/wsl/` | the distro definition (cloud-init) and the user-level setup script |
-| `meridian/boundary.py` | the paper checks: Gateway login mode, ports, account form, optional allowlist (own design) |
-| `meridian/ib_probe.py` | asks the Gateway which accounts it manages (own design) |
-| `meridian/ibkr_paper.py` | IBKR paper lane: gate, owner confirmation, run record |
-| `meridian/ibkr_node.py` | the engine side, built on upstream's example |
+| `meridian/boundary.py`, `meridian/ib_probe.py` | the paper checks (Gateway login mode, ports, account form, optional allowlist) and the probe that asks the Gateway which accounts it manages (own design) |
+| `meridian/ibkr_paper.py`, `meridian/ibkr_node.py` | IBKR paper lane: gate, owner confirmation, run record; the engine side, built on upstream's example |
+| `meridian/order_budget/`, `meridian/sandbox_*.py` | M2: the order budget (the owner's pacer, from Sextant) and the sandbox lane (no broker) |
 | `upstream/` | upstream example files, unmodified |
 | `.agents/skills/` | skills every agent reads; each has a link in `.claude/skills/` for Claude Code |
 | `orca.yaml`, `.worktreeinclude` | Orca: the setup script and tabs of each new worktree; nothing ignored is copied |
 | `risk/boundary.contract.json` | optional: the owner's allowlist of paper accounts |
-| `evidence/` | scrubbed run records, one per attended run that passed |
+| `evidence/` | scrubbed run records: one per attended run that passed, and the latest offline soak |
 | `runs/` | local run output, ignored by git; may hold account ids |
 
 ## Commands
@@ -77,16 +77,7 @@ uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run 
 
 ## The IBKR paper lane (owner only)
 
-Before a run:
-
-- IB Gateway is installed by `deploy/wsl/setup.sh gateway`. The owner starts it with
-  `~/Jts/ibgateway/1050/ibgateway` (its window shows through WSLg) and logs in to
-  **Paper Trading**. The lane connects to `127.0.0.1:4002` and nowhere else.
-- In the Gateway, Configure > Settings > API > Settings: socket port 4002, **Read-Only API
-  unticked**, "Allow connections from localhost only" ticked. The Gateway listens on every
-  interface (`*:4002`) and the machine uses mirrored networking, so that box is what keeps
-  other hosts out. `~/Jts/jts.ini` lists `TrustedIPs=127.0.0.1` only; the box itself is stored
-  in the Gateway's encrypted settings and can only be checked in its window.
+Before a run, the owner sets up the Gateway as `docs/HANDBOOK.md` describes. Then:
 - The lane refuses unless the Gateway's `~/Jts/jts.ini` says `tradingMode=p`, the Gateway
   listens on port 4002 only, and it reports one account whose id has the paper form (a D
   prefix, as in NautilusTrader's IB guide examples: a convention, not a documented rule).
