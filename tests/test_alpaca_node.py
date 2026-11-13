@@ -998,6 +998,28 @@ def engine_holds(client) -> list[str]:
     return [str(position.quantity) for position in client.cache.positions_open()]
 
 
+def backlogged(client, seconds: float) -> None:
+    """From now on the engine receives what the client hands it `seconds` late, in order: an
+    engine behind on its queue, whose own record of an order lags what it was handed. The
+    client's own stamps (`_last_execution`) must then do what that record cannot."""
+    loop, hand, queue = asyncio.get_running_loop(), client._handle_report, []
+
+    def release() -> None:
+        while queue:
+            hand(*queue.pop(0))
+
+    def late(*report) -> None:
+        if not queue:
+            loop.call_later(seconds, release)
+        queue.append(report)
+
+    client._handle_report = late
+
+
+# The engine as it runs, and an engine that processes what the client hands it 0.6 s late.
+ENGINES = pytest.mark.parametrize("backlog", [0.0, 0.6], ids=["prompt-engine", "backlogged-engine"])
+
+
 @pytest.mark.parametrize("shown_by_the_read", [1, 2])
 def test_a_fill_the_recovery_read_showed_first_is_not_counted_again_from_the_stream(
     shown_by_the_read,
@@ -1166,13 +1188,15 @@ def test_a_fill_that_arrives_during_the_recovery_read_does_not_hide_the_one_afte
     assert box["holding"] == [("AAPL.ALPACA", "2")] and rig.clients[0].recoveries == 1
 
 
-def test_a_recovery_read_is_read_again_when_an_execution_reached_the_engine_during_it():
+@ENGINES
+def test_a_recovery_read_is_read_again_when_an_execution_reached_the_engine_during_it(backlog):
     """The stream delivers an execution while the recovery read is under way, and the venue
     then cancels the rest of the order; that update never reaches the client and opens no
     gap. The read's listing shows the quantity the engine has and an ended order. The engine
     skips an order's snapshot when a fill for it arrived during the read (2.0.0rc9), so
     handing this read over would call the account covered while the engine still holds the
-    order as working. It is read again, and the engine learns that the order ended."""
+    order as working. It is read again, and the engine learns that the order ended. With the
+    engine behind on its queue, its record does not show the fill when the read ends."""
     rig = Rig()
 
     async def script(box, status):
@@ -1184,16 +1208,21 @@ def test_a_recovery_read_is_read_again_when_an_execution_reached_the_engine_duri
         await asyncio.sleep(0.1)  # the listing is under way
         execution = one_more_share(rig, row)
         row.update(status="canceled", canceled_at=row["updated_at"])  # no update for this
+        if backlog:
+            backlogged(client, backlog)
         rig.stream.push(execution)
         await asyncio.sleep(0.5)  # the read has ended
-        box["after_the_read"] = (status(), client.recoveries, client.coverage_complete)
+        box["after_the_read"] = (client.recoveries, client.coverage_complete)
+        box["status_after_the_read"] = status()
         await until(lambda: client.coverage_complete)
-        await asyncio.sleep(0.3)  # long enough for the engine to reconcile the read
+        await asyncio.sleep(0.3 + backlog)  # long enough for the engine to reconcile the read
         box["covered"] = (status(), engine_holds(client), client.recoveries)
 
     box = drive(rig, script, on_start=two_share_order)
     assert box["error"] is None
-    assert box["after_the_read"] == (OrderStatus.PARTIALLY_FILLED, 0, False)  # not handed over
+    assert box["after_the_read"] == (0, False)  # not handed over
+    if not backlog:
+        assert box["status_after_the_read"] == OrderStatus.PARTIALLY_FILLED
     assert box["covered"] == (OrderStatus.CANCELED, ["1"], 1)
     assert box["holding"] == [("AAPL.ALPACA", "1")]
 
@@ -1235,13 +1264,14 @@ def test_an_order_update_showing_a_fill_the_engine_lacks_is_a_gap_that_stops_the
     assert box["holding"] == [("AAPL.ALPACA", "1")]
 
 
+@ENGINES
 @pytest.mark.parametrize(
     ("handed_on_before", "first_read_secs"),
     [(0, 0.0), (1, 0.0), (0, 1.5)],
     ids=["nothing-handed-on-before", "one-share-handed-on-before", "slow-first-read"],
 )
 def test_a_read_begun_just_after_a_recovery_read_showed_a_fill_is_read_again(
-    handed_on_before, first_read_secs
+    handed_on_before, first_read_secs, backlog
 ):
     """A share of the order fills while the stream is away, and the recovery read shows the
     engine that share; the engine infers the fill as it reconciles that read. A second gap
@@ -1253,7 +1283,8 @@ def test_a_read_begun_just_after_a_recovery_read_showed_a_fill_is_read_again(
     The cases: a 2-share order with nothing handed on before the gap; a 3-share order whose
     first share the stream delivered and the adapter handed on, so the read raises the known
     quantity from one share to two; and a first read slower than the margin, so the stamp has
-    to be the moment the read is handed over, not the moment it began."""
+    to be the moment the read is handed over, not the moment it began. Each also with the
+    engine behind on its queue: its record does not show the fill when the second read ends."""
     rig = Rig()
     shares = 2 + handed_on_before
 
@@ -1270,6 +1301,8 @@ def test_a_read_begun_just_after_a_recovery_read_showed_a_fill_is_read_again(
             await asyncio.sleep(1.2)  # past the margin, so the first read is not read again
         one_more_share(rig, row)  # lost with the stream; the first read shows it
         rig.venue.positions_delay = first_read_secs  # the first read's positions read
+        if backlog:
+            backlogged(client, backlog)
         rig.stream.push("reconnect")
         async with asyncio.timeout(15):
             while client.recoveries < 1:  # act in the loop turn the first read is handed over
@@ -1281,7 +1314,7 @@ def test_a_read_begun_just_after_a_recovery_read_showed_a_fill_is_read_again(
         await asyncio.sleep(0.5)  # the second read has ended
         box["after_the_second_read"] = (client.recoveries, client.coverage_complete)
         await until(lambda: client.coverage_complete)
-        await asyncio.sleep(0.3)  # long enough for the engine to reconcile the read
+        await asyncio.sleep(0.3 + backlog)  # long enough for the engine to reconcile the read
         box["covered"] = (status(), engine_holds(client), client.recoveries)
 
     box = drive(rig, script, on_start=on_start)
