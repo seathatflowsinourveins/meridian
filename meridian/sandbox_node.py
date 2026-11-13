@@ -357,9 +357,10 @@ def run(data_client: DataClient, record: SandboxRecord, seconds: int = RUN_SECON
             except Exception as e:
                 failure = failure or f"{type(e).__name__}: {e}"
                 traceback.print_exc()
-        # The engine's logger writes from a thread of its own until the node is dropped, and
-        # the node would otherwise live until this function returns. Drop it, and all that
-        # holds it, here, while stdout and stderr still go to the log.
+        # Dropping the node makes the engine's logger write out what it still holds; its
+        # thread keeps running, so a line logged later would go to the terminal. The node
+        # would otherwise live until this function returns, after the terminal is back. Drop
+        # it, and all that holds it, here, while stdout and stderr still go to the log.
         node = counter = timer = handle = None
         gc.collect()
     if record.data["node"] is not None:  # what the engine itself says it registered

@@ -406,9 +406,10 @@ class TalkativeNode:
     when its handle is told to, or at once if ``early``, and then stops the lane's actor,
     unless told not to.
 
-    The engine's logger keeps writing until the node is dropped, so this node writes its last
-    words when it is dropped. Its handle and the actor hold it, and it holds the actor (a
-    cycle), so it is dropped only when the lane has let go of all of them and collected."""
+    The engine's logger writes out what it still holds when the node is dropped, so this
+    node writes its last words when it is dropped. Its handle and the actor hold it, and it
+    holds the actor (a cycle), so it is dropped only when the lane has let go of all of them
+    and collected."""
 
     environment = SimpleNamespace(name="SANDBOX")
     cache = SimpleNamespace(
@@ -625,9 +626,17 @@ def test_before_the_prompt_the_lane_says_how_the_port_is_bound(
     monkeypatch, gated, capsys, bind, asks
 ):
     gated.answers[0] = (fake_bounds(gateway_bind=bind), FAKE)
-    monkeypatch.setattr(sandbox_lane, "_at_terminal", lambda: False)  # it stops at the prompt
+    printed_by_then = []
+
+    def prompt(text):
+        printed_by_then.append(capsys.readouterr().out)  # all the owner has read when asked
+        return ""  # no confirmation: the lane stops here
+
+    monkeypatch.setattr(sandbox_lane, "_at_terminal", lambda: True)
+    monkeypatch.setattr("builtins.input", prompt)
     assert sandbox_lane.main(["run"]) == 2
-    out = capsys.readouterr().out
+    assert gated.runs == []
+    (out,) = printed_by_then  # the prompt was asked, once
     assert f"bound to {bind}" in out
     # The lane cannot read the Gateway's localhost-only box: it asks the owner to check it,
     # unless the port is bound to loopback only.
@@ -660,15 +669,21 @@ def lane_run(monkeypatch, tmp_path):
     return SimpleNamespace(sent=sent, tmp=tmp_path)
 
 
-def test_a_clean_run_goes_to_the_gated_endpoint_and_writes_evidence(lane_run):
-    bounds = fake_bounds()
+@pytest.mark.parametrize(
+    "bind", ["all interfaces", "a specific address"], ids=["every-interface", "one-address"]
+)
+def test_a_clean_run_goes_to_the_gated_endpoint_and_writes_evidence(monkeypatch, lane_run, bind):
+    bounds = fake_bounds(gateway_bind=bind)
+    # The gate finds the same Gateway after the run.
+    monkeypatch.setattr(sandbox_lane.ibkr_paper, "gate", lambda: (bounds, FAKE))
     assert sandbox_lane._run_node(bounds, FAKE) == 0
     assert lane_run.sent == [(bounds.host, bounds.port)]
     (evidence,) = (lane_run.tmp / "evidence").glob("M2-sandbox-*-run.json")
-    # How the port was bound is in the record, as in the IBKR lane's; no address is.
+    # How the port was bound, as the gate read it, is in the record, as in the IBKR lane's;
+    # no address is.
     assert json.loads(evidence.read_text(encoding="utf-8"))["gateway"] == {
         "port": bounds.port,
-        "bind": "all interfaces",
+        "bind": bind,
         "use": "market data only",
     }
 
