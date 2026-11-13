@@ -40,3 +40,4 @@ this table; the row's first cell links the file by name, as in `[NNNN](NNNN-shor
 
 | ADR | Title | Status |
 |---|---|---|
+| [0001](0001-semble-code-search.md) | semble for code search (plan 8.7, retrieval slot 2) | not adopted, 2026-11-12 |

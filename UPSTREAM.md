@@ -115,8 +115,9 @@ Notes on the agent runtimes:
 
 ## Assessed and not used
 
-Read for plan 8.6 and 8.7 on 2026-11-12 and not installed, each for the reason given. An
-evidence record can reopen one.
+Read for plan 8.6 and 8.7 on 2026-11-12 and not installed, each for the reason given, without
+an evidence ADR. An evidence record can reopen one: it then gets its row under "Evidence ADRs"
+below and leaves this table.
 
 | Project | Source of the assessment | Why it is not used |
 |---|---|---|
@@ -217,6 +218,16 @@ Notes on the order budget, measured by the soak (`evidence/M2-order-budget-*-soa
   and restarts at 20 s and 40 s make it 213 (a burst and 53 refills, three times), past
   Alpaca's 200. These counts come from running the pacer alone with the fixture rows; the soak
   does not restart it. The M3 lane has to start a pacer empty, or wait out the window.
+
+## Evidence ADRs (plans 8.6 and 8.7)
+
+One row per component that an evidence ADR in `docs/adr/` assessed, whatever it decided: the
+Decision cell gives the ADR's status, and only a row whose status is adopted is installed. None
+is today. What was read and set aside without an ADR is under "Assessed and not used" above.
+
+| Component | Version or commit | Licence | Source URL (read) | Date read | Decision | ADR |
+|---|---|---|---|---|---|---|
+| semble (semantic code search), with its embedding model `minishlab/potion-code-16M-v2` | 0.7.2, tag commit `bb746c9c79925760df8a3759fcca658734e2eaf6`, wheel sha256 `e0cb9c8ea303f38d7390e5f441fc9c05dbc1eeae6e2afa20e2ab8bef10942e2d`; model revision `e9d2a44ca6a05ac6685f3b23709ea57eb7352d5b` | MIT; model MIT | https://github.com/MinishLab/semble/tree/v0.7.2 ; https://pypi.org/pypi/semble/json ; https://huggingface.co/api/models/minishlab/potion-code-16M-v2 | 2026-11-12 | not adopted: on 30 fixed questions it answered 3 fewer than ripgrep plus pyright within the top 1, 3 and 5 results (3, 4 and 4 fewer once a helper wrongly accepted as a test answer is set aside) | [0001](docs/adr/0001-semble-code-search.md) |
 
 ## Notes on choices
 
