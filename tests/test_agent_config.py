@@ -8,10 +8,16 @@ agent files git may list are the skills in ``.agents/skills/`` and their links i
 owner's own sessions, which carries its own tests: AGENTS.md keeps such branches out of worktrees.
 """
 
+import re
 import subprocess
 
 import pytest
 from test_paper_only import REPO_ROOT, git_files
+
+DEPLOY = REPO_ROOT / "deploy" / "wsl"
+# The newest first-patched version among GitHub's published advisories for the GitHub CLI
+# (UPSTREAM.md, GitHub CLI row). The pin may not fall below it.
+GH_NEWEST_FIX = (2, 97, 0)
 
 # Folders the four agents (or Gemini CLI, whose layout Antigravity shares) read in a project.
 AGENT_FOLDERS = (".agents/", ".claude/", ".codex/", ".gemini/", ".dsh/")
@@ -66,6 +72,16 @@ def test_the_check_catches_agent_configuration(name):
 )
 def test_the_check_leaves_the_skills_alone(name):
     assert agent_config([name]) == []
+
+
+def test_gh_comes_from_githubs_release_at_a_patched_version():
+    # Ubuntu's gh 2.46.0 is inside two high advisories, so the definition does not install it and
+    # setup.sh pins GitHub's own build.
+    definition = (DEPLOY / "meridian.user-data").read_text(encoding="utf-8")
+    assert not re.search(r"^\s*-\s*gh\s*$", definition, re.MULTILINE), "the definition installs gh"
+    pin = re.search(r"^GH_VERSION=(\d+)\.(\d+)\.(\d+)$", (DEPLOY / "setup.sh").read_text(), re.M)
+    assert pin, "setup.sh has no GH_VERSION pin"
+    assert tuple(int(part) for part in pin.groups()) >= GH_NEWEST_FIX
 
 
 def test_the_setup_script_is_executable_in_git():

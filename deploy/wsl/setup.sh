@@ -4,6 +4,7 @@
 #
 #   deploy/wsl/setup.sh check         verify what deploy/wsl/meridian.user-data was meant to do
 #   deploy/wsl/setup.sh uv            install uv (pinned; installer checksum verified first)
+#   deploy/wsl/setup.sh gh            install the GitHub CLI from GitHub's release, in place of Ubuntu's
 #   deploy/wsl/setup.sh repo          clone the repo to ~/src/meridian and run `uv sync --locked`
 #   deploy/wsl/setup.sh gateway       install IB Gateway (pinned build; never starts it or logs in)
 #   deploy/wsl/setup.sh agents        all of the following, in this order:
@@ -17,7 +18,7 @@
 #   deploy/wsl/setup.sh signins       list the sign-ins left for the owner, with their commands
 #   deploy/wsl/setup.sh orca-pair     owner, once, in Windows Terminal: pair the Windows Orca app
 #
-# Order: check, uv, repo, gateway, then agents. Sign-ins are the owner's: see UPSTREAM.md.
+# Order: check, uv, gh, repo, gateway, then agents. Sign-ins are the owner's: see UPSTREAM.md.
 # Versions, checksums and the pages they were read from: UPSTREAM.md.
 set -euo pipefail
 # The tools below go to ~/.local/bin. Ubuntu's ~/.profile puts that on PATH only when it existed
@@ -30,6 +31,13 @@ esac
 UV_VERSION=0.13.7
 UV_INSTALLER_SHA256=d263ee68314cf5bea36b08e6bd9e2c4563240d7adb73756cf33af5c199b92db4
 NODE_VERSION=v24.22.3
+# GitHub CLI: GitHub's release tarball, by the SHA-256 in the release's checksums file (the same
+# value GitHub shows as the asset's digest). Ubuntu's package (2.46.0) is inside two high
+# advisories, GHSA-8xvp-7hj6-mcj9 and GHSA-p2h2-3vg9-4p87, so it is not installed. gh does not
+# update itself: a new pin here updates it.
+GH_VERSION=2.104.0
+GH_SHA256=98cb101ad87dbbd3f6b2f2bfcbd43197ccd07643140121d8a9cfaa91eadbc24e
+GH_URL="https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz"
 
 # Agent runtimes. By the owner's decision of 2026-11-12 they update themselves where the tool
 # can, in sessions the owner starts (Orca's own launches switch the updaters off). What is
@@ -145,10 +153,10 @@ cmd_check() {
     *:/mnt/c/*) fail "Windows PATH is appended (appendWindowsPath should be false)" ;;
   esac
   ok "Windows PATH not appended"
-  for pkg in git gh build-essential curl jq unzip; do
+  for pkg in git build-essential curl jq unzip; do
     dpkg -s "${pkg}" >/dev/null 2>&1 || fail "package ${pkg} is missing"
   done
-  ok "packages: git gh build-essential curl jq unzip"
+  ok "packages: git build-essential curl jq unzip"
   for pkg in ${GATEWAY_LIBS}; do
     dpkg -s "${pkg}" >/dev/null 2>&1 || fail "package ${pkg} is missing (IB Gateway window)"
   done
@@ -187,6 +195,38 @@ cmd_uv() {
   UV_NO_MODIFY_PATH=1 sh "${tmp}/uv-installer.sh"
   rm -rf "${tmp}"
   "${HOME}/.local/bin/uv" --version
+}
+
+gh_version() { "${HOME}/.local/bin/gh" --version 2>/dev/null </dev/null | sed -n 's/^gh version \([^ ]*\).*/\1/p'; }
+# installed, or nothing: the state dpkg records for Ubuntu's gh package.
+gh_package_state() { dpkg-query -W -f='${db:Status-Status}' gh 2>/dev/null || true; }
+
+cmd_gh() {
+  # GitHub's own build in ~/.local/bin, which comes before /usr/bin on PATH. Ubuntu's package is
+  # removed, so that no older gh stays reachable (sudo's PATH, an absolute /usr/bin/gh).
+  if ! version_ge "$(gh_version)" "${GH_VERSION}"; then
+    local tmp
+    tmp="$(mktemp -d)"
+    curl -fsSLo "${tmp}/gh.tar.gz" "${GH_URL}"
+    echo "${GH_SHA256}  ${tmp}/gh.tar.gz" | sha256sum -c -
+    tar -xzf "${tmp}/gh.tar.gz" -C "${tmp}" "gh_${GH_VERSION}_linux_amd64/bin/gh"
+    install -D -m 0755 "${tmp}/gh_${GH_VERSION}_linux_amd64/bin/gh" "${HOME}/.local/bin/gh"
+    rm -rf "${tmp}"
+  fi
+  if [ "$(gh_package_state)" = installed ]; then
+    sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y -o DPkg::Lock::Timeout=120 gh
+  fi
+  check_gh
+}
+
+check_gh() {
+  version_ge "$(gh_version)" "${GH_VERSION}" \
+    || fail "the GitHub CLI is older than ${GH_VERSION} or missing (run: deploy/wsl/setup.sh gh)"
+  [ "$(command -v gh)" = "${HOME}/.local/bin/gh" ] \
+    || fail "gh resolves to $(command -v gh || echo nothing), not ~/.local/bin/gh"
+  [ "$(gh_package_state)" != installed ] \
+    || fail "Ubuntu's gh package is installed (run: deploy/wsl/setup.sh gh)"
+  ok "GitHub CLI $(gh_version), GitHub's own build in ~/.local/bin; Ubuntu's gh package not installed"
 }
 
 claude_settings() {
@@ -719,7 +759,7 @@ cmd_signins() {
   # checks use exit codes and file presence only.
   local bin="${HOME}/.local/bin"
   say() { if eval "$1" >/dev/null 2>&1 </dev/null; then echo "done   $2"; else echo "to do  $2: $3"; fi; }
-  say 'gh auth status' "GitHub" "gh auth login"
+  say "${bin}/gh auth status" "GitHub" "gh auth login"
   say "${bin}/claude auth status" "Claude Code" "claude auth login"
   say "${bin}/codex login status" "Codex" "codex login --device-auth"
   say "[ -e ${HOME}/.gemini/antigravity-cli/antigravity-oauth-token ]" "Antigravity" \
@@ -760,6 +800,7 @@ cmd_gateway() {
 case "${1:-}" in
   check) cmd_check ;;
   uv) cmd_uv ;;
+  gh) cmd_gh ;;
   claude) cmd_claude ;;
   codex) cmd_codex ;;
   agy) cmd_agy ;;
@@ -777,6 +818,7 @@ case "${1:-}" in
   signins) cmd_signins ;;
   orca-pair) cmd_orca_pair ;;
   agents-check)
+    check_gh
     check_claude
     check_codex
     check_agy
@@ -786,5 +828,5 @@ case "${1:-}" in
     ;;
   repo) cmd_repo ;;
   gateway) cmd_gateway ;;
-  *) sed -n '2,21p' "$0"; exit 2 ;;
+  *) sed -n '2,22p' "$0"; exit 2 ;;
 esac

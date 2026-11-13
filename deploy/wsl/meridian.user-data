@@ -81,9 +81,9 @@ package_update: true
 package_upgrade: true
 # apt's default applies: recommended packages are installed too (the Gateway libraries bring
 # about 67 packages that way, a terminal emulator among them). git and curl are in the image.
+# No gh here: Ubuntu's (2.46.0) is inside two high advisories; `setup.sh gh` installs GitHub's.
 packages:
   - git
-  - gh
   - build-essential
   - curl
   - jq
