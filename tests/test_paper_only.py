@@ -34,6 +34,11 @@ LIVE_PATTERNS = {
         r"tradingMode[\"']?[^\S\r\n]*(?:[:=]|\][^\S\r\n]*=|,)[^\S\r\n]*[\"']?l(?:ive)?\b",
         re.IGNORECASE,
     ),
+    # alpaca-py 0.45.0 picks its live hosts by `paper=False` or by these BaseURL names.
+    "live switch (alpaca-py)": re.compile(r"\bpaper\s*=\s*False\b"),
+    "live host name (alpaca-py BaseURL)": re.compile(
+        r"\b(?:TRADING_LIVE|TRADING_STREAM_LIVE|BROKER_PRODUCTION)\b"
+    ),
 }
 _NAME = re.compile(r"[A-Za-z0-9_\-]+(?:\.[A-Za-z0-9_\-]+)*")
 _NAME_PART = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+")
@@ -131,6 +136,13 @@ def test_no_live_endpoint_port_mode_or_key_name_in_the_repo():
         "connect('127.0.0.1', 4001)",
         "the Gateway live port is 4001.",
         "https://api.alpaca.markets/v2/orders",
+        "wss://api.alpaca.markets/stream",
+        "https://broker-api.alpaca.markets",
+        "TradingClient(key, secret, paper=False)",
+        "TradingStream(key, secret, paper = False)",
+        "BaseURL.TRADING_LIVE",
+        "BaseURL.TRADING_STREAM_LIVE",
+        "BaseURL.BROKER_PRODUCTION",
         "DockerizedIBGatewayConfig(trading_mode=TradingMode.LIVE)",
         "TradingMode::Live",
         "TRADING_MODE=live",
@@ -162,6 +174,10 @@ def test_the_scan_catches_live_markers(text):
         "port = 4002",
         "DEFAULT_TWS_PORT = 7497",
         "https://paper-api.alpaca.markets/v2/orders",
+        "wss://paper-api.alpaca.markets/stream",
+        "TradingClient(key, secret, paper=True, url_override=PAPER_TRADING_URL)",
+        "BaseURL.TRADING_PAPER",
+        "https://data.alpaca.markets/v2/stocks/quotes",
         "LiveNode.builder(name, trader, Environment.LIVE)",
         "LiveRiskEngineConfig(bypass=True)",
         "TradingMode.PAPER",
