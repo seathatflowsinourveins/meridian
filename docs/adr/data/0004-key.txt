@@ -1,0 +1,1 @@
+ADR 0004 key (kept outside the run folders): the arm with the addition (tdd + diagnosing-bugs copies) is "b". Drawn with bash $RANDOM % 2 = 1 at 2026-11-13T01:51:11-05:00.

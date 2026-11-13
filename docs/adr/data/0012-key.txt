@@ -1,0 +1,4 @@
+ADR 0012 arm key (kept outside the run folders, read 2026-11-13)
+with_addition=b
+without_addition=a
+random_byte=255

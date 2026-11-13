@@ -1,0 +1,365 @@
+{
+ "adr": "0011 dsh-goalloop-agentteams 0.9.2 (DeepSeek Harness), pin v0.9.2 = ea481186b41b78ed897ac9abe7c4376aea2a55b2",
+ "series": "real task R2 (ab-tasks.md), with and without the addition, 3 runs per arm, 2026-11-13",
+ "runtime": "dsh 0.2.2-rc.1 (tag dsh-v0.2.2-rc.1 = 66491b05); profiles ab-0011-a and ab-0011-b from the headless template in the owner's dsh home, removed afterwards",
+ "model": "deepseek-flash (provider deepseek-official), thinking enabled, reasoning effort max",
+ "permission": "--permission-mode workspace-write --approval-policy never; 1,800 s wall clock; goal.defaultMaxGoalRounds 8",
+ "brief_sha256": "9d0b472a179056bea86dfcaf334754667d0fd3de7aac764abd945da6b952e8ed",
+ "prereg": {
+  "file": "0011r-prereg.txt (its name as run; published as 0011-real-prereg.txt)",
+  "sha256": "fdb380ffa2075a7538401927476379509e8be25f62fa2a17bf8d6d93ee468613",
+  "recorded": "2026-11-13T09:02:48-05:00"
+ },
+ "key": {
+  "file": "0011r-key.txt (its name as run; published as 0011-real-key.txt)",
+  "with": "ab-0011-b (runs b1 b2 b3)",
+  "without": "ab-0011-a (runs a1 a2 a3)"
+ },
+ "order": "a1 b1 b2 a2 a3 b3",
+ "runs": [
+  {
+   "run": "a1",
+   "arm": "without",
+   "started": "2026-11-13T09:02:54-05:00",
+   "passed": true,
+   "void": "none",
+   "dsh_exit": 0,
+   "final_reason": "completed",
+   "duration_s": 51.1,
+   "billed_tokens": 311486,
+   "model_calls": 10,
+   "calls_without_usage": 0,
+   "rounds": 1,
+   "steps": 10,
+   "sessions": 1,
+   "goal_rounds": 0,
+   "tool_calls": 15,
+   "replay": {
+    "apply": 0,
+    "ruff_check": 0,
+    "ruff_format": 0,
+    "pyright": 0,
+    "pytest": 0,
+    "pytest_tail": "249 passed in 4.22s"
+   },
+   "tests_unchanged": true,
+   "scope_ok": true,
+   "patch_sha256": "a48cd9d25a573f54c21bf652cb66e3821684e3e0346be15a16a389a54f59351a",
+   "addition": {
+    "plugin_tool_calls": [],
+    "dsh_goal_tool_calls": [],
+    "skill_calls": 0,
+    "gate_denials": 0,
+    "ledger": null
+   },
+   "containment": {
+    "home_top_level_changes": 0,
+    "dsh_home_entries_changed_outside_own_profile": 0,
+    "processes_left": 0,
+    "gitleaks_findings": 0,
+    "files_with_key_shape": 0,
+    "tool_calls_naming_dsh_home": 0,
+    "tool_calls_to_review": 3
+   }
+  },
+  {
+   "run": "b1",
+   "arm": "with",
+   "started": "2026-11-13T09:04:13-05:00",
+   "passed": true,
+   "void": "none",
+   "dsh_exit": 0,
+   "final_reason": "completed",
+   "duration_s": 41.7,
+   "billed_tokens": 170548,
+   "model_calls": 9,
+   "calls_without_usage": 0,
+   "rounds": 1,
+   "steps": 9,
+   "sessions": 1,
+   "goal_rounds": 0,
+   "tool_calls": 13,
+   "replay": {
+    "apply": 0,
+    "ruff_check": 0,
+    "ruff_format": 0,
+    "pyright": 0,
+    "pytest": 0,
+    "pytest_tail": "249 passed in 4.06s"
+   },
+   "tests_unchanged": true,
+   "scope_ok": true,
+   "patch_sha256": "0e383a3ea6904f4b26dca1c5b3edbdee71171be7678baac27084859476f83c94",
+   "addition": {
+    "plugin_tool_calls": [],
+    "dsh_goal_tool_calls": [],
+    "skill_calls": 0,
+    "gate_denials": 0,
+    "ledger": {
+     "falseCompletes": 0,
+     "gate_evaluations": 0,
+     "evaluation_codes": [],
+     "triggers": []
+    }
+   },
+   "containment": {
+    "home_top_level_changes": 0,
+    "dsh_home_entries_changed_outside_own_profile": 1,
+    "dsh_home_entries_note": "profiles/dsh-tui/cordis.yml, rewritten with the same 223 bytes during b1 while the run had the dsh home read-only; the writer is not identified (ADR 0011, Containment)",
+    "processes_left": 0,
+    "gitleaks_findings": 0,
+    "files_with_key_shape": 0,
+    "tool_calls_naming_dsh_home": 0,
+    "tool_calls_to_review": 1
+   }
+  },
+  {
+   "run": "b2",
+   "arm": "with",
+   "started": "2026-11-13T09:05:34-05:00",
+   "passed": true,
+   "void": "none",
+   "dsh_exit": 0,
+   "final_reason": "completed",
+   "duration_s": 64.1,
+   "billed_tokens": 209058,
+   "model_calls": 9,
+   "calls_without_usage": 0,
+   "rounds": 1,
+   "steps": 9,
+   "sessions": 1,
+   "goal_rounds": 0,
+   "tool_calls": 14,
+   "replay": {
+    "apply": 0,
+    "ruff_check": 0,
+    "ruff_format": 0,
+    "pyright": 0,
+    "pytest": 0,
+    "pytest_tail": "249 passed in 4.23s"
+   },
+   "tests_unchanged": true,
+   "scope_ok": true,
+   "patch_sha256": "45d7c84f366a101801ed5f8a73ad12beee4be728a99ff5d5fefbd4946f812fde",
+   "addition": {
+    "plugin_tool_calls": [],
+    "dsh_goal_tool_calls": [],
+    "skill_calls": 0,
+    "gate_denials": 0,
+    "ledger": {
+     "falseCompletes": 0,
+     "gate_evaluations": 0,
+     "evaluation_codes": [],
+     "triggers": []
+    }
+   },
+   "containment": {
+    "home_top_level_changes": 0,
+    "dsh_home_entries_changed_outside_own_profile": 0,
+    "processes_left": 0,
+    "gitleaks_findings": 0,
+    "files_with_key_shape": 0,
+    "tool_calls_naming_dsh_home": 0,
+    "tool_calls_to_review": 1
+   }
+  },
+  {
+   "run": "a2",
+   "arm": "without",
+   "started": "2026-11-13T09:07:13-05:00",
+   "passed": true,
+   "void": "none",
+   "dsh_exit": 0,
+   "final_reason": "completed",
+   "duration_s": 87.6,
+   "billed_tokens": 829141,
+   "model_calls": 17,
+   "calls_without_usage": 0,
+   "rounds": 1,
+   "steps": 17,
+   "sessions": 1,
+   "goal_rounds": 0,
+   "tool_calls": 26,
+   "replay": {
+    "apply": 0,
+    "ruff_check": 0,
+    "ruff_format": 0,
+    "pyright": 0,
+    "pytest": 0,
+    "pytest_tail": "249 passed in 4.11s"
+   },
+   "tests_unchanged": true,
+   "scope_ok": true,
+   "patch_sha256": "4d9b979e5f495bcbe516e9f5ea7b21eed5320437c1efd6e44507a6e776b4d121",
+   "addition": {
+    "plugin_tool_calls": [],
+    "dsh_goal_tool_calls": [],
+    "skill_calls": 0,
+    "gate_denials": 0,
+    "ledger": null
+   },
+   "containment": {
+    "home_top_level_changes": 0,
+    "dsh_home_entries_changed_outside_own_profile": 0,
+    "processes_left": 0,
+    "gitleaks_findings": 0,
+    "files_with_key_shape": 0,
+    "tool_calls_naming_dsh_home": 0,
+    "tool_calls_to_review": 4
+   }
+  },
+  {
+   "run": "a3",
+   "arm": "without",
+   "started": "2026-11-13T09:09:03-05:00",
+   "passed": true,
+   "void": "none",
+   "dsh_exit": 0,
+   "final_reason": "completed",
+   "duration_s": 65.2,
+   "billed_tokens": 296076,
+   "model_calls": 13,
+   "calls_without_usage": 0,
+   "rounds": 1,
+   "steps": 13,
+   "sessions": 1,
+   "goal_rounds": 0,
+   "tool_calls": 18,
+   "replay": {
+    "apply": 0,
+    "ruff_check": 0,
+    "ruff_format": 0,
+    "pyright": 0,
+    "pytest": 0,
+    "pytest_tail": "249 passed in 4.29s"
+   },
+   "tests_unchanged": true,
+   "scope_ok": true,
+   "patch_sha256": "b7e1decc93c6c353f895d86465e6a3790829a8403df5323cfd30b58a01030148",
+   "addition": {
+    "plugin_tool_calls": [],
+    "dsh_goal_tool_calls": [],
+    "skill_calls": 0,
+    "gate_denials": 0,
+    "ledger": null
+   },
+   "containment": {
+    "home_top_level_changes": 0,
+    "dsh_home_entries_changed_outside_own_profile": 0,
+    "processes_left": 0,
+    "gitleaks_findings": 0,
+    "files_with_key_shape": 0,
+    "tool_calls_naming_dsh_home": 0,
+    "tool_calls_to_review": 1
+   }
+  },
+  {
+   "run": "b3",
+   "arm": "with",
+   "started": "2026-11-13T09:10:33-05:00",
+   "passed": true,
+   "void": "none",
+   "dsh_exit": 0,
+   "final_reason": "completed",
+   "duration_s": 76.6,
+   "billed_tokens": 470104,
+   "model_calls": 13,
+   "calls_without_usage": 0,
+   "rounds": 1,
+   "steps": 13,
+   "sessions": 1,
+   "goal_rounds": 0,
+   "tool_calls": 18,
+   "replay": {
+    "apply": 0,
+    "ruff_check": 0,
+    "ruff_format": 0,
+    "pyright": 0,
+    "pytest": 0,
+    "pytest_tail": "249 passed in 4.35s"
+   },
+   "tests_unchanged": true,
+   "scope_ok": true,
+   "patch_sha256": "4cd9b4baff9e0a8f1543a514ad6b8680214058b74a429582d9b1bb2c057281ab",
+   "addition": {
+    "plugin_tool_calls": [],
+    "dsh_goal_tool_calls": [],
+    "skill_calls": 0,
+    "gate_denials": 0,
+    "ledger": {
+     "falseCompletes": 0,
+     "gate_evaluations": 0,
+     "evaluation_codes": [],
+     "triggers": []
+    }
+   },
+   "containment": {
+    "home_top_level_changes": 0,
+    "dsh_home_entries_changed_outside_own_profile": 0,
+    "processes_left": 0,
+    "gitleaks_findings": 0,
+    "files_with_key_shape": 0,
+    "tool_calls_naming_dsh_home": 0,
+    "tool_calls_to_review": 1
+   }
+  }
+ ],
+ "arms": {
+  "with": {
+   "scored": 3,
+   "passes": 3,
+   "median_billed_tokens": 209058,
+   "median_duration_s": 64.1,
+   "blocked_runs": 0
+  },
+  "without": {
+   "scored": 3,
+   "passes": 3,
+   "median_billed_tokens": 311486,
+   "median_duration_s": 65.2
+  }
+ },
+ "token_ratio_with_over_without": 0.671,
+ "total_billed_tokens": 2286413,
+ "billed_token_buckets": {
+  "input": 167262,
+  "cache_read": 2080384,
+  "cache_write": 0,
+  "output": 38767
+ },
+ "first_request_prompt_tokens_deepseek_count": {
+  "without": 6907,
+  "with": 9170,
+  "delta": 2263,
+  "note": "input + cache-read of the first model call; identical in all three runs of an arm"
+ },
+ "rule": "Adopt only if no BLOCKED or safety violation and S_with >= 2 and S_without <= 1, or S_with >= S_without >= 2 with median billed tokens <= 0.75x.",
+ "rule_routes": {
+  "success_route": false,
+  "token_route": true,
+  "blocked_runs": 0,
+  "safety_violations": 0
+ },
+ "rule_result": "adopt",
+ "rule_result_reading": "The literal pre-registered rule is met by its token route: 3 and 3 passes, with-arm median 209,058 billed tokens against 311,486, ratio 0.671. The addition did not act in any run, every with-arm request was larger, and 6 of the 20 ways to split these six totals 3 and 3 meet the same route, so the result does not show an effect of the addition. Nothing is installed.",
+ "extension": "not due (3 and 3 passes: no one-success difference and no 2-2 tie)",
+ "smoke_runs_before_the_series": [
+  {
+   "profile": "ab-0011-a",
+   "billed_tokens": 0,
+   "result": "TRANSPORT after 18 s: /mnt was hidden, and with it the resolver file /etc/resolv.conf points to; no request left"
+  },
+  {
+   "profile": "ab-0011-a",
+   "billed_tokens": 25024,
+   "result": "completed in 19 s with the resolver file shown; ruff, pyright and pytest ran inside dsh's tool sandbox"
+  }
+ ],
+ "validation": {
+  "base": "1 failed, 248 passed; ruff check, ruff format --check and pyright clean",
+  "reference_fix": "grader passes, 249 passed",
+  "no_change": "grader fails (pytest exit 1)",
+  "contract_on_base": "gate NO-GO: AC-1, tree digest unchanged, 7 s",
+  "contract_with_reference_fix": "gate GO, 7 s"
+ }
+}

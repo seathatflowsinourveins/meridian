@@ -1,0 +1,1 @@
+src/meridian/|meridian-worktrees/|meridian-ab|claude-ab-mem|\.claude/projects/|/\.git/|\.\./ab-|git [^"]*(\bmain\b|origin|--all|--branches|--remotes|--tags|--glob|reflog|for-each-ref|show-ref|branch -[arv]|worktree list|cat-file|5d51c9c|39cb68e|f65d835|9c5daaa)|ibgateway|:4002

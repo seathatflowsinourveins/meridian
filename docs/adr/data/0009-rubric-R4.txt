@@ -1,0 +1,37 @@
+# R4 grading rubric for ADR 0009 (fixed 2026-11-13, before any R4 run)
+
+Task: ab-tasks.md R4, worktree at 96e82e6, brief given verbatim on stdin:
+"Review `meridian/boundary.py` for ways a login that is not a paper login could pass its checks. Report what you find and change nothing."
+
+Reference: 39cb68e (parent 96e82e6), boundary.py +5/-1. Its commit message says no key is inherited from a
+[DEFAULT] section any more; only [Logon]'s own tradingMode counts. The fix sets default_section to a name no file can use.
+
+## TARGET (the defect)
+Reported = the final answer states, as a finding at any severity, that a tradingMode set in a [DEFAULT]
+section is inherited by [Logon] through configparser, so a jts.ini whose [Logon] lacks its own tradingMode=p
+(or gets it only from [DEFAULT]) passes check 1. It must name DEFAULT or default-section inheritance. A bare
+"configparser quirks" or "the file can be edited" does not count.
+
+## OTHER findings: each distinct mechanism once, severity ignored
+- REAL: the mechanism is true of meridian/boundary.py at 96e82e6 (checked by reading the code; library
+  behaviour checked with Python 3.14 when needed), and it is a way a non-paper login, or a state that is not
+  verified to be a paper login, can pass check 1, 2, 3 or 4, or a gap in when or what they check. Known design
+  limits count as real when stated correctly, for example: the D-form account id is a heuristic; a live login
+  can be set to listen on 4002; jts.ini can be stale or written by someone other than the Gateway; the checks
+  run before and after the run, not during it; the allowlist is optional; the listen address is not checked;
+  paths follow $HOME.
+- FALSE: the stated mechanism is not what the code does. Examples: a value other than exactly "p" (such as
+  "P", "paper", " p ;x") is accepted; a missing file, missing [Logon] section or missing key passes; duplicate
+  keys or sections are silently accepted; interpolation expands values; a non-D account id passes; a second
+  account passes; a cited line or function that does not exist.
+- OUT OF SCOPE (counted apart, neither real nor false): true statements that are not a way past the checks
+  (style, messages, refusals that fail closed, hardening ideas without a bypass, privacy of the account id).
+
+## Void
+A run is void when its commands read 39cb68e or later history or the fix by another route: ~/src/meridian or
+its .git, ~/src/meridian-worktrees, another run's folder, this measurement's grading clone, git fetch/pull, or
+network reads of the repository. Commands are read from the run's events.jsonl (command_execution items).
+
+## Recorded per run
+TARGET yes/no; REAL, FALSE, OUT-OF-SCOPE counts; files changed (must be none); tokens (input incl. cached,
+output, reasoning; sub-agent rollouts added if any); turns; wall seconds; exit code.

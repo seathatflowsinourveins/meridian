@@ -26,7 +26,7 @@ ADR_NAME = re.compile(r"^docs/adr/(\d{4})-[a-z0-9][a-z0-9-]*\.md$")
 INDEX_ROW = re.compile(r"\|\s*\[(\d{4})\]\((\1-[^)\s]+)\)\s*\|")
 MARKDOWN = (".md", ".markdown")
 INSTRUCTION_FILES = {"agents.md", "claude.md"}
-KINDS = ("prose", "not_counted", "config")  # the order in which a file is matched
+KINDS = ("adr_data", "prose", "not_counted", "config")  # the order in which a file is matched
 
 
 def load_limits(root: Path = REPO_ROOT) -> dict[str, Any]:
@@ -105,7 +105,8 @@ def over_budget(names: list[str], limits: dict[str, Any], root: Path = REPO_ROOT
             found.append(f"{key}: {value}, limit {limits['totals'][key]}")
     for name in unclassified(names, limits, root):
         found.append(
-            f"{name}: not a kind {LIMITS_FILE} names; add it to prose, config or not_counted"
+            f"{name}: not a kind {LIMITS_FILE} names;"
+            " add it to prose, config, adr_data or not_counted"
         )
     return found
 
@@ -197,6 +198,24 @@ WITHIN = {
 
 def test_a_tree_within_the_budget_passes(tmp_path):
     assert over_budget(planted(tmp_path, WITHIN), SMALL, tmp_path) == []
+
+
+def test_markdown_under_adr_data_adds_nothing_to_prose(tmp_path):
+    before = measure(planted(tmp_path, WITHIN), SMALL, tmp_path)["prose_lines"]
+    data = {"docs/adr/data/ab-sheet.md": 500, "docs/adr/data/0001-notes.MARKDOWN": 500}
+    names = planted(tmp_path, WITHIN | data)
+    assert measure(names, SMALL, tmp_path)["prose_lines"] == before
+    assert over_budget(names, SMALL, tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["notes.md", "evidence/M2-x.md", "upstream/x/NOTICE.md", "docs/adr/data.md", "docs/data/x.md"],
+)
+def test_markdown_elsewhere_is_still_prose(tmp_path, name):
+    before = measure(planted(tmp_path, WITHIN), SMALL, tmp_path)["prose_lines"]
+    names = planted(tmp_path, WITHIN | {name: 7})
+    assert measure(names, SMALL, tmp_path)["prose_lines"] == before + 7
 
 
 @pytest.mark.parametrize(

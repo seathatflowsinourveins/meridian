@@ -1,0 +1,50 @@
+ADR 0007, task R4, arm a (Codex 0.167.2 without an addition): grading per run and per finding.
+
+Source: each run's final report (last-message.md, written by `codex exec -o`), kept with the raw outputs on
+the owner's machine and not published, because that folder also holds the rollouts. Graded by the measuring
+agent on 2026-11-13 (a1 at 02:05 ET, a2 and a3 at 04:10 ET) and re-read against the three reports for this
+file. The reports hold only clone paths and synthetic values; none is copied here.
+Base: meridian/boundary.py and meridian/ibkr_paper.py at 96e82e6b521cdb9c7d172176898d20e2658ec50b.
+Reference: 39cb68ea3241caeececb6db0521a12ea2fa92fee, which only stops gateway_trading_mode inheriting
+[DEFAULT]: at 96e82e6, boundary.py 144 builds a ConfigParser with the default section [DEFAULT], and 149
+reads tradingMode with parser.get, which falls back to that section.
+
+Verdicts. D: the [DEFAULT]-inheritance defect, the reference's fix. true: true of the code at 96e82e6 or of
+its documented design, and outside the reference. false: contradicted by the code at 96e82e6 (none found).
+Not counted as a finding: each report's closing remark that the account check rests on the paper-form
+naming convention (boundary.py 13-16, the module text, and single_paper_form_account from 252), which
+restates what the module already says.
+
+run  #  finding (the report's own number)                       report cites          verdict  supported at 96e82e6
+a1   1  the listening address is dropped and only the port is   boundary.py:181       true     boundary.py 181-182 and 185-186 keep the
+        kept; reproduced with mocks (the Gateway on                                            port per socket inode, not the address;
+        127.0.0.2:4002, another process on 127.0.0.1:4002)                                     21: the lane connects to 127.0.0.1
+a1   2  jts.ini is not tied to the running session               boundary.py:143       true     boundary.py 143-146 read the fixed JTS_INI;
+                                                                                               7-9 state that design
+a1   3  the checks run before and after only; a login change    boundary.py:241,      true     boundary.py 4-5 and 241-246; ibkr_paper.py
+        in between is not checked before the engine connects    ibkr_paper.py:229              55-59 (gate) and 229-234 (run, then gate)
+a1   4  ConfigParser.get inherits tradingMode from [DEFAULT];   boundary.py:149       D        boundary.py 144 and 149
+        reproduced with [DEFAULT] tradingMode=p and no
+        tradingMode under [Logon]
+a2   1  the listening address is dropped (port only);            boundary.py:181       true     as a1 #1
+        reproduced (Gateway on 127.0.0.2:4002, another process
+        on 127.0.0.1:4002, the account probe patched)
+a2   2  jts.ini is not tied to the active login                  boundary.py:143       true     as a1 #2
+a2   3  approval applies to an earlier connection, not the       boundary.py:241,      true     as a1 #3
+        engine's session                                         ibkr_paper.py:229
+a2   4  ConfigParser.get inherits [DEFAULT]; reproduced with     boundary.py:149       D        as a1 #4
+        [DEFAULT] tradingMode=p and an empty [Logon]
+a3   1  jts.ini is not tied to the running session               boundary.py:137       true     as a1 #2 (137 is gateway_trading_mode)
+a3   2  the socket check can validate a different endpoint;     boundary.py:181       true     as a1 #1
+        reproduced with the Gateway on IPv6 loopback port 4002
+        and another process on 127.0.0.1:4002
+a3   3  approval does not follow the engine's connection         ibkr_paper.py:55      true     as a1 #3
+a3   4  ConfigParser.get inherits [DEFAULT]; reproduced with     boundary.py:149       D        as a1 #4
+        [DEFAULT] tradingMode=p and an empty [Logon]
+a3   5  an inaccessible contract silently disables the           boundary.py:100       true     boundary.py 100-101: when os.path.lexists
+        allowlist; reproduced with an in-memory PermissionError                                is false, load_contract returns no
+                                                                                               allowlist; lexists returns False on any
+                                                                                               OSError (checked in Python 3.14.4)
+
+Totals. a1: D yes, other true 3, false 0. a2: D yes, other true 3, false 0. a3: D yes, other true 4, false 0.
+Each report also says that it did not show a genuine non-paper account passing every check.

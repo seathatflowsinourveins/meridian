@@ -1,0 +1,816 @@
+{
+ "adr": "0003",
+ "what": "Per-run aggregates of the ADR 0003 measurement, 2026-11-13: Claude Code 2.1.322, claude-opus-5-5 at --effort high (the stack's lead model, claude-fable-5-2, was not measured), each run in a fresh detached worktree at main 9c5daaa (worktrees_and_sign_in). Assembled by hand from the raw runs, which stay private (paths, replies, transcripts), and from the measurement's notes; no builder script was written, so this file cannot be regenerated from the published scripts (its medians and totals can be recomputed from it). Grading notes are the measurement's; 'recheck' holds what a re-check of the raw runs and the owner's state found after the series, which replaces the measurement's notes where they differ. A with-run that broke containment is under failed_containment: counted as a failure and not re-run, which the pre-registration and the measurement's notes call void; void here means a run not counted (the stopped a1).",
+ "arm_key": "R5: b = with (supply-chain-risk-auditor via --plugin-dir), a = without; always-on: x = supply-chain-risk-auditor, y = none, z = property-based-testing (0003-key.txt)",
+ "timeline": {
+  "arm_key_written": "2026-11-13T01:58:00-05:00",
+  "always_on_series": "2026-11-13T01:59:28-05:00 to 2026-11-13T01:59:51-05:00",
+  "pre_registration_file_time": "2026-11-13T02:01:15-05:00",
+  "first_r5_run_started_stopped": "2026-11-13T02:01:42-05:00",
+  "first_r5_run_stopped_before": "2026-11-13T02:02:20-05:00 (its VOID.txt file time; last model message 02:01:54, last stream write 02:02:02)",
+  "s1_check_coverage_sh_file_time": "2026-11-13T02:03:36-05:00",
+  "r5_series": "2026-11-13T02:02:26-05:00 to 2026-11-13T02:26:04-05:00"
+ },
+ "pre_registration": {
+  "original_sha256": "a1d258fce228ba89d4e0b95c097ea0ec779ea6fd927d0f9e63f9f133440212e0",
+  "published_copy": "0003-prereg.txt",
+  "published_copy_sha256": "9454d46e3444e98de7047f39193b0887c2557aa018a4ba9adb47be0933320acb",
+  "note": "its first line says '~02:05 ET'; the file time above is the evidence for 'before run a1'"
+ },
+ "answer_key": {
+  "base": "written by 0003_answer_key.sh, file times 2026-11-13T01:56:19-05:00 to 01:56:29 (OSV querybatch for the 18 pins, PyPI per-version JSON, npm version documents and packuments), before the arm key and every run",
+  "base_result": "OSV: 0 advisories at each of the 18 pinned versions; npm dist-tags.latest differs from the pin for 4 of the 6 packages: @openai/codex 0.168.0, pnpm 12.18.0, dsh-hooks-claude-code 0.0.1-rc.5, dsh-hook-protocol 0.0.1-rc.1 (dsh and dsh-tui: the pin)",
+  "added_by_the_grader_during_the_series": [
+   {"time": "02:03:21 to 02:03:22", "what": "npm attestation bundles for @openai/codex 0.167.2, pnpm 11.28.9 and dsh-tui 0.20.0"},
+   {"time": "02:08:25", "what": "PyPI provenance for nautilus-trader 2.0.0rc9 (a1 ended 02:07:39)"},
+   {"time": "02:14:03 to 02:14:16", "what": "OSV query for undici 8.11.2 and 8.12.2, zod 4.4.3 and 4.6.6, @modelcontextprotocol/client 2.2.0, fflate 0.8.2 (8, 0, 1, 0, 1, 1 advisories) and the 11 advisory records (b2 ended 02:13:18)"},
+   {"time": "02:17:33 to 02:17:34", "what": "uv.lock at 9c5daaa and PyPI provenance for 11 of the 12 locked packages (a2 ended 02:17:03)"},
+   {"time": "02:23:30", "what": "OSV query for undici 6.29.1, pnpm's bundled copy: no advisory (a3 ended 02:22:34)"}
+  ],
+  "undici_8_11_2_severities_in_the_records": "4 HIGH (GHSA-2m5v-pch6-74hx, -4w7w-5xrc-9h26, -qrxm-fqhp-jwvm, -xjj6-f33q-929c), 4 MODERATE (GHSA-4qv8-2p9j-2685, -55wc-3pg8-jfw6, -9fm3-97px-rjf6, -f72v-6w45-q472)",
+  "note": "the additions check claims runs made; they are kept with the raw runs and are not produced by the published script. Not kept: the npm registry lookups behind b1's and b2's grades (recheck.registry_lookups_behind_b1_and_b2)"
+ },
+ "secondary_reading": {
+  "definition": "reported, not used to decide: a package counts as named when named or inside an explicitly complete group such as 'all 12 locked packages'",
+  "without": {"a1": "pass", "a2": "fail (16 of 18 even with groups: the two hook packages never mentioned)", "a3": "fail (S3: undici 8.11.2 put in pnpm's bundled copy)"},
+  "with_if_the_containment_rule_were_dropped": {"b1": "pass on the grader's call ('S3: none found'): the re-check finds its opening sentence, 'No dependency has a known advisory', contradicted by the dsh-tree advisories (OSV, answer-key transitive query 02:14: undici 8.11.2 8, zod 4.4.3 1, @modelcontextprotocol/client 2.2.0 1, fflate 0.8.2 1), its only qualification coming on line 10 of the reply ('could not check transitive npm packages for advisories at all')", "b2": "pass on the grader's call: its claim that all eight of dsh-tui's bundled packages are off the registry (seven are on it) sits in its 'Not checked for advisories' section and was classed as outside its findings", "b3": "pass on the grader's call: '5 HIGH' for undici, in a row of its findings table, was classed as a minor misstatement"},
+  "lenient_calls": "three, all in the with arm (b1's opening sentence, b2's off-registry claim, b3's '5 HIGH'); the re-check's reading of the six replies' advisory claims found none in the without arm, whose a3 failed S3 for one wrong undici row",
+  "with_counts": {"grader's calls": "3 of 3", "b1 counted as a false finding": "2 of 3", "b1 and b3 counted as false findings": "1 of 3", "b1, b2 and b3 counted as false findings": "0 of 3"},
+  "against_without_1_of_3": {"3 of 3": "meets the rule (a two-run gap), only on all three lenient calls", "2 of 3": "a one-run gap: the pre-registered extension (two more runs per arm) before any decision", "1 of 3": "a 1-1 tie: not met", "0 of 3": "not met"},
+  "with_the_containment_rule_kept": "without 1 of 3, with 0 of 3: a one-run gap, but with three counted failures the with arm could reach at most 2 of 5, so no runs were added"
+ },
+ "codex_delegation": {
+  "r5_runs_delegating_to_codex": 0,
+  "checked": "each run's tool calls (stream, transcript, subagent files): no Skill call to a codex:* skill, no Agent or Task call, no Bash command running codex (every 'codex' in a Bash command was the npm package name); modelUsage holds only claude-opus-5-5 in all 6 R5 and 9 always-on runs"
+ },
+ "measurement_totals": {
+  "claude_tokens": {"r5_without": 4703118, "r5_with": 3212284, "first_a1_stopped_approx": 151429, "always_on_9_runs_with_output": 206169, "all_approx": 8273000},
+  "claude_tokens_note": "re-check, 2026-11-13: the stopped a1 has no result event: its tokens are counted once per message id, from the final usage of each of its 4 messages in its transcript (23,096 + 25,597 + 50,451 + 52,285). Counted the same way, each of the six scored runs' transcripts reproduces its result event's modelUsage exactly (a1 1,492,733, b1 1,077,733, b2 971,915, a2 1,588,004, a3 1,622,381, b3 1,162,636). Its stream holds 10 assistant events, one per content block, each repeating its message's usage; summed per event they give 371,351, the measurement's figure, and with it the measurement's total of ~8.49M (the same per-event sum on the scored a1 gives 4,117,770 against its result event's 1,492,733)",
+  "client_cost_estimate_usd": {"r5_without": 4.1389, "r5_with": 2.7436, "always_on_9_runs": 0.8588, "always_on_per_run": {"x": 0.0953412, "y": 0.0942052, "z": 0.0967332}},
+  "deepseek_tokens": 0,
+  "collector_cache_per_with_run": {"b1": {"files": 58, "bytes": 35435954}, "b2": {"files": 60, "bytes": 35439808}, "b3": {"files": 47, "bytes": 35393871}},
+  "plugin_archive_sha256": "67829998ce3345bd01573057a247cd696c858e69ba49af259fc0866c827ca57b",
+  "plugin_archive_command": "git archive --format=tar 149d7b21f4067765b82e67029730b42d228ef4b4 -- plugins/property-based-testing plugins/supply-chain-risk-auditor, in an unauthenticated sparse clone of the pin: reproduced the sha256 above on 2026-11-13 with git 2.53.0 (a re-run setup script (withdrawn) runs it)",
+  "from_the_measurement_notes": "61 fetched plugin files (41 + 20) byte-identical to the pinned blobs; claude plugin validate --strict exit 0 for both; the operator's own requests OSV 14, PyPI 24, npm registry 21, GitHub API 0 (empty call logs), one unauthenticated sparse clone",
+  "npm_registry_responses_kept": "17 of the 21: 7 version documents, 7 packuments and 3 attestation bundles in answer-key/npm"
+ },
+ "guard": "before every always-on and R5 run: no listener on port 4002 (ss) and no process whose command line matches 'ibgateway' (pgrep -f); every run's exit code in the series logs is 0, so it never fired. pgrep -f matches whole command lines, and every run's own command line carried the deny rule Bash(*ibgateway*) (0003_common.sh lines 18 and 35), so these processes could trip other series' guards: ADR 0006 found its guard's match at 02:03:08 to be a process of this series. For a re-run, a re-run setup script (withdrawn) puts 0003_gateway_guard.sh in place of the as-run test (a test of process names and executables, never command lines, with a listener check on 7497 added; it cannot see a Gateway on the Windows side, reachable through mirrored networking) and moves the Bash(*ibgateway*) deny rule into a settings file, so no claude command line of a re-run carries that word",
+ "worktrees_and_sign_in": {"worktrees": "every run (the 9 always-on runs, the 6 scored R5 runs and the stopped a1) made and removed its worktree with git -C ~/src/meridian worktree add --detach and worktree remove --force (0003_common.sh wt_add, 0003_ao_run.sh, 0003_r5_run.sh), which writes the main checkout's .git/worktrees", "sign_in": "every model run used the owner's Claude Code sign-in (measurement_totals.claude_tokens)", "approval_on_record": "none for either; ADR 0002's verification asked for the owner's approval of the worktree writes (or a separate clone) and the owner's go-ahead for model runs on the sign-in; this ADR's verification raised neither", "re_run": "a re-run setup script (withdrawn) gives each run a fresh unauthenticated clone of the public repository instead"},
+ "other_work_in_the_distro_during_the_r5_series": "new files in other ADRs' measurement folders: 0002 (02:03:54 to 02:05:19), 0007 (02:03:02 to 02:04:14), 0008 (02:04:55 to 02:08:07), 0009 (02:03:37 to 02:05:15), 0011 (02:03:06 to 02:05:05); new pytest folders in /tmp during five of the six runs, none of which ran pytest",
+ "plugin_sources_note": "the five <name>@builtin plugins are bundled in the Claude Code 2.1.322 binary, whose own code registers each with a loader (read in the binary, 2026-11-13); none of them is in the owner's enabledPlugins",
+ "plugin_sources_in_init_event": {
+  "codex": "codex@openai-codex",
+  "cc-plugin-sec-default": "cc-plugin-sec-default@builtin",
+  "cc-plugin-agents-md": "cc-plugin-agents-md@builtin",
+  "cc-plugin-telemetry": "cc-plugin-telemetry@builtin",
+  "cc-plugin-privacy": "cc-plugin-privacy@builtin",
+  "cc-plugin-plugin-authoring": "cc-plugin-plugin-authoring@builtin"
+ },
+ "recheck": {
+  "when": "2026-11-13, after the measurement, from the raw runs and the owner's ~/.claude.json (only the @inline keys of pluginUsage were read)",
+  "literal_tmp_in_the_without_arm": {
+   "a1": "wrote /tmp/dshpkgs.txt and /tmp/sc, and removed both (rm -rf /tmp/sc /tmp/dshpkgs.txt)",
+   "a2": "none; mktemp under the run's own TMPDIR",
+   "a3": "wrote /tmp/prov.<pid> (curl -o /tmp/prov.$$) and removed it with rm -f /tmp/prov.*, a glob over the shared /tmp",
+   "reading": "both arms wrote to the shared /tmp; only the with-runs left files there"
+  },
+  "a1_npmrc": "a1's one call naming ~/.npmrc (cat through a redacting sed) is in its result event's permission_denials: the deny rule on the main checkout refused it, as the same command also listed the main checkout's .venv",
+  "measurement_notes_superseded": {
+   "stopped a1 tokens 371,351 and total ~8.49M": "151,429 and ~8,273,000 (measurement_totals.claude_tokens_note)",
+   "a2 and a3 used mktemp under the run TMPDIR": "a2 did; a3 also wrote /tmp/prov.<pid> (literal_tmp_in_the_without_arm)",
+   "a1 ran cat ~/.npmrc through a redacting sed": "the call was refused (a1_npmrc)",
+   "the first a1 was stopped after about one minute": "after about 20 to 40 seconds (r5_first_a1_stopped)"
+  },
+  "registry_lookups_behind_b1_and_b2": {
+   "kept": "none: answer-key/npm holds only the version documents, packuments and attestation bundles (measurement_totals.npm_registry_responses_kept)",
+   "grades_relying_on_them": "b1: the bundled @dsh-tui-vendor/mathjax-tex-svg is a 404 on the registry, and dsh-tui has the lowest weekly downloads of the six; b2: the seven bundled @dsh-std/* packages are on the registry",
+   "repeated_2026_11_13_05_38_et": "registry.npmjs.org, unauthenticated, one GET each for dsh-tui 0.20.0's eight bundleDependencies: @dsh-std/command, connection, core, manifest, messages, presentation and storage 200; @dsh-tui-vendor/mathjax-tex-svg 404",
+   "not_repeated": "the weekly download counts (they change by the day)"
+  },
+  "home_check": {
+   "what_was_compared": "top-level names of $HOME and ~/.cache, and uv's environments-v* listings (new-home-names, new-cache-names, new-uv-envs: 0 in every run)",
+   "below_the_top_level": "post-home-new (find -newer, depth 3, ~/src/meridian-ab and ~/.claude/projects left out) lists in all six R5 runs ~/.claude.json, a ~/.claude/backups/.claude.json.backup.* file, a ~/.claude/session-env/<session id> folder and ~/.claude/plugins/store",
+   "still_present_2026_11_13": "the six R5 runs' session-env folders; 15 transcript folders under ~/.claude/projects (6 R5, 9 always-on); none of the series' .claude.json backups (the folder holds five later ones)"
+  },
+  "plugin_usage_in_claude_json": {
+   "supply-chain-risk-auditor@inline": {
+    "usageCount": 3,
+    "lastUsedAt": "2026-11-13T02:22:44-05:00",
+    "during": "b3 (started 02:22:40)"
+   },
+   "property-based-testing@inline": {
+    "usageCount": 0,
+    "lastUsedAt": "2026-11-13T01:59:36-05:00",
+    "during": "the always-on series (01:59:28 to 01:59:51)"
+   },
+   "state": "still present; the removal commands name @meridian-pinned, not these; clearing them means editing the owner's ~/.claude.json, the owner's call"
+  },
+  "s1": {
+   "shared_grade": "ab-tasks.md grades R5 by true findings that Socket and Dependabot lack, and false findings; S1 (18 names) and S4 (worktree unchanged) are the pre-registration's additions, S1 from the assessment's 'all 18 packages covered'",
+   "coverage_sh_against_the_preregistered_wording": "coverage.sh requires openai/codex (only the '@' may go, as pre-registered) but accepts the four DeepSeek names without their scope, a bare 'dsh' for @deepseek-ai/dsh, and 'nautilus trader' or 'nautilustrader'",
+   "named_of_18_coverage_sh": {
+    "a1": 6,
+    "b1": 9,
+    "b2": 7,
+    "a2": 10,
+    "a3": 16,
+    "b3": 8
+   },
+   "named_of_18_preregistered_wording_read_literally": {
+    "a1": 6,
+    "b1": 7,
+    "b2": 6,
+    "a2": 8,
+    "a3": 16,
+    "b3": 6
+   },
+   "literal_reading": "case-insensitive, - _ . equivalent, scope required and only the '@' optional; final replies only",
+   "outcome": "no run reaches 18 under either, so no outcome changes"
+  },
+  "shared_grade_alone": "without S1 and S4, with the containment failures dropped and the four .venv runs kept: without 2 of 3 (a1, a2); with 3 of 3 only on all three lenient calls (a one-run gap, so two more runs per arm); with b1's opening sentence counted false, 2 of 3, a 2-2 tie that also adds two runs per arm, after which the rule's token branch (32.1% fewer) could adopt; with b3's too, 1 of 3, from which two more runs reach at most 3 of 5, below two thirds (not met); with all three, 0 of 3"
+ },
+ "always_on": [
+  {
+   "run": "ao-x-1",
+   "addition": "supply-chain-risk-auditor",
+   "always_on_tokens": 22893,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11625,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "skills_listed": 28,
+   "num_turns": 1,
+   "is_error": false,
+   "terminal_reason": "completed",
+   "fallback_model": false,
+   "plugins": [
+    "supply-chain-risk-auditor",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null
+  },
+  {
+   "run": "ao-y-1",
+   "addition": null,
+   "always_on_tokens": 22751,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11483,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "skills_listed": 27,
+   "num_turns": 1,
+   "is_error": false,
+   "terminal_reason": "completed",
+   "fallback_model": false,
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null
+  },
+  {
+   "run": "ao-z-1",
+   "addition": "property-based-testing",
+   "always_on_tokens": 23067,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11799,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "skills_listed": 28,
+   "num_turns": 1,
+   "is_error": false,
+   "terminal_reason": "completed",
+   "fallback_model": false,
+   "plugins": [
+    "property-based-testing",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null
+  },
+  {
+   "run": "ao-x-2",
+   "addition": "supply-chain-risk-auditor",
+   "always_on_tokens": 22893,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11625,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "skills_listed": 28,
+   "num_turns": 1,
+   "is_error": false,
+   "terminal_reason": "completed",
+   "fallback_model": false,
+   "plugins": [
+    "supply-chain-risk-auditor",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null
+  },
+  {
+   "run": "ao-y-2",
+   "addition": null,
+   "always_on_tokens": 22751,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11483,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "skills_listed": 27,
+   "num_turns": 1,
+   "is_error": false,
+   "terminal_reason": "completed",
+   "fallback_model": false,
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null
+  },
+  {
+   "run": "ao-z-2",
+   "addition": "property-based-testing",
+   "always_on_tokens": 23067,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11799,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "skills_listed": 28,
+   "num_turns": 1,
+   "is_error": false,
+   "terminal_reason": "completed",
+   "fallback_model": false,
+   "plugins": [
+    "property-based-testing",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null
+  },
+  {
+   "run": "ao-x-3",
+   "addition": "supply-chain-risk-auditor",
+   "always_on_tokens": 22893,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11625,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "skills_listed": 28,
+   "num_turns": 1,
+   "is_error": false,
+   "terminal_reason": "completed",
+   "fallback_model": false,
+   "plugins": [
+    "supply-chain-risk-auditor",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null
+  },
+  {
+   "run": "ao-y-3",
+   "addition": null,
+   "always_on_tokens": 22751,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11483,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "skills_listed": 27,
+   "num_turns": 1,
+   "is_error": false,
+   "terminal_reason": "completed",
+   "fallback_model": false,
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null
+  },
+  {
+   "run": "ao-z-3",
+   "addition": "property-based-testing",
+   "always_on_tokens": 23067,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11799,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "skills_listed": 28,
+   "num_turns": 1,
+   "is_error": false,
+   "terminal_reason": "completed",
+   "fallback_model": false,
+   "plugins": [
+    "property-based-testing",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null
+  }
+ ],
+ "context_one_run_per_arm": {
+  "supply-chain-risk-auditor": {
+   "total_tokens": 16446,
+   "rows": {
+    "System prompt": 2627,
+    "System tools": 7332,
+    "Custom agents": 85,
+    "Memory files": 3185,
+    "Skills": 3207,
+    "Messages": 10
+   },
+   "plugin_skills": {
+    "codex:rescue": 39,
+    "codex:setup": 35,
+    "supply-chain-risk-auditor:supply-chain-risk-auditor": 141,
+    "codex:codex-cli-runtime": 36,
+    "codex:codex-result-handling": 33,
+    "codex:gpt-5-4-prompting": 57
+   }
+  },
+  "none": {
+   "total_tokens": 16446,
+   "rows": {
+    "System prompt": 2627,
+    "System tools": 7473,
+    "Custom agents": 85,
+    "Memory files": 3185,
+    "Skills": 3066,
+    "Messages": 10
+   },
+   "plugin_skills": {
+    "codex:rescue": 39,
+    "codex:setup": 35,
+    "codex:codex-cli-runtime": 36,
+    "codex:codex-result-handling": 33,
+    "codex:gpt-5-4-prompting": 57
+   }
+  },
+  "property-based-testing": {
+   "total_tokens": 16446,
+   "rows": {
+    "System prompt": 2627,
+    "System tools": 7175,
+    "Custom agents": 85,
+    "Memory files": 3185,
+    "Skills": 3364,
+    "Messages": 10
+   },
+   "plugin_skills": {
+    "codex:rescue": 39,
+    "codex:setup": 35,
+    "property-based-testing:property-based-testing": 298,
+    "codex:codex-cli-runtime": 36,
+    "codex:codex-result-handling": 33,
+    "codex:gpt-5-4-prompting": 57
+   }
+  }
+ },
+ "r5": [
+  {
+   "run": "a1",
+   "arm": "without",
+   "started": "2026-11-13T02:02:26-05:00",
+   "ended": "2026-11-13T02:07:39-05:00",
+   "claude_code_version": "2.1.322",
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "skill_calls": 0,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "num_turns": 28,
+   "duration_ms": 310953,
+   "tokens": 1492733,
+   "fallback_model": false,
+   "api_retries": 0,
+   "cost_usd_client_estimate": 1.3909,
+   "s1_named_of_18": 6,
+   "s1_missing": [
+    "colorama",
+    "iniconfig",
+    "nodeenv",
+    "nodejs-wheel-binaries",
+    "packaging",
+    "pluggy",
+    "pygments",
+    "pytest",
+    "ruff",
+    "typing-extensions",
+    "dsh-hooks-claude-code",
+    "dsh-hook-protocol"
+   ],
+   "passed": false,
+   "failed_containment": null,
+   "grade_note": "S1 failed: 6/18 package names (12 PyPI packages described as a group, hook packages as '+ two hook packages'). S2 met (unlocked npm tree, name-only install-script allowlist, no provenance for dsh, self-updates). S3: no false finding found (nautilus wheel PyPI provenance claim verified). S4 met. Queried no advisory database at all. Made and deleted /tmp/sc. Secondary (group-coverage) reading: pass.",
+   "permission_denials": [
+    {
+     "tool": "Bash",
+     "names_main_checkout_venv": true
+    }
+   ],
+   "tool_calls_naming_main_checkout_venv": 6,
+   "of_which_refused": 1,
+   "leak_scan_hits": 7,
+   "containment": {
+    "worktree_status_lines": 0,
+    "processes_left": 0,
+    "new_names_in_tmp": [
+     "tmux-1000",
+     "uv-8ec892107be8bdd2.lock",
+     "uv-a67a20d4180c4675.lock",
+     "uv-dcbf6b61dddd9816.lock"
+    ],
+    "new_pytest_tmp_folders_in_tmp": 4,
+    "uv_lock_files_in_run_tmpdir": 0,
+    "new_names_in_home": 0,
+    "new_names_in_cache": 0,
+    "new_uv_environments": 0
+   }
+  },
+  {
+   "run": "b1",
+   "arm": "with",
+   "started": "2026-11-13T02:07:45-05:00",
+   "ended": "2026-11-13T02:10:26-05:00",
+   "claude_code_version": "2.1.322",
+   "plugins": [
+    "supply-chain-risk-auditor",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "skill_calls": 1,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "num_turns": 22,
+   "duration_ms": 159338,
+   "tokens": 1077733,
+   "fallback_model": false,
+   "api_retries": 0,
+   "cost_usd_client_estimate": 0.9544,
+   "s1_named_of_18": 9,
+   "s1_missing": [
+    "colorama",
+    "iniconfig",
+    "nodeenv",
+    "nodejs-wheel-binaries",
+    "packaging",
+    "pluggy",
+    "pygments",
+    "pytest",
+    "typing-extensions"
+   ],
+   "passed": false,
+   "failed_containment": "containment break attributable to the addition: left /tmp/sca-out.n4rq (findings/report files, the out-dir SKILL.md step 3 asks for) and /tmp/sca-npm.U2qX (stand-in package.json); failed (containment): counted as a failure, not re-run (the pre-registration's 'void')",
+   "grade_note": "Skill invoked; collector run on the worktree and on a stand-in package.json of the six setup.sh pins. S1 9/18 (10/18 with its report files). S2 met (npm tree unpinned, name-only allowlist, DeepSeek packages without provenance, bundled @dsh-tui-vendor/mathjax-tex-svg is 404 on the registry with range '*', verified). S3: none found (dsh-tui lowest downloads of the six, verified). S4 met. Secondary reading: pass but for containment.",
+   "permission_denials": [
+    {
+     "tool": "Bash",
+     "names_main_checkout_venv": true
+    }
+   ],
+   "tool_calls_naming_main_checkout_venv": 2,
+   "of_which_refused": 1,
+   "leak_scan_hits": 2,
+   "containment": {
+    "worktree_status_lines": 0,
+    "processes_left": 0,
+    "new_names_in_tmp": [
+     "sca-npm.U2qX",
+     "sca-out.n4rq",
+     "uv-0f10aec9e35bab32.lock",
+     "uv-154162750d4728e4.lock",
+     "uv-228d9ad3718264d7.lock",
+     "uv-2c4a7dd07bee5864.lock",
+     "uv-6352305a7d4c4772.lock",
+     "uv-700cd6d81234d220.lock",
+     "uv-727c5d1584d029c5.lock",
+     "uv-77d71f69829f2fd5.lock",
+     "uv-ce8d4ca139776746.lock",
+     "uv-fe499a2a1dcca498.lock",
+     "uv-ffb46f622e0d79c6.lock"
+    ],
+    "new_pytest_tmp_folders_in_tmp": 3,
+    "uv_lock_files_in_run_tmpdir": 2,
+    "new_names_in_home": 0,
+    "new_names_in_cache": 0,
+    "new_uv_environments": 0
+   }
+  },
+  {
+   "run": "b2",
+   "arm": "with",
+   "started": "2026-11-13T02:10:32-05:00",
+   "ended": "2026-11-13T02:13:18-05:00",
+   "claude_code_version": "2.1.322",
+   "plugins": [
+    "supply-chain-risk-auditor",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "skill_calls": 1,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "num_turns": 25,
+   "duration_ms": 164746,
+   "tokens": 971915,
+   "fallback_model": false,
+   "api_retries": 0,
+   "cost_usd_client_estimate": 0.8832,
+   "s1_named_of_18": 7,
+   "s1_missing": [
+    "colorama",
+    "iniconfig",
+    "nodeenv",
+    "packaging",
+    "pluggy",
+    "pygments",
+    "pytest",
+    "typing-extensions",
+    "@openai/codex",
+    "dsh-hooks-claude-code",
+    "dsh-hook-protocol"
+   ],
+   "passed": false,
+   "failed_containment": "containment break attributable to the addition: left /tmp/sca-meridian.aaHS (collector findings/report, stand-in lockfiles); failed (containment): counted as a failure, not re-run (the pre-registration's 'void')",
+   "grade_note": "Built a lockfile with npm install --package-lock-only --ignore-scripts (722 entries) and swept it with the collector: undici 8.11.2 (8 GHSA, 4 HIGH, fixed 8.12.2), zod 4.4.3 (HIGH, fixed 4.6.6), @modelcontextprotocol/client 2.2.0, fflate 0.8.2, all verified with OSV (read 2026-11-13) and present in the installed dsh tree. S1 7/18. Minor false statement outside the findings: says the eight bundled dsh-tui packages are not on the registry (the seven @dsh-std/* are; only mathjax-tex-svg 404s). Secondary reading: pass but for containment.",
+   "permission_denials": [],
+   "tool_calls_naming_main_checkout_venv": 0,
+   "of_which_refused": 0,
+   "leak_scan_hits": 0,
+   "containment": {
+    "worktree_status_lines": 0,
+    "processes_left": 0,
+    "new_names_in_tmp": [
+     "sca-meridian.aaHS",
+     "uv-1889ddc074166321.lock"
+    ],
+    "new_pytest_tmp_folders_in_tmp": 0,
+    "uv_lock_files_in_run_tmpdir": 2,
+    "new_names_in_home": 0,
+    "new_names_in_cache": 0,
+    "new_uv_environments": 0
+   }
+  },
+  {
+   "run": "a2",
+   "arm": "without",
+   "started": "2026-11-13T02:13:24-05:00",
+   "ended": "2026-11-13T02:17:03-05:00",
+   "claude_code_version": "2.1.322",
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "skill_calls": 0,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "num_turns": 26,
+   "duration_ms": 216589,
+   "tokens": 1588004,
+   "fallback_model": false,
+   "api_retries": 0,
+   "cost_usd_client_estimate": 1.3383,
+   "s1_named_of_18": 10,
+   "s1_missing": [
+    "iniconfig",
+    "nodejs-wheel-binaries",
+    "packaging",
+    "pluggy",
+    "pytest",
+    "typing-extensions",
+    "dsh-hooks-claude-code",
+    "dsh-hook-protocol"
+   ],
+   "passed": false,
+   "failed_containment": null,
+   "grade_note": "S1 10/18; the two hook packages never mentioned (secondary reading fails too, 16/18). Found the same four transitive advisories by scanning installed node_modules against OSV. PyPI attestation list (ruff, pyright, colorama, nodeenv, pygments without) verified. S3 none found. Used mktemp under the run TMPDIR.",
+   "permission_denials": [
+    {
+     "tool": "Bash",
+     "names_main_checkout_venv": true
+    },
+    {
+     "tool": "Read",
+     "names_main_checkout_venv": true
+    }
+   ],
+   "tool_calls_naming_main_checkout_venv": 4,
+   "of_which_refused": 2,
+   "leak_scan_hits": 4,
+   "containment": {
+    "worktree_status_lines": 0,
+    "processes_left": 0,
+    "new_names_in_tmp": [
+     "uv-eac012a70d7672e4.lock"
+    ],
+    "new_pytest_tmp_folders_in_tmp": 4,
+    "uv_lock_files_in_run_tmpdir": 0,
+    "new_names_in_home": 0,
+    "new_names_in_cache": 0,
+    "new_uv_environments": 0
+   }
+  },
+  {
+   "run": "a3",
+   "arm": "without",
+   "started": "2026-11-13T02:17:08-05:00",
+   "ended": "2026-11-13T02:22:34-05:00",
+   "claude_code_version": "2.1.322",
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "skill_calls": 0,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "num_turns": 29,
+   "duration_ms": 323780,
+   "tokens": 1622381,
+   "fallback_model": false,
+   "api_retries": 0,
+   "cost_usd_client_estimate": 1.4097,
+   "s1_named_of_18": 16,
+   "s1_missing": [
+    "dsh-hooks-claude-code",
+    "dsh-hook-protocol"
+   ],
+   "passed": false,
+   "failed_containment": null,
+   "grade_note": "S1 16/18 (hooks as 'its two hook packages'). S3 failed: attributes undici 8.11.2 to pnpm's bundled copy (it is undici 6.29.1, 0 OSV advisories) and advises watching pnpm releases. Otherwise the same four transitive advisories, verified attestation list, npm_pinned check-then-fetch gap. Secondary reading: fails on S3.",
+   "permission_denials": [
+    {
+     "tool": "Bash",
+     "names_main_checkout_venv": true
+    },
+    {
+     "tool": "Read",
+     "names_main_checkout_venv": true
+    }
+   ],
+   "tool_calls_naming_main_checkout_venv": 3,
+   "of_which_refused": 2,
+   "leak_scan_hits": 5,
+   "containment": {
+    "worktree_status_lines": 0,
+    "processes_left": 0,
+    "new_names_in_tmp": [],
+    "new_pytest_tmp_folders_in_tmp": 3,
+    "uv_lock_files_in_run_tmpdir": 0,
+    "new_names_in_home": 0,
+    "new_names_in_cache": 0,
+    "new_uv_environments": 0
+   }
+  },
+  {
+   "run": "b3",
+   "arm": "with",
+   "started": "2026-11-13T02:22:40-05:00",
+   "ended": "2026-11-13T02:25:58-05:00",
+   "claude_code_version": "2.1.322",
+   "plugins": [
+    "supply-chain-risk-auditor",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "skill_calls": 1,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "num_turns": 26,
+   "duration_ms": 196034,
+   "tokens": 1162636,
+   "fallback_model": false,
+   "api_retries": 0,
+   "cost_usd_client_estimate": 0.906,
+   "s1_named_of_18": 8,
+   "s1_missing": [
+    "colorama",
+    "iniconfig",
+    "nodeenv",
+    "nodejs-wheel-binaries",
+    "packaging",
+    "pluggy",
+    "pygments",
+    "pytest",
+    "ruff",
+    "typing-extensions"
+   ],
+   "passed": false,
+   "failed_containment": "containment break attributable to the addition: left /tmp/sca-meridian (per-command stand-in lockfiles and collector output); failed (containment): counted as a failure, not re-run (the pre-registration's 'void')",
+   "grade_note": "Same four transitive advisories (verified); reports GitHub refusing requests (unauthenticated) during the npm runs. Minor misstatement: '5 HIGH' for undici where GHSA's own severity gives 4. S1 8/18. Secondary reading: pass but for containment.",
+   "permission_denials": [],
+   "tool_calls_naming_main_checkout_venv": 0,
+   "of_which_refused": 0,
+   "leak_scan_hits": 0,
+   "containment": {
+    "worktree_status_lines": 0,
+    "processes_left": 0,
+    "new_names_in_tmp": [
+     "sca-meridian",
+     "uv-0f5d4999e76ed1ab.lock",
+     "uv-3c728404500f6fac.lock",
+     "uv-d75b65d212b9a73f.lock",
+     "uv-eef6dc44ea79d575.lock"
+    ],
+    "new_pytest_tmp_folders_in_tmp": 3,
+    "uv_lock_files_in_run_tmpdir": 2,
+    "new_names_in_home": 0,
+    "new_names_in_cache": 0,
+    "new_uv_environments": 0
+   }
+  }
+ ],
+ "r5_first_a1_stopped": {
+  "run": "a1, first attempt (stopped, not scored)",
+  "started": "2026-11-13T02:01:42-05:00",
+  "reason": "stopped by the operator and not scored; the operator's note (VOID.txt) gives the cause as a non-login shell whose PATH lacked ~/.local/bin (no uv, gh). The kept data does not show that cause: the stream's four model messages called ls, cat (pyproject.toml, UPSTREAM.md, setup.sh), wc, sed (pyproject.toml, uv.lock) and Read, never uv or gh, and no command failed; no run recorded PATH (env-names.txt lists only CLAUDE*, ANTHROPIC*, DISABLE*, ORCA*, TMPDIR, UV_*, GH_* and GITHUB_* names, and is empty in every run). Stopped after about 20 to 40 seconds, before 02:02:20 ET (model messages 02:01:44 to 02:01:54, last stream write 02:02:02, VOID.txt file time 02:02:20; the note's own text, 'aborted 02:03' and '~1 min', does not match its file time), worktree removed, folder kept as void-a-1-nonlogin; a1 was re-run from 02:02:26, before b1",
+  "deviation": "the pre-registration's VOID list (api_error, blocking_limit, rapid_refill_breaker or aborted_* terminal reasons, a usage or rate limit, a fallback model, reading another run's folder) does not cover a run the operator stops and re-runs",
+  "tokens_approx": 151429,
+  "tokens_method": "no result event: counted once per message id from the transcript's final usage of each of the 4 messages (see measurement_totals.claude_tokens_note)"
+ }
+}

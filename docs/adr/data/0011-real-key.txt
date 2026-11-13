@@ -1,0 +1,4 @@
+ADR 0011, real task R2 on DeepSeek Harness: arm key
+with the addition (dsh-goalloop-agentteams 0.9.2 at ea48118, plus its stamped contract in the worktree): profile ab-0011-b, runs b1 b2 b3
+without: profile ab-0011-a, runs a1 a2 a3
+drawn 2026-11-13T13:55:32Z in the distro with: python3 -I -c "import secrets; print(secrets.choice('ab'))"

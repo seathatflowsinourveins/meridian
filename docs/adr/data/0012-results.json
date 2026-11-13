@@ -1,0 +1,463 @@
+{
+ "adr": "0012",
+ "what": "Aggregate figures behind ADR 0012's always-on series (3 probes per arm, 2026-11-13 04:08 to 04:09 ET). The real task R2, run 2026-11-13 09:02 to 09:13 ET, is in 0012-real-results.json. Raw captures, streams, session logs and config dumps hold local paths and stay on the owner's machine.",
+ "written": "2026-11-13T04:40:00-05:00",
+ "revised": "2026-11-13 after the real-task series: the never-run R2 protocol (part C of 0012-prereg.txt), its scripts, the load-check scripts and the always-on run drivers (which built run trees from a full clone) were removed, and commit ids that are not on the public remote were removed",
+ "candidate": {
+  "repository": "https://github.com/pf-sjtu/dsh-early-stop-guard",
+  "commit": "71c2f93be2645351424d2730998f3fa88f432f3f",
+  "tree": "7b62f331044d815b92f1f299b2f163f0fdbd08eb",
+  "package_json_version": "0.1.0",
+  "pin_check": "still HEAD and the only ref (unauthenticated git ls-remote, 2026-11-13 04:08 ET)",
+  "measured_package": "git archive of the commit holding package.json and its files list (13 files), sha256 34184aacfed6eb831fa5fb3b7460fc368149b450e28cb5469404b7767ab8e2fe; pnpm integrity sha512-hbd2Nxli0WfgHdkI+4AsCZ3uNIGO4H6A4HivAz5Nm4s9KjGxg26myiuBz3Ap9l5ILzZsjDPSqNx1scoNJyTg1w== (the same in both series)",
+  "registry_packages_added": [
+   "@deepseek-ai/schemastery 3.19.0",
+   "@deepseek-ai/cosmokit 1.9.0 (second copy)",
+   "@standard-schema/spec 1.1.0 (second copy)"
+  ],
+  "peers": "not installed (dsh profiles set autoInstallPeers false); pnpm printed an unmet-peer warning; the guard loaded anyway (always_on.guard_load_check)"
+ },
+ "runtime": {
+  "dsh": "0.2.2-rc.1, gated with dsh --version before every run and recorded per run",
+  "node": "v24.22.3",
+  "pnpm": "11.28.9",
+  "bubblewrap": "0.11.1",
+  "profiles": "ab-a (without) and ab-b (with), both from dsh's headless template in a scratch DSH_HOME",
+  "model_as_sent": {
+   "model": "deepseek-flash",
+   "max_tokens": 256000,
+   "thinking": {
+    "type": "enabled"
+   },
+   "output_config": {
+    "effort": "max"
+   },
+   "stream": true
+  },
+  "permission": "--permission-mode danger-full-access --approval-policy never in both arms (ab-dsh.md)"
+ },
+ "tokenizer": {
+  "encoding": "o200k_base (OpenAI's vocabulary, a proxy: DeepSeek's tokenizer differs)",
+  "vocab_sha256": "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d",
+  "counter": "0012_count_tokens.py",
+  "counter_sha256": "a8dcf1e4dedd1ded41652e6b3a3291094279b4857cf0d6c1e3ea587bc80f7502",
+  "self_test": "OK",
+  "provider_tokens": "none: no request reached DeepSeek"
+ },
+ "always_on": {
+  "method": "0012-prereg.txt part B. Each run: a fresh worktree at 96e82e6 with 39cb68e's tests/ from an unauthenticated scratch clone; bwrap --unshare-net (loopback only); a capture stub on 127.0.0.1 that records the request (credential headers redacted) and answers 400; dsh with a placeholder key and DEEPSEEK_BASE_URL at the stub, scratch HOME, DSH_HOME and DSH_AGENTS_HOME, TMPDIR per run, DSH_TELEMETRY_DISABLED=1, env -u DSH_PERMISSION_MODE -u DEEPSEEK_API_KEY -u DSH_SYSTEM_PROMPT, timeout 300 s. The owner's key was never read. Prompt = system text + tools as wire JSON (compact, key order as sent) + message texts of the first POST */v1/messages, counted offline.",
+  "counting_basis": "prompt_tokens (5,835) and every delta here count the first request's prompt texts: system text, tools as wire JSON (compact, key order as sent) and message texts, the probe's 13 tokens included (5,823 without the probe text); ADR 0011's 5,825 is on the same basis. raw_body_tokens (6,013) count the whole JSON body of 27,449 bytes as one string, escapes included, the basis of ADR 0009's 6,003 (27,428 bytes) and of 0011's raw figure.",
+  "probe": {
+   "file": "0012-probe.txt",
+   "sha256": "8013cab46f99ff3a9ae167ef2b99843db315eb5c7980e7155e4b321f7c5dcdfd",
+   "chars": 54,
+   "tokens": 13
+  },
+  "arm_key": "0012-key.txt: b = with, a = without",
+  "order": [
+   "a1'",
+   "b1",
+   "b2",
+   "a2",
+   "a3",
+   "b3"
+  ],
+  "runs": [
+   {
+    "run": "a1'",
+    "arm": "without",
+    "guard": "2026-11-13T04:08:43-05:00 gateway down",
+    "exit": 1,
+    "final_reason": "error INVALID_REQUEST (400 from the stub)",
+    "steps": 1,
+    "tool_calls": 0,
+    "requests": 1,
+    "duration_ms": 1810,
+    "body_bytes": 27449,
+    "prompt_tokens": 5835,
+    "raw_body_tokens": 6013,
+    "billed_tokens": 0,
+    "containment_ok": true,
+    "void": false
+   },
+   {
+    "run": "b1",
+    "arm": "with",
+    "guard": "2026-11-13T04:08:56-05:00 gateway down",
+    "exit": 1,
+    "final_reason": "error INVALID_REQUEST (400 from the stub)",
+    "steps": 1,
+    "tool_calls": 0,
+    "requests": 1,
+    "duration_ms": 1812,
+    "body_bytes": 27449,
+    "prompt_tokens": 5835,
+    "raw_body_tokens": 6013,
+    "billed_tokens": 0,
+    "containment_ok": true,
+    "void": false
+   },
+   {
+    "run": "b2",
+    "arm": "with",
+    "guard": "2026-11-13T04:09:06-05:00 gateway down",
+    "exit": 1,
+    "final_reason": "error INVALID_REQUEST (400 from the stub)",
+    "steps": 1,
+    "tool_calls": 0,
+    "requests": 1,
+    "duration_ms": 1812,
+    "body_bytes": 27449,
+    "prompt_tokens": 5835,
+    "raw_body_tokens": 6013,
+    "billed_tokens": 0,
+    "containment_ok": true,
+    "void": false
+   },
+   {
+    "run": "a2",
+    "arm": "without",
+    "guard": "2026-11-13T04:09:14-05:00 gateway down",
+    "exit": 1,
+    "final_reason": "error INVALID_REQUEST (400 from the stub)",
+    "steps": 1,
+    "tool_calls": 0,
+    "requests": 1,
+    "duration_ms": 1712,
+    "body_bytes": 27449,
+    "prompt_tokens": 5835,
+    "raw_body_tokens": 6013,
+    "billed_tokens": 0,
+    "containment_ok": true,
+    "void": false
+   },
+   {
+    "run": "a3",
+    "arm": "without",
+    "guard": "2026-11-13T04:09:21-05:00 gateway down",
+    "exit": 1,
+    "final_reason": "error INVALID_REQUEST (400 from the stub)",
+    "steps": 1,
+    "tool_calls": 0,
+    "requests": 1,
+    "duration_ms": 1710,
+    "body_bytes": 27449,
+    "prompt_tokens": 5835,
+    "raw_body_tokens": 6013,
+    "billed_tokens": 0,
+    "containment_ok": true,
+    "void": false
+   },
+   {
+    "run": "b3",
+    "arm": "with",
+    "guard": "2026-11-13T04:09:29-05:00 gateway down",
+    "exit": 1,
+    "final_reason": "error INVALID_REQUEST (400 from the stub)",
+    "steps": 1,
+    "tool_calls": 0,
+    "requests": 1,
+    "duration_ms": 1811,
+    "body_bytes": 27449,
+    "prompt_tokens": 5835,
+    "raw_body_tokens": 6013,
+    "billed_tokens": 0,
+    "containment_ok": true,
+    "void": false
+   }
+  ],
+  "without_runs": [
+   5835,
+   5835,
+   5835
+  ],
+  "with_runs": [
+   5835,
+   5835,
+   5835
+  ],
+  "median_without": 5835,
+  "median_with": 5835,
+  "delta": 0,
+  "delta_share_of_without": "0 %",
+  "delta_share_of_agents_md_main": "0 of 2,159 tokens",
+  "voids": 0,
+  "identity": "One sha256 per part across all six runs once the run's working directory is replaced by '<RUN>': system 90dcab5e7001b05f8005523d6e484bb52d20f014248eaf0c2a6bad47ce288086, tools d45ce9636b4775c5c9941269f5028381adfb66a7c04dfbe98ef53927b42a8a46, user message ca6005edcf812f72c6e67aafc6b7615c79b490b97d504521cdbdcc4fd6727218, other fields 9735194ce81f3326c0a43e75fd578ca37915fd5c649cdd3505739fb307bd193a, whole body b9db4f6d91f35222513fb7345b0a2a3da9e850c67bbc45809a3e05ce6224ffac. The six raw bodies have six different sha256, because each holds its own worktree name (ab-0012-<arm letter>-c<n>); the names were of equal length, so the raw counts are identical.",
+  "parts": {
+   "body": {
+    "bytes": 27449,
+    "tokens_counted_whole": 6013,
+    "note": "the whole JSON body, escapes included"
+   },
+   "system_prompt": {
+    "chars": 2222,
+    "bytes": 2236,
+    "tokens": 449
+   },
+   "tools": {
+    "count": 22,
+    "wire_json_chars": 18583,
+    "wire_json_bytes": 18621,
+    "tokens": 3857,
+    "goal_tools_chars": 1737,
+    "goal_tools_tokens": 338,
+    "goal_tools": "create_goal 110, get_goal 36, update_goal 192"
+   },
+   "user_message": {
+    "chars": 6183,
+    "bytes": 6185,
+    "tokens": 1529,
+    "blocks": [
+     {
+      "what": "the probe",
+      "chars": 54,
+      "bytes": 54,
+      "tokens": 13
+     },
+     {
+      "what": "dsh's agent-instructions message: AGENTS.md at 96e82e6 (5,299 bytes) and CLAUDE.md's '@AGENTS.md' in dsh's wrapper",
+      "chars": 5646,
+      "bytes": 5646,
+      "tokens": 1419
+     },
+     {
+      "what": "dsh's runtime context, holding the run's 59-character working directory",
+      "chars": 481,
+      "bytes": 483,
+      "tokens": 97
+     }
+    ],
+    "note": "blocks joined with a newline, so 54 + 5,646 + 481 + 2 = 6,183 characters"
+   },
+   "prompt_chars": 26988,
+   "prompt_chars_note": "2,222 + 18,583 + 6,183, the three counted parts",
+   "prompt_tokens": 5835,
+   "prompt_tokens_without_probe": 5823,
+   "prompt_tokens_without_probe_note": "449 + 3,857 + 1,517, the user message without the probe block",
+   "prompt_tokens_cwd_normalized": 5812
+  },
+  "per_tool": [
+   {
+    "name": "bash",
+    "chars": 2282,
+    "tokens": 474
+   },
+   {
+    "name": "create_goal",
+    "chars": 579,
+    "tokens": 110
+   },
+   {
+    "name": "edit",
+    "chars": 1153,
+    "tokens": 235
+   },
+   {
+    "name": "get_goal",
+    "chars": 172,
+    "tokens": 36
+   },
+   {
+    "name": "glob",
+    "chars": 752,
+    "tokens": 164
+   },
+   {
+    "name": "grep",
+    "chars": 704,
+    "tokens": 153
+   },
+   {
+    "name": "interrupt_agent",
+    "chars": 516,
+    "tokens": 102
+   },
+   {
+    "name": "job_kill",
+    "chars": 372,
+    "tokens": 78
+   },
+   {
+    "name": "job_list",
+    "chars": 170,
+    "tokens": 38
+   },
+   {
+    "name": "job_output",
+    "chars": 617,
+    "tokens": 129
+   },
+   {
+    "name": "list_agents",
+    "chars": 663,
+    "tokens": 134
+   },
+   {
+    "name": "read",
+    "chars": 440,
+    "tokens": 100
+   },
+   {
+    "name": "read_image",
+    "chars": 391,
+    "tokens": 82
+   },
+   {
+    "name": "send_message",
+    "chars": 529,
+    "tokens": 113
+   },
+   {
+    "name": "skill",
+    "chars": 334,
+    "tokens": 69
+   },
+   {
+    "name": "subagent",
+    "chars": 1163,
+    "tokens": 229
+   },
+   {
+    "name": "subagent_fork",
+    "chars": 1270,
+    "tokens": 252
+   },
+   {
+    "name": "todo_write",
+    "chars": 858,
+    "tokens": 184
+   },
+   {
+    "name": "update_goal",
+    "chars": 986,
+    "tokens": 192
+   },
+   {
+    "name": "workflow",
+    "chars": 3391,
+    "tokens": 739
+   },
+   {
+    "name": "working_directory",
+    "chars": 362,
+    "tokens": 69
+   },
+   {
+    "name": "write",
+    "chars": 856,
+    "tokens": 175
+   }
+  ],
+  "config_dumps": "dsh --dump-config of both arms with the overlay differ by exactly one inserted row, early-stop-guard with the session-model-only providers setting (a 17-line diff); both show the uploads off, otel DISABLED and tool-plugin-manager disabled; neither has an orca row (the scratch home has no home patch)",
+  "guard_load_check": {
+   "runs": "diag-b (with, guard 04:10:58 gateway down) and diag-a (without, guard 04:11:06 gateway down), after the series, excluded from the medians",
+   "method": "the same capture setup plus NODE_OPTIONS=--import=<a trace module, not published>, which notes module loads and readFile calls whose path names the guard",
+   "with": "9 modules of the guard's lib/ loaded: index, config, decide, events, heuristics, providers, summary, logs, secrets (not the browser-only client.js); one readFile of <scratch home>/.dsh/early-stop-guard/events.jsonl (apply() hydrating its log; the file did not exist and was not created)",
+   "without": "no guard module loaded",
+   "request": "both: 27,449 bytes, 5,835 tokens, the same normalized body sha256 as the six series runs",
+   "series_runs": "the three measured with-arm runs hold no trace of the guard in their stream or stderr (no match for early-stop); that it loaded in them is inferred from the same profile, overlay and setup, not observed"
+  },
+  "comparison_adr_0011": "0011-results.json, without arm at the same base and overlay: 5,825 tokens, system 449, tools 3,857 (same), user message 6,162 characters; the +10 here comes from a working directory 21 characters longer",
+  "first_series_superseded": {
+   "run": "a1, 2026-11-13 01:58 ET, without arm: exit 1 MISSING_CREDENTIAL before any request, 1 step, 0 tokens, 1.71 s",
+   "figure": "26,931 bytes; 5,784 tokens for the concatenation (5,785 summing the parts), read from dsh's session log, not the wire: it re-serializes the tools (18,577 bytes, 3,824 tokens against 18,583 characters, 3,857 tokens as sent) and leaves out the probe text",
+   "why_superseded": "another capture method; the probe script was also edited after this probe (mtime 01:59:25)"
+  }
+ },
+ "conditional_costs_from_source": {
+  "source": "the re-check's counts from the code at the pin (o200k_base); not exercised in any run: the probes ended before any assistant step, so the guard had nothing to judge",
+  "steer": {
+   "chars": 106,
+   "bytes": 314,
+   "tokens": 79,
+   "share_of_first_request": "1.4 % of 5,835",
+   "share_of_agents_md_main": "3.7 % of 2,159",
+   "max_per_turn": 3
+  },
+  "judge_system_prompt": {
+   "chars": 682,
+   "tokens": 167
+  },
+  "judge_state_r2_example": {
+   "chars": 628,
+   "tokens": 181
+  },
+  "judge_state_cap": {
+   "chars": 4018,
+   "tokens_synthetic_example": 1421,
+   "tokens_estimated_chinese": "about 3,000 (4,018 characters at 1.34 per token, the steer's ratio)"
+  },
+  "judge_output_cap_tokens": 600,
+  "judge_timeout_s": 20,
+  "r2_judge_charge_estimate_tokens": 3766
+ },
+ "baseline_agents_md": {
+  "commit": "9c5daaae9d32acf259f965fd7b95b458604503b6",
+  "chars": 8318,
+  "tokens": 2159
+ },
+ "real_task_r2": "see 0012-real-results.json",
+ "rule": {
+  "always_on_criterion": "met: 0 tokens in the series; the guard's loading was shown by the separate load check with the same profile and setup",
+  "real_task": "the rule of 0012-real-prereg.txt and its result are in 0012-real-results.json"
+ },
+ "first_series_stop": "The first series stopped at 01:59 ET before its second probe. Its guard, pgrep -f ibgateway, matched a concurrent Claude Code measurement whose command line carried the deny rule Bash(*ibgateway*); port 4002 had no listener and no Gateway process ran: a false alarm. The second series used 0012_gateway_guard.sh, which matches process names and executables, never command lines.",
+ "cost": {
+  "deepseek_tokens_billed": 0,
+  "network_outside_the_sandbox": "setup only: unauthenticated git clone and ls-remote of the guard's repository, unauthenticated clone of this repository, the npm registry through dsh plugin add (and pnpm's own update check)",
+  "github_rest_calls": 0,
+  "github_graphql_calls": 0,
+  "claude_code_agents_started": 0
+ },
+ "containment": "Every run: the run's worktree status unchanged with 0 untracked files; the main checkout's status and worktree list unchanged, none of its worktrees from this series; no new names in the home folder, /tmp, ~/.dsh or the scratch home; the guard created no file; dsh's own writes only in the scratch DSH_HOME (.anonymous-user-id on the first run, its per-boot rewrite of the profile's cordis.yml) and the run's TMPDIR; no process left; the worktree removed. Owner files: ~/.dsh/cordis.patch.yml and dsh-tui's package.json, pnpm-lock.yaml, pnpm-workspace.yaml and cordis.patch.yml hashed the same before and after; nothing under ~/.dsh newer than the start (.env left out and never opened).",
+ "raw_data": "kept on the owner's machine, not published: per-run captured requests, streams, exit files, session logs, config dumps, containment snapshots and the load traces",
+ "files": [
+  {
+   "published": "0012_capture_server.py",
+   "as_run": "capture_server.py",
+   "sha256": "3f6a1484480ce15fbee4f7dbe4e92fcd57ae53e86518348bd93fbd3b9fc6dbe4"
+  },
+  {
+   "published": "0012_analyze_capture.py",
+   "as_run": "analyze_capture.py",
+   "sha256": "96341d207df6b24693ca95853523bef869a6374087d513f2f160ffa0ab1c901d"
+  },
+  {
+   "published": "0012_compare_runs.py",
+   "as_run": "compare_runs.py",
+   "sha256": "308a715356e8d04c2663a3a9f104af2f5f421251cf46d64da7544655a85d330f"
+  },
+  {
+   "published": "0012_count_tokens.py",
+   "as_run": "count_tokens.py",
+   "sha256": "a8dcf1e4dedd1ded41652e6b3a3291094279b4857cf0d6c1e3ea587bc80f7502"
+  },
+  {
+   "published": "0012_gateway_guard.sh",
+   "as_run": "~/.cache/meridian/gateway-guard.sh",
+   "sha256": "12bbc82389ebe3bb30df285cbc7844dfb1d0e85757fe62ceb5e1f078729d9fec",
+   "note": "published byte for byte as run, so its header's '(not part of the repo)' describes the as-run copy; it checks a listener on 4002 only"
+  },
+  {
+   "published": "0012-probe.txt",
+   "as_run": "probe.txt",
+   "sha256": "8013cab46f99ff3a9ae167ef2b99843db315eb5c7980e7155e4b321f7c5dcdfd"
+  },
+  {
+   "published": "0012-with-only.cordis.yml",
+   "as_run": "with-only.cordis.yml",
+   "sha256": "39cfa1d673bf2830a0f517c80ce2c8133102d7c7b9d49c48ff4019f699f11748"
+  },
+  {
+   "published": "0012-key.txt",
+   "as_run": "arm-key.txt",
+   "sha256": "d06d5551ed6879ca788e45728466b9e5daf8da8a7e0187123b322f742f257a10"
+  },
+  {
+   "published": "0012-brief-R2.txt",
+   "as_run": "not run yet (R2)",
+   "sha256": "9d0b472a179056bea86dfcaf334754667d0fd3de7aac764abd945da6b952e8ed",
+   "note": "written after the always-on series, before any R2 run"
+  }
+ ]
+}

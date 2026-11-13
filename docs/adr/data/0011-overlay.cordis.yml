@@ -1,0 +1,20 @@
+# ADR 0011 overlay, given to both arms with --patch (as run: ab-overlay.cordis.yml). The two roots
+# named a folder under the home directory; <EV> stands for that evidence folder. Nothing else changed.
+- id: session-log-deepseek
+  config: {enabled: false}
+- id: plugin-package-inventory-deepseek
+  config: {enabled: false}
+- id: session-telemetry-otel
+  config: {mode: DISABLED}
+- id: session-title-llm
+  disabled: true
+- id: tool-web
+  disabled: true
+- id: agent-default-model
+  config: {provider: deepseek-official, model: deepseek-flash}
+- id: llm-deepseek
+  config: {thinking: enabled, reasoningEffort: max}
+- id: session-persistence-jsonl
+  config: {root: <EV>/sessions, compression: none}
+- id: storage-json
+  config: {root: <EV>/storages}

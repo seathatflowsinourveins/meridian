@@ -1,0 +1,5 @@
+ADR 0012 real task R2 on temporary dsh profiles: arm key
+drawn 2026-11-13T08:53:58-05:00 with python secrets.randbits(1); kept outside the run folders
+with_addition=b
+without_addition=a
+random_bit=1

@@ -1,0 +1,887 @@
+{
+ "adr": "0006",
+ "built_by": "0006_aggregate.py",
+ "plugin_check": {
+  "validate_strict_exit": "1",
+  "validate_warnings": 1,
+  "details_exit": "0",
+  "source_inline": true,
+  "inventory": {
+   "Skills": 38,
+   "Agents": 0,
+   "Hooks": 0,
+   "MCP servers": 0,
+   "LSP servers": 0
+  },
+  "always_on_estimate": 3524,
+  "manual_only_estimate_sum": 700,
+  "always_on_estimate_without_manual_only": 2824
+ },
+ "grader_check": {
+  "none": {
+   "passed": false,
+   "ruff_check_rc": "0",
+   "ruff_format_rc": "0",
+   "pyright_rc": "1",
+   "pytest_rc": "1",
+   "pytest_tail": "======================== 72 failed, 209 passed in 6.91s ========================",
+   "pyright_tail": "4 errors, 0 warnings, 0 informations"
+  },
+  "ref": {
+   "passed": true,
+   "ruff_check_rc": "0",
+   "ruff_format_rc": "0",
+   "pyright_rc": "0",
+   "pytest_rc": "0",
+   "pytest_tail": "============================= 281 passed in 4.52s ==============================",
+   "pyright_tail": "0 errors, 0 warnings, 0 informations"
+  }
+ },
+ "always_on_runs": [
+  {
+   "run": "s2-a-k1",
+   "arm": "a",
+   "with": true,
+   "claude_code_version": "2.1.322",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "plugins": [
+    "compound-engineering",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 65,
+   "terminal_reason": "completed",
+   "is_error": false,
+   "num_turns": 1,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "hooks": [
+    "SessionStart:startup"
+   ],
+   "containment_flags": [],
+   "leak_scan_hits": 0,
+   "guard": {
+    "calls": 2,
+    "all_down": true
+   },
+   "n_skills_from_addition": 38,
+   "always_on": 25609,
+   "tokens_all": 25613,
+   "total_cost_usd": 0.1170692,
+   "valid": true,
+   "context_total_tokens": 16444,
+   "context_categories": {
+    "System prompt": 2625,
+    "System tools": 4680,
+    "System tools (deferred)": 13844,
+    "Custom agents": 85,
+    "Memory files": 3185,
+    "Skills": 5859,
+    "Messages": 10,
+    "Autocompact buffer": 33000,
+    "Free space": 950556
+   },
+   "context_result": {
+    "subtype": "success",
+    "is_error": false,
+    "num_turns": 0,
+    "local_command": "context",
+    "total_cost_usd": 0
+   },
+   "skill_calls": 0,
+   "subagent_calls": 0,
+   "codex_calls": 0,
+   "goal_or_nested_claude_commands": 0
+  },
+  {
+   "run": "s2-a-k2",
+   "arm": "a",
+   "with": true,
+   "claude_code_version": "2.1.322",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "plugins": [
+    "compound-engineering",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 65,
+   "terminal_reason": "completed",
+   "is_error": false,
+   "num_turns": 1,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "hooks": [
+    "SessionStart:startup"
+   ],
+   "containment_flags": [],
+   "leak_scan_hits": 0,
+   "guard": {
+    "calls": 2,
+    "all_down": true
+   },
+   "n_skills_from_addition": 38,
+   "always_on": 25609,
+   "tokens_all": 25613,
+   "total_cost_usd": 0.1170692,
+   "valid": true,
+   "context_total_tokens": 16444,
+   "context_categories": {
+    "System prompt": 2625,
+    "System tools": 4680,
+    "System tools (deferred)": 13844,
+    "Custom agents": 85,
+    "Memory files": 3185,
+    "Skills": 5859,
+    "Messages": 10,
+    "Autocompact buffer": 33000,
+    "Free space": 950556
+   },
+   "context_result": {
+    "subtype": "success",
+    "is_error": false,
+    "num_turns": 0,
+    "local_command": "context",
+    "total_cost_usd": 0
+   },
+   "skill_calls": 0,
+   "subagent_calls": 0,
+   "codex_calls": 0,
+   "goal_or_nested_claude_commands": 0
+  },
+  {
+   "run": "s2-a-k3",
+   "arm": "a",
+   "with": true,
+   "claude_code_version": "2.1.322",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "plugins": [
+    "compound-engineering",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 65,
+   "terminal_reason": "completed",
+   "is_error": false,
+   "num_turns": 1,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "hooks": [
+    "SessionStart:startup"
+   ],
+   "containment_flags": [],
+   "leak_scan_hits": 0,
+   "guard": {
+    "calls": 2,
+    "all_down": true
+   },
+   "n_skills_from_addition": 38,
+   "always_on": 25609,
+   "tokens_all": 25613,
+   "total_cost_usd": 0.1170692,
+   "valid": true,
+   "context_total_tokens": 16444,
+   "context_categories": {
+    "System prompt": 2625,
+    "System tools": 4680,
+    "System tools (deferred)": 13844,
+    "Custom agents": 85,
+    "Memory files": 3185,
+    "Skills": 5859,
+    "Messages": 10,
+    "Autocompact buffer": 33000,
+    "Free space": 950556
+   },
+   "context_result": {
+    "subtype": "success",
+    "is_error": false,
+    "num_turns": 0,
+    "local_command": "context",
+    "total_cost_usd": 0
+   },
+   "skill_calls": 0,
+   "subagent_calls": 0,
+   "codex_calls": 0,
+   "goal_or_nested_claude_commands": 0
+  },
+  {
+   "run": "s2-b-k1",
+   "arm": "b",
+   "with": false,
+   "claude_code_version": "2.1.322",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 27,
+   "terminal_reason": "completed",
+   "is_error": false,
+   "num_turns": 1,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "hooks": [
+    "SessionStart:startup"
+   ],
+   "containment_flags": [],
+   "leak_scan_hits": 0,
+   "guard": {
+    "calls": 2,
+    "all_down": true
+   },
+   "n_skills_from_addition": 0,
+   "always_on": 22743,
+   "tokens_all": 22747,
+   "total_cost_usd": 0.09414120000000001,
+   "valid": true,
+   "context_total_tokens": 16444,
+   "context_categories": {
+    "System prompt": 2625,
+    "System tools": 7473,
+    "System tools (deferred)": 13844,
+    "Custom agents": 85,
+    "Memory files": 3185,
+    "Skills": 3066,
+    "Messages": 10,
+    "Autocompact buffer": 33000,
+    "Free space": 950556
+   },
+   "context_result": {
+    "subtype": "success",
+    "is_error": false,
+    "num_turns": 0,
+    "local_command": "context",
+    "total_cost_usd": 0
+   },
+   "skill_calls": 0,
+   "subagent_calls": 0,
+   "codex_calls": 0,
+   "goal_or_nested_claude_commands": 0
+  },
+  {
+   "run": "s2-b-k2",
+   "arm": "b",
+   "with": false,
+   "claude_code_version": "2.1.322",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 27,
+   "terminal_reason": "completed",
+   "is_error": false,
+   "num_turns": 1,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "hooks": [
+    "SessionStart:startup"
+   ],
+   "containment_flags": [],
+   "leak_scan_hits": 0,
+   "guard": {
+    "calls": 2,
+    "all_down": true
+   },
+   "n_skills_from_addition": 0,
+   "always_on": 22743,
+   "tokens_all": 22747,
+   "total_cost_usd": 0.09414120000000001,
+   "valid": true,
+   "context_total_tokens": 16444,
+   "context_categories": {
+    "System prompt": 2625,
+    "System tools": 7473,
+    "System tools (deferred)": 13844,
+    "Custom agents": 85,
+    "Memory files": 3185,
+    "Skills": 3066,
+    "Messages": 10,
+    "Autocompact buffer": 33000,
+    "Free space": 950556
+   },
+   "context_result": {
+    "subtype": "success",
+    "is_error": false,
+    "num_turns": 0,
+    "local_command": "context",
+    "total_cost_usd": 0
+   },
+   "skill_calls": 0,
+   "subagent_calls": 0,
+   "codex_calls": 0,
+   "goal_or_nested_claude_commands": 0
+  },
+  {
+   "run": "s2-b-k3",
+   "arm": "b",
+   "with": false,
+   "claude_code_version": "2.1.322",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 27,
+   "terminal_reason": "completed",
+   "is_error": false,
+   "num_turns": 1,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "hooks": [
+    "SessionStart:startup"
+   ],
+   "containment_flags": [],
+   "leak_scan_hits": 0,
+   "guard": {
+    "calls": 2,
+    "all_down": true
+   },
+   "n_skills_from_addition": 0,
+   "always_on": 22743,
+   "tokens_all": 22747,
+   "total_cost_usd": 0.09414120000000001,
+   "valid": true,
+   "context_total_tokens": 16444,
+   "context_categories": {
+    "System prompt": 2625,
+    "System tools": 7473,
+    "System tools (deferred)": 13844,
+    "Custom agents": 85,
+    "Memory files": 3185,
+    "Skills": 3066,
+    "Messages": 10,
+    "Autocompact buffer": 33000,
+    "Free space": 950556
+   },
+   "context_result": {
+    "subtype": "success",
+    "is_error": false,
+    "num_turns": 0,
+    "local_command": "context",
+    "total_cost_usd": 0
+   },
+   "skill_calls": 0,
+   "subagent_calls": 0,
+   "codex_calls": 0,
+   "goal_or_nested_claude_commands": 0
+  }
+ ],
+ "r1_runs": [
+  {
+   "run": "s2-a-1",
+   "arm": "a",
+   "with": true,
+   "void": "no init or result event: the agent did not start (exit 127)",
+   "guard": {
+    "calls": 1,
+    "all_down": true
+   }
+  },
+  {
+   "run": "s3-a-1",
+   "arm": "a",
+   "with": true,
+   "claude_code_version": "2.1.322",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "plugins": [
+    "compound-engineering",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 65,
+   "terminal_reason": "completed",
+   "is_error": false,
+   "num_turns": 15,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "hooks": [
+    "SessionStart:startup"
+   ],
+   "containment_flags": [],
+   "leak_scan_hits": 2,
+   "guard": {
+    "calls": 1,
+    "all_down": true
+   },
+   "void": null,
+   "exit": "0",
+   "passed": true,
+   "grade": {
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "pytest_tail": "============================= 281 passed in 4.28s ==============================",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": ""
+   },
+   "files_changed": [
+    ".gitignore",
+    "meridian/boundary.py",
+    "meridian/ibkr_node.py",
+    "meridian/ibkr_paper.py"
+   ],
+   "tokens_all": 920588,
+   "duration_s": 200.9,
+   "wall_s": 202,
+   "total_cost_usd": 1.2091592000000002,
+   "new_ce_tmp_entries": 0,
+   "refs_from_run": 0,
+   "new_home_entries": 0,
+   "skill_calls": 0,
+   "subagent_calls": 0,
+   "codex_calls": 0,
+   "goal_or_nested_claude_commands": 0
+  },
+  {
+   "run": "s3-a-2",
+   "arm": "a",
+   "with": true,
+   "claude_code_version": "2.1.322",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "plugins": [
+    "compound-engineering",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 65,
+   "terminal_reason": "completed",
+   "is_error": false,
+   "num_turns": 11,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "hooks": [
+    "SessionStart:startup"
+   ],
+   "containment_flags": [],
+   "leak_scan_hits": 2,
+   "guard": {
+    "calls": 1,
+    "all_down": true
+   },
+   "void": null,
+   "exit": "0",
+   "passed": true,
+   "grade": {
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "pytest_tail": "============================= 281 passed in 4.36s ==============================",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": ""
+   },
+   "files_changed": [
+    ".gitignore",
+    "meridian/boundary.py",
+    "meridian/ibkr_node.py",
+    "meridian/ibkr_paper.py"
+   ],
+   "tokens_all": 637873,
+   "duration_s": 165.2,
+   "wall_s": 167,
+   "total_cost_usd": 0.9866010000000001,
+   "new_ce_tmp_entries": 0,
+   "refs_from_run": 0,
+   "new_home_entries": 0,
+   "skill_calls": 0,
+   "subagent_calls": 0,
+   "codex_calls": 0,
+   "goal_or_nested_claude_commands": 0
+  },
+  {
+   "run": "s3-a-3",
+   "arm": "a",
+   "with": true,
+   "claude_code_version": "2.1.322",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "plugins": [
+    "compound-engineering",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 65,
+   "terminal_reason": "completed",
+   "is_error": false,
+   "num_turns": 17,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "hooks": [
+    "SessionStart:startup"
+   ],
+   "containment_flags": [],
+   "leak_scan_hits": 2,
+   "guard": {
+    "calls": 1,
+    "all_down": true
+   },
+   "void": null,
+   "exit": "0",
+   "passed": true,
+   "grade": {
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "pytest_tail": "============================= 281 passed in 4.30s ==============================",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": ""
+   },
+   "files_changed": [
+    ".gitignore",
+    "meridian/boundary.py",
+    "meridian/ibkr_node.py",
+    "meridian/ibkr_paper.py"
+   ],
+   "tokens_all": 1039079,
+   "duration_s": 207.0,
+   "wall_s": 208,
+   "total_cost_usd": 1.2000228,
+   "new_ce_tmp_entries": 0,
+   "refs_from_run": 0,
+   "new_home_entries": 0,
+   "skill_calls": 0,
+   "subagent_calls": 0,
+   "codex_calls": 0,
+   "goal_or_nested_claude_commands": 0
+  },
+  {
+   "run": "s3-b-1",
+   "arm": "b",
+   "with": false,
+   "claude_code_version": "2.1.322",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 27,
+   "terminal_reason": "completed",
+   "is_error": false,
+   "num_turns": 14,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "hooks": [
+    "SessionStart:startup"
+   ],
+   "containment_flags": [],
+   "leak_scan_hits": 1,
+   "guard": {
+    "calls": 1,
+    "all_down": true
+   },
+   "void": null,
+   "exit": "0",
+   "passed": true,
+   "grade": {
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "pytest_tail": "============================= 281 passed in 4.40s ==============================",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": ""
+   },
+   "files_changed": [
+    ".gitignore",
+    "meridian/boundary.py",
+    "meridian/ibkr_node.py",
+    "meridian/ibkr_paper.py"
+   ],
+   "tokens_all": 932448,
+   "duration_s": 221.0,
+   "wall_s": 222,
+   "total_cost_usd": 1.2600436000000002,
+   "new_ce_tmp_entries": 0,
+   "refs_from_run": 0,
+   "new_home_entries": 0,
+   "skill_calls": 0,
+   "subagent_calls": 0,
+   "codex_calls": 0,
+   "goal_or_nested_claude_commands": 0
+  },
+  {
+   "run": "s3-b-2",
+   "arm": "b",
+   "with": false,
+   "claude_code_version": "2.1.322",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 27,
+   "terminal_reason": "completed",
+   "is_error": false,
+   "num_turns": 15,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "hooks": [
+    "SessionStart:startup"
+   ],
+   "containment_flags": [],
+   "leak_scan_hits": 2,
+   "guard": {
+    "calls": 1,
+    "all_down": true
+   },
+   "void": null,
+   "exit": "0",
+   "passed": true,
+   "grade": {
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "pytest_tail": "============================= 281 passed in 4.23s ==============================",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": ""
+   },
+   "files_changed": [
+    ".gitignore",
+    "meridian/boundary.py",
+    "meridian/ibkr_node.py",
+    "meridian/ibkr_paper.py"
+   ],
+   "tokens_all": 841180,
+   "duration_s": 229.5,
+   "wall_s": 231,
+   "total_cost_usd": 1.0878493999999999,
+   "new_ce_tmp_entries": 0,
+   "refs_from_run": 0,
+   "new_home_entries": 0,
+   "skill_calls": 0,
+   "subagent_calls": 0,
+   "codex_calls": 0,
+   "goal_or_nested_claude_commands": 0
+  },
+  {
+   "run": "s3-b-3",
+   "arm": "b",
+   "with": false,
+   "claude_code_version": "2.1.322",
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 27,
+   "terminal_reason": "completed",
+   "is_error": false,
+   "num_turns": 17,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "hooks": [
+    "SessionStart:startup"
+   ],
+   "containment_flags": [],
+   "leak_scan_hits": 2,
+   "guard": {
+    "calls": 1,
+    "all_down": true
+   },
+   "void": null,
+   "exit": "0",
+   "passed": true,
+   "grade": {
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "pytest_tail": "============================= 281 passed in 4.19s ==============================",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": ""
+   },
+   "files_changed": [
+    ".gitignore",
+    "meridian/boundary.py",
+    "meridian/ibkr_node.py",
+    "meridian/ibkr_paper.py"
+   ],
+   "tokens_all": 915100,
+   "duration_s": 172.9,
+   "wall_s": 174,
+   "total_cost_usd": 1.067065,
+   "new_ce_tmp_entries": 0,
+   "refs_from_run": 0,
+   "new_home_entries": 0,
+   "skill_calls": 0,
+   "subagent_calls": 0,
+   "codex_calls": 0,
+   "goal_or_nested_claude_commands": 0
+  }
+ ],
+ "summary": {
+  "always_on": {
+   "with_runs": [
+    25609,
+    25609,
+    25609
+   ],
+   "without_runs": [
+    22743,
+    22743,
+    22743
+   ],
+   "median_with": 25609,
+   "median_without": 22743,
+   "delta": 2866,
+   "delta_share_of_without": 0.126,
+   "per_session_estimate": 42990,
+   "estimates_against_delta": {
+    "plugin_details": 3524,
+    "plugin_details_without_manual_only": 2824
+   }
+  },
+  "r1": {
+   "with": {
+    "passed": 3,
+    "valid_runs": 3,
+    "tokens": [
+     920588,
+     637873,
+     1039079
+    ],
+    "median_tokens": 920588,
+    "median_turns": 15,
+    "median_duration_s": 200.9,
+    "cost_usd_sum": 3.4
+   },
+   "without": {
+    "passed": 3,
+    "valid_runs": 3,
+    "tokens": [
+     932448,
+     841180,
+     915100
+    ],
+    "median_tokens": 915100,
+    "median_turns": 15,
+    "median_duration_s": 221.0,
+    "cost_usd_sum": 3.41
+   },
+   "median_tokens_with_vs_without": 0.006,
+   "voids": [
+    "s2-a-1"
+   ]
+  },
+  "guard_calls": 19,
+  "guard_all_down": true,
+  "rule": {
+   "condition_1": false,
+   "condition_2": false,
+   "always_on_within_cap": false,
+   "containment_violations": 0,
+   "extension_triggered": false,
+   "result": "not adopted"
+  }
+ }
+}

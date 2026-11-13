@@ -1,0 +1,58 @@
+{
+  "adr": "0008",
+  "measurement": "M2: Codex's own prompt render with and without oh-my-codex 0.22.6; no model call, no sign-in",
+  "date": "2026-11-13",
+  "codex_version": "codex-cli 0.167.2",
+  "clone": "one fresh standalone clone of the repository at main 9c5daaae9d32acf259f965fd7b95b458604503b6, the same path for both arms",
+  "command": "CODEX_HOME=\"$H\" codex --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust -C \"$WT\" -m gpt-6-astra -c model_reasoning_effort=high -c \"projects={\\\"$WT\\\"={trust_level=\\\"trusted\\\"}}\" debug prompt-input 'Reply with exactly the word OK. Do not run any command or call any tool.' </dev/null",
+  "script": "0008_m2.sh: `render` is what M2 ran, 3 times per arm; `split` and `roles` were written for the ADR and run on the saved renders",
+  "arms": {
+    "a": "an empty scratch CODEX_HOME",
+    "b": "a scratch CODEX_HOME filled by `omx setup --scope user --install-mode legacy --mcp none`, oh-my-codex 0.22.6 installed with --ignore-scripts; HOME, CODEX_HOME and the setup folder throwaway"
+  },
+  "counted": "messages: UTF-8 bytes of every message text; tools: UTF-8 bytes of the tool declarations as compact JSON (jq tojson). Bytes, not tokens.",
+  "renders": [
+    {"file": "prompt-a-clean-1.json", "bytes": 70141, "sha256": "e508ba524747907c786abbdc8b7ebfec2db551b5a122f12f45923a2d38f6eadf", "stderr_bytes": 0, "messages_sha256": "7d1cad93fd17c01c732a2a24105c8c3b1329a6565271e1639b3b85e9dde7690b", "tools_sha256": "1f1ce1a12910389f19de6577d9420e64eff4d817fe1a5257921ac2bac6c9e8cd"},
+    {"file": "prompt-a-clean-2.json", "bytes": 70143, "sha256": "d78477a7b28a907494abf5f85e1802912437341c40410af0655433a234d0f8c5", "stderr_bytes": 0, "messages_sha256": "7d1cad93fd17c01c732a2a24105c8c3b1329a6565271e1639b3b85e9dde7690b", "tools_sha256": "1f1ce1a12910389f19de6577d9420e64eff4d817fe1a5257921ac2bac6c9e8cd"},
+    {"file": "prompt-a-clean-3.json", "bytes": 70139, "sha256": "1106d23468726de0e2d0acf9480fcdb0f36b606a3e166185ad5f1a2994961dc0", "stderr_bytes": 0, "messages_sha256": "7d1cad93fd17c01c732a2a24105c8c3b1329a6565271e1639b3b85e9dde7690b", "tools_sha256": "1f1ce1a12910389f19de6577d9420e64eff4d817fe1a5257921ac2bac6c9e8cd"},
+    {"file": "prompt-b-user-1.json", "bytes": 107097, "sha256": "7cd4157631e13bdecf47f3eeebba79372249f7654b9e5f04dd1e3bec5bf3af10", "stderr_bytes": 0, "messages_sha256": "82738b3292eca823751ebbe847c85955cad31201cb4f22c5b1fcf50775ff22f2", "tools_sha256": "446963687bc33b4dd6452d0f8343ee61f0166c76b06afb2429f83bf4cae3fd7c"},
+    {"file": "prompt-b-user-2.json", "bytes": 107097, "sha256": "06b1c5e02f41fd1a19731c44d857c87817de303c81daee5e736b04b6b3dcd4ab", "stderr_bytes": 0, "messages_sha256": "82738b3292eca823751ebbe847c85955cad31201cb4f22c5b1fcf50775ff22f2", "tools_sha256": "446963687bc33b4dd6452d0f8343ee61f0166c76b06afb2429f83bf4cae3fd7c"},
+    {"file": "prompt-b-user-3.json", "bytes": 107097, "sha256": "572d23ad2b680e84389fb56524d5dbf7c9f93e4b42fd4d6ba98c7f8e82a85ca3", "stderr_bytes": 0, "messages_sha256": "82738b3292eca823751ebbe847c85955cad31201cb4f22c5b1fcf50775ff22f2", "tools_sha256": "446963687bc33b4dd6452d0f8343ee61f0166c76b06afb2429f83bf4cae3fd7c"}
+  ],
+  "renders_note": "Within each arm the counted parts are byte-identical (equal hashes); the raw files also differ in item ids and metadata. The raw renders stay outside the repository because they hold home-directory paths.",
+  "sections": [
+    {"section": "Codex's base model instructions (developer)", "a": 21428, "b": 21428, "delta": 0},
+    {"section": "developer_instructions from config.toml (OMX's text)", "a": 0, "b": 1104, "delta": 1104},
+    {"section": "skills_instructions (the skills catalogue)", "a": 3793, "b": 7294, "delta": 3501},
+    {"section": "permissions instructions", "a": 362, "b": 362, "delta": 0},
+    {"section": "collaboration_mode", "a": 920, "b": 920, "delta": 0},
+    {"section": "multi_agent_role", "a": 2400, "b": 2400, "delta": 0},
+    {"section": "multi_agent_mode", "a": 271, "b": 271, "delta": 0},
+    {"section": "AGENTS.md instructions (the repository's, plus $CODEX_HOME/AGENTS.md in arm b, 26,674 bytes)", "a": 8428, "b": 35124, "delta": 26696},
+    {"section": "environment_context", "a": 422, "b": 422, "delta": 0},
+    {"section": "the prompt", "a": 72, "b": 72, "delta": 0},
+    {"section": "tool group functions", "a": 15939, "b": 15939, "delta": 0},
+    {"section": "tool group clock", "a": 527, "b": 527, "delta": 0},
+    {"section": "tool group collaboration (collaboration tool declarations)", "a": 5362, "b": 10377, "delta": 5015},
+    {"section": "JSON brackets and commas of the tool list", "a": 4, "b": 4, "delta": 0}
+  ],
+  "totals": {
+    "a": {"messages": 38096, "tools": 21832, "total": 59928},
+    "b": {"messages": 69397, "tools": 26847, "total": 96244},
+    "delta": 36316,
+    "delta_share": "+60.6 % of arm a's render: a fresh session's first prompt, from an empty scratch home"
+  },
+  "role_list": {
+    "where": "spawn_agent's agent_type parameter in the collaboration group: absent in arm a; in arm b 5,001 bytes as JSON, 5,015 with its key and comma, which is the whole growth of the group",
+    "description_characters": 4870,
+    "header_characters": 147,
+    "omx_roles": {"count": 18, "characters": 2592, "entries": {"analyst": 147, "architect": 198, "code-reviewer": 130, "code-simplifier": 179, "critic": 124, "debugger": 145, "dependency-expert": 129, "designer": 123, "executor": 133, "explore": 127, "git-master": 129, "planner": 180, "researcher": 182, "team-executor": 149, "test-engineer": 137, "verifier": 137, "vision": 115, "writer": 128}},
+    "codex_builtin_roles": {"count": 3, "characters": 2094, "entries": {"default": 27, "explorer": 1019, "worker": 1048}},
+    "note": "The source reconstruction counted OMX's 18 roles only (2,610 characters). Codex 0.167.2 lists its own 3 roles as well once user-defined roles exist, so the measured section is larger."
+  },
+  "not_in_m2": [
+    "the SessionStart hook text (358 characters reconstructed), which the render leaves out",
+    "extension tools",
+    "model-reported input_tokens: M1 did not run in user scope (run 2 measured it in project scope; see 0008-results.json)"
+  ]
+}

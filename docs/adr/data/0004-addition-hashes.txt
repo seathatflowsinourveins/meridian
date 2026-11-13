@@ -1,0 +1,7 @@
+d039541ddd1c46e6ddbd662fe99d49b686fc5e12 diagnosing-bugs/SKILL.md
+a13a755a77634ce61a649a3a0d905a66d3865b35 diagnosing-bugs/agents/openai.yaml
+243198464a8401a7ba1d63b3708fa43c3d067665 diagnosing-bugs/scripts/hitl-loop.template.sh
+01eadaa34e7c9a63a67d6dc3cce1cc81b0e49985 tdd/SKILL.md
+651b838a7663e027b1b8884491e867f26bb9a021 tdd/agents/openai.yaml
+71cbfee674d93244ce81d1830b930ca9a69200bd tdd/mocking.md
+7ab86479f925a1f9e8ba680af33cb3b12e015381 tdd/tests.md

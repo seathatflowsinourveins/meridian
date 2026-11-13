@@ -1,0 +1,10 @@
+ADR 0010 arm key (written 2026-11-13 after the runs; no model call was made, so no run could
+have read it).
+A = without: dsh 0.2.2-rc.1 headless (dsh-base patched by dsh-headless) plus the overlay in
+    0010-overlay.cordis.yml (the profile's name was not recorded). Runs A1, A2, A3: always-on
+    probes only, in worktrees named A1 to A3.
+B = with, as planned: the same headless profile plus dsh-gungnir@0.2.1, in profile
+    ab-adr-0010-with made from the headless template. Never built: the only with profile that
+    existed was made by the refused add itself (dsh plugin add, not from the headless template;
+    bundles @deepseek-ai/dsh-base only, no dependencies), and nothing was installed (exit 1), so
+    no B run exists. R2 ran in neither arm. Revised 2026-11-13 05:20 ET to say so.

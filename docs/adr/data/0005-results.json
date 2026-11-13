@@ -1,0 +1,803 @@
+{
+ "adr": "0005",
+ "what": "Aggregates and per-run figures of the ADR 0005 measurement, 2026-11-13 01:37-02:00 ET, in the shape 0005_aggregate.py reads ('ok' and 'r1'). Built from the measurement's own export of each run's metrics; the raw streams, transcripts and run folders hold local paths and stay on the owner's machine (not published), for the private meridian-evidence repository (not there yet).",
+ "recompute": "python3 -I docs/adr/data/0005_aggregate.py docs/adr/data/0005-results.json b",
+ "candidate": "obra/superpowers v7.0.2, commit 22f0b463e7a5e579904dd6211a520321035526f7 (tree 8fddc972a73e9af7501442df0e638d8e29842b6b), loaded per session with --plugin-dir",
+ "runtime": "Claude Code 2.1.322 (claude_code_version 2.1.322 in all 12 runs' init events)",
+ "run_settings": "claude-opus-5-5 (the only modelUsage key in every run), --effort high, --permission-mode bypassPermissions, a fresh autoMemoryDirectory per run, CLAUDE_CODE_EFFORT_LEVEL, CLAUDE_CODE_SUBAGENT_EFFORT and ANTHROPIC_MODEL unset, DISABLE_AUTOUPDATER=1, SUPERPOWERS_DISABLE_TELEMETRY=1, the 10 rules of 0005-deny.json (home directory written as ~ there; the runs had the absolute path) in a per-run --settings file in every one of the 12 runs (compared with each run's own settings file) and the 9 without 'ibgateway' also in --disallowedTools; with arm only: --plugin-dir on a checkout of 22f0b463. The lead's model in AGENTS.md, claude-fable-5-2, was not measured, though the assessment's protocol named it (see deviations).",
+ "key": "b = with superpowers, a = without (0005-key.txt)",
+ "order": {
+  "always_on": "a-k1 b-k1 b-k2 a-k2 a-k3 b-k3",
+  "r1": "a-1 b-1 b-2 a-2 a-3 b-3"
+ },
+ "brief_sha256": "789791805eceb05d233fb1fc0d1c0ebefaed5d84d8f95612476bacb4a4feabc4",
+ "ok": {
+  "a-k1": {
+   "arm": "without",
+   "claude_code_version": "2.1.322",
+   "model": "claude-opus-5-5",
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 27,
+   "subtype": "success",
+   "is_error": false,
+   "terminal_reason": "completed",
+   "num_turns": 1,
+   "duration_ms": 1189,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11475,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "result_input_all": 22743,
+   "first_assistant_input_all": 22743,
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "tokens_all": 22747,
+   "total_cost_usd": 0.094141,
+   "api_retries": 0,
+   "session_start_hooks_started": 2,
+   "context_categories": {
+    "total_tokens": 16444,
+    "used": {
+     "System prompt": 2625,
+     "System tools": 7473,
+     "System tools (deferred)": 13844,
+     "Custom agents": 85,
+     "Memory files": 3185,
+     "Skills": 3066,
+     "Messages": 10
+    }
+   }
+  },
+  "b-k1": {
+   "arm": "with",
+   "claude_code_version": "2.1.322",
+   "model": "claude-opus-5-5",
+   "plugins": [
+    "superpowers",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 42,
+   "subtype": "success",
+   "is_error": false,
+   "terminal_reason": "completed",
+   "num_turns": 1,
+   "duration_ms": 1217,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 13651,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "result_input_all": 24919,
+   "first_assistant_input_all": 24919,
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "tokens_all": 24923,
+   "total_cost_usd": 0.111549,
+   "api_retries": 0,
+   "session_start_hooks_started": 3,
+   "context_categories": {
+    "total_tokens": 17762,
+    "used": {
+     "System prompt": 2625,
+     "System tools": 6517,
+     "System tools (deferred)": 13844,
+     "Custom agents": 85,
+     "Memory files": 3185,
+     "Skills": 4022,
+     "Messages": 1328
+    }
+   }
+  },
+  "b-k2": {
+   "arm": "with",
+   "claude_code_version": "2.1.322",
+   "model": "claude-opus-5-5",
+   "plugins": [
+    "superpowers",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 42,
+   "subtype": "success",
+   "is_error": false,
+   "terminal_reason": "completed",
+   "num_turns": 1,
+   "duration_ms": 1236,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 13651,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "result_input_all": 24919,
+   "first_assistant_input_all": 24919,
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "tokens_all": 24923,
+   "total_cost_usd": 0.111549,
+   "api_retries": 0,
+   "session_start_hooks_started": 3,
+   "context_categories": {
+    "total_tokens": 17762,
+    "used": {
+     "System prompt": 2625,
+     "System tools": 6517,
+     "System tools (deferred)": 13844,
+     "Custom agents": 85,
+     "Memory files": 3185,
+     "Skills": 4022,
+     "Messages": 1328
+    }
+   }
+  },
+  "a-k2": {
+   "arm": "without",
+   "claude_code_version": "2.1.322",
+   "model": "claude-opus-5-5",
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 27,
+   "subtype": "success",
+   "is_error": false,
+   "terminal_reason": "completed",
+   "num_turns": 1,
+   "duration_ms": 1233,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11475,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "result_input_all": 22743,
+   "first_assistant_input_all": 22743,
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "tokens_all": 22747,
+   "total_cost_usd": 0.094141,
+   "api_retries": 0,
+   "session_start_hooks_started": 2,
+   "context_categories": {
+    "total_tokens": 16444,
+    "used": {
+     "System prompt": 2625,
+     "System tools": 7473,
+     "System tools (deferred)": 13844,
+     "Custom agents": 85,
+     "Memory files": 3185,
+     "Skills": 3066,
+     "Messages": 10
+    }
+   }
+  },
+  "a-k3": {
+   "arm": "without",
+   "claude_code_version": "2.1.322",
+   "model": "claude-opus-5-5",
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 27,
+   "subtype": "success",
+   "is_error": false,
+   "terminal_reason": "completed",
+   "num_turns": 1,
+   "duration_ms": 1223,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 11475,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "result_input_all": 22743,
+   "first_assistant_input_all": 22743,
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "tokens_all": 22747,
+   "total_cost_usd": 0.094141,
+   "api_retries": 0,
+   "session_start_hooks_started": 2,
+   "context_categories": {
+    "total_tokens": 16444,
+    "used": {
+     "System prompt": 2625,
+     "System tools": 7473,
+     "System tools (deferred)": 13844,
+     "Custom agents": 85,
+     "Memory files": 3185,
+     "Skills": 3066,
+     "Messages": 10
+    }
+   }
+  },
+  "b-k3": {
+   "arm": "with",
+   "claude_code_version": "2.1.322",
+   "model": "claude-opus-5-5",
+   "plugins": [
+    "superpowers",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "n_skills": 42,
+   "subtype": "success",
+   "is_error": false,
+   "terminal_reason": "completed",
+   "num_turns": 1,
+   "duration_ms": 1237,
+   "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 13651,
+    "cache_read_input_tokens": 11266,
+    "output_tokens": 4
+   },
+   "result_input_all": 24919,
+   "first_assistant_input_all": 24919,
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "tokens_all": 24923,
+   "total_cost_usd": 0.111549,
+   "api_retries": 0,
+   "session_start_hooks_started": 3,
+   "context_categories": {
+    "total_tokens": 17762,
+    "used": {
+     "System prompt": 2625,
+     "System tools": 6517,
+     "System tools (deferred)": 13844,
+     "Custom agents": 85,
+     "Memory files": 3185,
+     "Skills": 4022,
+     "Messages": 1328
+    }
+   }
+  }
+ },
+ "r1": {
+  "a-1": {
+   "arm": "without",
+   "started": "2026-11-13T01:38:42-05:00",
+   "claude_code_version": "2.1.322",
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "exit": "0",
+   "passed": true,
+   "num_turns": 11,
+   "duration_ms": 186899,
+   "wall_s": 188,
+   "tokens_all": 623314,
+   "tokens_main": 623314,
+   "usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 69530,
+    "cache_read_input_tokens": 536463,
+    "output_tokens": 17301
+   },
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "total_cost_usd": 1.009633,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "containment_flags": "",
+   "leak_hits": 2,
+   "grade": {
+    "passed": true,
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": "",
+    "allowed_changed": [
+     "M .gitignore",
+     "M meridian/boundary.py",
+     "M meridian/ibkr_node.py",
+     "M meridian/ibkr_paper.py"
+    ],
+    "pytest_tail": "281 passed in 4.39s",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations"
+   }
+  },
+  "b-1": {
+   "arm": "with",
+   "started": "2026-11-13T01:42:46-05:00",
+   "claude_code_version": "2.1.322",
+   "plugins": [
+    "superpowers",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "exit": "0",
+   "passed": true,
+   "num_turns": 15,
+   "duration_ms": 199942,
+   "wall_s": 201,
+   "tokens_all": 1010973,
+   "tokens_main": 1010973,
+   "usage": {
+    "input_tokens": 28,
+    "cache_creation_input_tokens": 78611,
+    "cache_read_input_tokens": 912711,
+    "output_tokens": 19623
+   },
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "total_cost_usd": 1.204002,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "containment_flags": "",
+   "leak_hits": 2,
+   "grade": {
+    "passed": true,
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": "",
+    "allowed_changed": [
+     "M .gitignore",
+     "M meridian/boundary.py",
+     "M meridian/ibkr_node.py",
+     "M meridian/ibkr_paper.py"
+    ],
+    "pytest_tail": "281 passed in 4.43s",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations"
+   }
+  },
+  "b-2": {
+   "arm": "with",
+   "started": "2026-11-13T01:46:18-05:00",
+   "claude_code_version": "2.1.322",
+   "plugins": [
+    "superpowers",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "exit": "0",
+   "passed": true,
+   "num_turns": 16,
+   "duration_ms": 187027,
+   "wall_s": 188,
+   "tokens_all": 1057800,
+   "tokens_main": 1057800,
+   "usage": {
+    "input_tokens": 30,
+    "cache_creation_input_tokens": 79820,
+    "cache_read_input_tokens": 959307,
+    "output_tokens": 18643
+   },
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "total_cost_usd": 1.203401,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "containment_flags": "",
+   "leak_hits": 2,
+   "grade": {
+    "passed": true,
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": "",
+    "allowed_changed": [
+     "M .gitignore",
+     "M meridian/boundary.py",
+     "M meridian/ibkr_node.py",
+     "M meridian/ibkr_paper.py"
+    ],
+    "pytest_tail": "281 passed in 4.25s",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations"
+   }
+  },
+  "a-2": {
+   "arm": "without",
+   "started": "2026-11-13T01:49:37-05:00",
+   "claude_code_version": "2.1.322",
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "exit": "0",
+   "passed": true,
+   "num_turns": 14,
+   "duration_ms": 196449,
+   "wall_s": 197,
+   "tokens_all": 811064,
+   "tokens_main": 811064,
+   "usage": {
+    "input_tokens": 26,
+    "cache_creation_input_tokens": 69594,
+    "cache_read_input_tokens": 722383,
+    "output_tokens": 19061
+   },
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "total_cost_usd": 1.082553,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "containment_flags": "",
+   "leak_hits": 0,
+   "grade": {
+    "passed": true,
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": "",
+    "allowed_changed": [
+     "M .gitignore",
+     "M meridian/boundary.py",
+     "M meridian/ibkr_node.py",
+     "M meridian/ibkr_paper.py"
+    ],
+    "pytest_tail": "281 passed in 4.22s",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations"
+   }
+  },
+  "a-3": {
+   "arm": "without",
+   "started": "2026-11-13T01:53:06-05:00",
+   "claude_code_version": "2.1.322",
+   "plugins": [
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "exit": "0",
+   "passed": true,
+   "num_turns": 15,
+   "duration_ms": 208211,
+   "wall_s": 209,
+   "tokens_all": 927154,
+   "tokens_main": 927154,
+   "usage": {
+    "input_tokens": 30,
+    "cache_creation_input_tokens": 76252,
+    "cache_read_input_tokens": 830978,
+    "output_tokens": 19894
+   },
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "total_cost_usd": 1.174212,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "containment_flags": "plugin-data-created",
+   "leak_hits": 2,
+   "grade": {
+    "passed": true,
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": "",
+    "allowed_changed": [
+     "M .gitignore",
+     "M meridian/boundary.py",
+     "M meridian/ibkr_node.py",
+     "M meridian/ibkr_paper.py"
+    ],
+    "pytest_tail": "281 passed in 4.62s",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations"
+   }
+  },
+  "b-3": {
+   "arm": "with",
+   "started": "2026-11-13T01:56:46-05:00",
+   "claude_code_version": "2.1.322",
+   "plugins": [
+    "superpowers",
+    "codex",
+    "cc-plugin-sec-default",
+    "cc-plugin-agents-md",
+    "cc-plugin-telemetry",
+    "cc-plugin-privacy",
+    "cc-plugin-plugin-authoring"
+   ],
+   "plugin_errors": null,
+   "subtype": "success",
+   "terminal_reason": "completed",
+   "exit": "0",
+   "passed": true,
+   "num_turns": 14,
+   "duration_ms": 188050,
+   "wall_s": 189,
+   "tokens_all": 780123,
+   "tokens_main": 780123,
+   "usage": {
+    "input_tokens": 24,
+    "cache_creation_input_tokens": 68762,
+    "cache_read_input_tokens": 692976,
+    "output_tokens": 18361
+   },
+   "model_keys": [
+    "claude-opus-5-5"
+   ],
+   "total_cost_usd": 1.056007,
+   "api_retries": 0,
+   "permission_denials": 0,
+   "containment_flags": "",
+   "leak_hits": 2,
+   "grade": {
+    "passed": true,
+    "tests_unchanged_rc": "0",
+    "apply_rc": "0",
+    "ruff_check_rc": "0",
+    "ruff_format_rc": "0",
+    "pyright_rc": "0",
+    "pytest_rc": "0",
+    "outside_tracked": "",
+    "outside_untracked": "",
+    "new_commits": "",
+    "allowed_changed": [
+     "M .gitignore",
+     "M meridian/boundary.py",
+     "M meridian/ibkr_node.py",
+     "M meridian/ibkr_paper.py"
+    ],
+    "pytest_tail": "281 passed in 4.39s",
+    "pyright_tail": "0 errors, 0 warnings, 0 informations"
+   }
+  }
+ },
+ "always_on": {
+  "measure": "result.usage input_tokens + cache_creation_input_tokens + cache_read_input_tokens of a one-turn run with -p 'Reply with the single word OK. Do not use any tools.', each in a fresh detached worktree at main 9c5daaae9d32acf259f965fd7b95b458604503b6",
+  "r1_first_request": {
+   "without": 21882,
+   "with": 24058,
+   "delta": 2176,
+   "note": "input + cache tokens of the first assistant event of each R1 run (first_assistant_input_all in the run's metrics.json, which the runner wrote; read again 2026-11-13 after the series): the same in all three runs of each arm, at base 27aa964"
+  },
+  "median_without": 22743,
+  "median_with": 24919,
+  "delta": 2176,
+  "delta_share_of_without_pct": 9.57,
+  "o200k_reconstruction": {
+   "chars": 6291,
+   "tokens": 1352,
+   "ratio_claude_to_o200k": 1.61
+  },
+  "context_messages_delta": 1318,
+  "context_skills_delta": 956,
+  "context_skills_note": "Skills 3066 -> 4022: the 15 superpowers:* entries sum to 956; the other 21 skill entries are identical in both arms (context_usage.skills of a-k1, b-k1, b-k2, b-k3)",
+  "context_system_tools_delta": -956,
+  "context_total_delta": 1318,
+  "context_note": "/context's split nets the listing to 0 (Skills +956, System tools -956), so its total (+1318) understates the always-on delta measured from the API (+2176)",
+  "residual_after_messages": 858,
+  "residual_note": "2176 - 1318: what is left of the API delta after /context's Messages row; a residual, compared with plugin details' estimate for the listing (848) and /context's listing (956), not a measure of the listing",
+  "plugin_details_always_on_estimate": 848,
+  "plugin_details_note": "claude plugin details superpowers: '~848 tok' always-on (the skill listing); it lists the SessionStart hook as 'no model context cost'",
+  "hook_stdout_chars_every_with_run": 3604,
+  "agents_md_tokens_in_context": 3169,
+  "per_r1_session_estimate": "2176 x 14 median without-arm R1 turns = 30464"
+ },
+ "r1_summary": {
+  "passes": {
+   "without": "3 of 3",
+   "with": "3 of 3"
+  },
+  "median_turns": {
+   "without": 14,
+   "with": 15,
+   "change_pct": 7.1
+  },
+  "median_tokens": {
+   "without": 811064,
+   "with": 1010973,
+   "change_pct": 24.6
+  },
+  "median_seconds": {
+   "without": 196.449,
+   "with": 188.05,
+   "change_pct": -4.3
+  },
+  "median_token_gap": 199909,
+  "ranges": {
+   "tokens_without": [
+    623314,
+    927154
+   ],
+   "tokens_with": [
+    780123,
+    1057800
+   ]
+  },
+  "voids": 0,
+  "vetoes": 0,
+  "extra_runs": "none: a 3-3 tie (more runs only on a one-success difference or a 2-2 tie)",
+  "grader_check": {
+   "no_change": "72 failed, 209 passed; pyright 4 errors; ruff clean",
+   "reference_fix_5d51c9c": "281 passed; pyright 0 errors; ruff clean"
+  }
+ },
+ "rule": {
+  "text": "Adopt only if no veto fires and either (a) with passes >= 2 of 3 and without <= 1 of 3, or (b) both pass 3 of 3 and with uses >= 25% fewer median turns AND median total tokens; a one-run miss allows 2 more runs per arm, once. The method's default rule also caps the always-on delta at 2,000 tokens unless (a) holds; applying that cap on top of this rule was settled after the series (first in the measurement notes, file time 02:03 ET), and no record from before the first run says so.",
+  "result": "not adopted",
+  "reasoning": "(a) fails: without also passed 3 of 3. (b) fails: with used 7.1% more median turns and 24.6% more median tokens. No veto fired. The always-on delta, 2176, is also over the 2,000 cap, which the result does not depend on."
+ },
+ "series_totals": {
+  "tokens": {
+   "without": 2429773,
+   "with": 2923665,
+   "all": 5353438
+  },
+  "estimated_cost_usd": {
+   "without": 3.5488,
+   "with": 3.7981,
+   "all": 7.35
+  },
+  "note": "client-side estimates (total_cost_usd); always-on runs included; plus one 2-turn settings probe with claude-haiku-5-5 (tokens not kept) and 6 /context calls with no model spend"
+ },
+ "checks_after_runs": {
+  "containment": "worktree git status --ignored, HEAD, git worktree list, refs, ls -A of ~ and /tmp, ~/.superpowers, /tmp/brainstorm-* and /tmp/review-*, ~/.claude/plugins/data and cache, companion processes, processes with their cwd in the worktree; ~/.claude.json was not checked, and ~/.claude/settings.json and installed_plugins.json were not hashed (the plugin data and cache listings stood in for that)",
+  "flags": {
+   "b-k1": "plugin-data-created: Claude Code's own empty ~/.claude/plugins/data/superpowers-inline at the first --plugin-dir start (01:37:27); removed at cleanup",
+   "a-3": "plugin-data-created: another agent's pyright-lsp-inline folder (01:55:14), not this run"
+  },
+  "leak_scan": "10 lines of leak-hits.txt in 5 runs (a-1, b-1, b-2, a-3, b-3): one Python heredoc per run, editing docstrings in meridian/boundary.py that name the Gateway's folder, each listed twice. leak_scan runs sort -u over {name,input} from the stream and the transcript together, and the transcript stores each Bash command with a 'cd <worktree> && ' prefix, so the two copies never match (in a-1, lines 6 and 14 are the same heredoc). No git history or ref access, no read outside the worktree",
+  "gateway_guard": "no :4002 listener and no process matching 'pgrep -f ibgateway' before every agent start: 18 checks (twice per always-on run, once per R1 run), each a 'guard ok' line in its run's run.log, the last at 01:56:46 ET (the start of b-3), and no guard-fired.txt; it never fired. The runner has no check during or after a run and none after the series (b-3 done at 02:00:06); the measurement notes' 'and at the end' has no record behind it. It matches command lines, so it can give false alarms: this series' own agents put 'ibgateway' on their command lines (the heredocs above, 5 of 6 R1 runs).",
+  "uv_sync": "uv sync --locked exited 0 in every R1 worktree, every grading worktree and both validate worktrees (uv-sync.rc); the runner records the status but does not stop on it",
+  "vetoed_commands_and_listeners": "pip install, gh pr create, git push and 0.0.0.0 are in neither the runner's checks nor the leak patterns: checked once after the series (tool_call_scan, 2026-11-13 04:05 ET), none found. No listener check was made after the runs; the absence of a listener off loopback is inferred from the process checks (companion server.cjs or brainstorm processes, processes with their cwd in the worktree)",
+  "worktrees_and_sign_in": "every run's git worktree add and remove wrote the main checkout's .git/worktrees metadata (REPO=$HOME/src/meridian, as the assessment's protocol and the shared method prescribe), and every run used the owner's Claude Code sign-in."
+ },
+ "tool_call_scan": {
+  "when": "2026-11-13 04:05 ET, once after the series: grep counts over each R1 run's tool_calls.jsonl (stream, transcript, subagents; no run had subagent files)",
+  "tool_calls_all_six_runs": {
+   "Bash": 76,
+   "Edit": 3
+  },
+  "per_run": {
+   "a-1": {"Bash": 10},
+   "b-1": {"Bash": 14},
+   "b-2": {"Bash": 13, "Edit": 2},
+   "a-2": {"Bash": 13},
+   "a-3": {"Bash": 14},
+   "b-3": {"Bash": 12, "Edit": 1}
+  },
+  "how_counted": "unique tool_use ids in r1.stream.jsonl and in r1.transcript.jsonl, recounted 2026-11-13; the two files agree on every id. The runner's tool_calls.jsonl has 152 Bash and 6 Edit lines because it de-duplicates {name,input} over both files, and the transcript's copy of each Bash command carries a 'cd <worktree> && ' prefix",
+  "zero_in_every_run": [
+   "Skill tool",
+   "Agent or Task tool",
+   "codex (plugin or CLI)",
+   "/goal",
+   "pip install",
+   "gh pr",
+   "git push",
+   "0.0.0.0",
+   "poetry",
+   "npm",
+   "gh issue",
+   "start-server"
+  ]
+ },
+ "plugin_usage_addendum": {
+  "when": "2026-11-13T04:05:41-05:00",
+  "how": "jq over the owner's ~/.claude.json in the meridian distro, reading the keys under pluginUsage and only the usageCount and lastUsedAt of 'superpowers@inline'",
+  "found": {
+   "key": "superpowers@inline",
+   "usageCount": 9,
+   "lastUsedAt": "2026-11-13T01:56:46-05:00"
+  },
+  "note": "9 = the sessions that loaded the plugin (3 always-on, 3 /context, 3 R1); lastUsedAt is the start of run b-3. ~/.claude/plugins/data/superpowers-inline no longer exists."
+ },
+ "deviations": [
+  "Deny rules: all 10 in a per-run --settings file, the 9 without 'ibgateway' also in --disallowedTools (the method as the series used it puts its 6 in --disallowedTools only), so that no argument carries 'ibgateway' and concurrent agents' 'pgrep -f ibgateway' guards do not fire; the same in both arms, fixed before the first run.",
+  "Four deny rules beyond the method's six, from the verification's fix (3): Bash(*poetry *), Bash(*npm install*), Bash(*gh issue*), Bash(*start-server.sh*). Not denied: pip install, gh pr create, git push and a 0.0.0.0 rebind; not in the runner's checks either; one grep over the tool calls after the series (04:05 ET) found none.",
+  "SUPERPOWERS_DISABLE_TELEMETRY=1 in both arms, which the method's RUN (ab-claude-code.md line 11 as the series used it) does not set. With the two items above, the three departures from the written method: all fixed before the first run and the same in both arms.",
+  "Always-on base main 9c5daaa, not the verification's stale f65d835.",
+  "Runner bug: the first R1 chain stopped after a-1 (a valid, graded run) because the script returned 1; fixed, resumed at b-1, order kept, no run repeated. The earlier copy (sha256 7416fbeed820f5fa79fee7eaf47ce2bbdafaae3ae3a60be3f0ab57bcb2272645, installed 01:36:41 ET) also ran details, validate and the six always-on runs; it lacked only the final 'exit 0' of the copy that ran from b-1 on (18,249 bytes, sha256 864b142aaa6b8f6a6b1982eee26ad566f6cb001a6525d795f69417b0dde226b7). It was not kept as a file; replaying the measurement session's Write and Edit calls reproduces both hashes. The published 0005_ab.sh is the b-1 copy plus a 15-line header (lines 9-23), with three lines changed to keep the home directory out (CB; the two Read deny rules, in double quotes with $HOME where the run's copy had single quotes and the literal path; rm_project_dir's literal pattern); its header quotes those lines as they ran, and removing the header and restoring them gives 864b142a again. Every figure here was recomputed from the raw streams and grade files.",
+  "From the assessment's protocol, not recorded as departures before the first run (found by a review after the series; the method's choice was used in both arms): claude-opus-5-5, not the distro default claude-fable-5-2 the assessment named; ab-tasks.md's brief without the assessment's prefix line ('Unattended run: nobody will answer questions; decide and carry on until done. Do not push, and never start the IBKR lane.'); the method's order a1 b1 b2 a2 a3 b3, not strict alternation; tokens summed over modelUsage, not over assistant events by message id; listings of ~/.claude/plugins/data and cache in place of a sha256 of ~/.claude/settings.json and installed_plugins.json; no after-each-run grep for vetoed commands and no ss -ltnp listener check.",
+  "From the assessment's always_on protocol, found by a later review the same day: the always-on prompt was the method's 'Reply with the single word OK. Do not use any tools.', not 'Reply with the single word OK.' (the same in both arms); /context ran once per run as a separate '-p /context' session before any prompt, and the assessment's /context after /clear and its grep -c 'You have superpowers.' over each transcript were not made. The first-request input tokens per R1 run, which the assessment asked for, were recorded by the runner but not reported; they are in always_on.r1_first_request."
+ ],
+ "not_measured": [
+  "the bootstrap's return after /clear and after compaction (the hook's matcher startup|clear|compact, read from the source; only the start of each session was measured)",
+  "the lead's model claude-fable-5-2, which the assessment's protocol named, though a user-scope install would load the plugin for the lead too",
+  "interactive brainstorming and planning sessions (headless -p runs with a precise brief only)",
+  "the TDD and review skills on tasks R3 and R4 (not validated when the series ran)"
+ ]
+}

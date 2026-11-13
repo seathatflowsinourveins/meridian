@@ -24,12 +24,12 @@
 
 [adr]
 max_lines_each = 60 # plan 8.6
-max_count = 20 # 0001 to 0013 are being written now
+max_count = 20 # 13 now: 0001 to 0013
 
 [totals]
 agent_instruction_lines = 121 # every AGENTS.md and CLAUDE.md, at any depth: 118 now
-prose_lines = 1800 # all Markdown: 901 now, plus up to 780 for ADRs 0001 to 0013
-config_lines = 360 # 334 now, this file included
+prose_lines = 1800 # Markdown outside docs/adr/data/: 1,697 now, ADRs 0001 to 0013 included
+config_lines = 360 # 339 now, this file included
 workflows = 1
 skills = 6 # Orca's two (#1), and room for plan 8.6's first skill candidates
 
@@ -37,8 +37,12 @@ skills = 6 # Orca's two (#1), and room for plan 8.6's first skill candidates
 # Every tracked file is one of these kinds: the first that matches its path or its file name
 # (case-insensitive fnmatch, where * also matches "/"), in this order. A file that matches none
 # fails the test, so a new kind of file is counted or set aside on purpose.
+# adr_data is matched first and counts toward no total: a file under docs/adr/data/ is not
+# counted whatever its extension, Markdown included (the owner's decision, 2026-11-13).
+# Markdown anywhere else, evidence/ and upstream/ included, is prose.
+adr_data = ["docs/adr/data/*"]
 prose = ["*.md", "*.markdown"]
-not_counted = ["uv.lock", "evidence/*", "docs/adr/data/*", "upstream/*", "*.py", "*.sh"]
+not_counted = ["uv.lock", "evidence/*", "upstream/*", "*.py", "*.sh"]
 config = [
   "*.toml",
   "*.yml",

@@ -1,0 +1,20 @@
+#!/bin/sh
+# ac.sh CHECK   (template; @LOCALBIN@ is replaced by the folder that holds uv)
+# One acceptance check of the with arm's contract for R2. The gate (dsh-goalloop-agentteams 0.9.2)
+# runs it from the worktree through /bin/sh with dsh's whole process environment, so this script
+# starts every command from an empty environment (env -i): nothing dsh loaded, the DeepSeek key
+# included, reaches a check. Cache-free, so the gate's tree digest does not move: no .pyc, no
+# pytest or ruff cache, and uv does not touch .venv (--no-sync).
+d=$(cd "$(dirname "$0")/.." && pwd)   # the run folder
+clean() {
+  exec env -i PATH="@LOCALBIN@:/usr/local/bin:/usr/bin:/bin" HOME="$d/home" TMPDIR="$d/tmp" LANG=C.UTF-8 \
+    UV_CACHE_DIR="$d/cache/uv" PYTHONDONTWRITEBYTECODE=1 PYRIGHT_PYTHON_IGNORE_WARNINGS=1 "$@"
+}
+case "${1:-}" in
+  pytest)      clean uv run --no-sync pytest -q -p no:cacheprovider ;;
+  ruff-check)  clean uv run --no-sync ruff check --no-cache . ;;
+  ruff-format) clean uv run --no-sync ruff format --check --no-cache . ;;
+  pyright)     clean uv run --no-sync pyright ;;
+  scope)       clean sh "$d/ac/scope.sh" "$d/ac/tests.sha256" ;;
+  *) echo "ac.sh: unknown check" >&2; exit 64 ;;
+esac

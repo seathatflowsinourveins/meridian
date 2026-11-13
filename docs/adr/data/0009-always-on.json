@@ -1,0 +1,492 @@
+{
+ "runs": {
+  "A1": {
+   "arm": "without",
+   "requests_captured": 1,
+   "path": "/anthropic/v1/messages",
+   "body_bytes": 27428,
+   "reserialization_faithful": true,
+   "body_tokens_o200k": 6003,
+   "body_sha256_cwd_normalized": "b9db4f6d91f35222513fb7345b0a2a3da9e850c67bbc45809a3e05ce6224ffac",
+   "tool_count": 22,
+   "tool_names": [
+    "bash",
+    "create_goal",
+    "edit",
+    "get_goal",
+    "glob",
+    "grep",
+    "interrupt_agent",
+    "job_kill",
+    "job_list",
+    "job_output",
+    "list_agents",
+    "read",
+    "read_image",
+    "send_message",
+    "skill",
+    "subagent",
+    "subagent_fork",
+    "todo_write",
+    "update_goal",
+    "workflow",
+    "working_directory",
+    "write"
+   ],
+   "tools_json_bytes": 18621,
+   "tools_tokens_o200k": 3857,
+   "peer_tools_in_request": [],
+   "peer_tools_json_chars": 2,
+   "peer_tools_json_bytes": 2,
+   "peer_tools_tokens_o200k": 0,
+   "peer_tools_equal_static_fact_sheet_files": null,
+   "system_json_bytes": 2260,
+   "system_tokens_o200k": 471,
+   "messages_json_bytes": 6393,
+   "messages_tokens_o200k": 1637,
+   "other_fields": [
+    "max_tokens",
+    "model",
+    "output_config",
+    "stream",
+    "thinking"
+   ],
+   "other_fields_sha256": "33ddfd51b626f6140f2a8069170a1ff70b6dd74e9b73f2061d926f998d90a7de",
+   "system_sha256": "cfe637ae06d290939b6b484365b48fc6e702eca8f52a5efc4bff480ecd723711",
+   "messages_sha256_cwd_normalized": "52d5fbb5754e75d37f96aa1ba87c5e90231af97ea521f9637fbb1688a8098c74",
+   "non_peer_tools_sha256": "d45ce9636b4775c5c9941269f5028381adfb66a7c04dfbe98ef53927b42a8a46"
+  },
+  "B1": {
+   "arm": "with",
+   "requests_captured": 1,
+   "path": "/anthropic/v1/messages",
+   "body_bytes": 37352,
+   "reserialization_faithful": true,
+   "body_tokens_o200k": 8175,
+   "body_sha256_cwd_normalized": "b053dbaa5d0fc139a388b413edef5601a79ba105926338042d7a8abaa9f5b463",
+   "tool_count": 27,
+   "tool_names": [
+    "bash",
+    "codex_ask",
+    "codex_plan",
+    "codex_review",
+    "codex_status",
+    "codex_task",
+    "create_goal",
+    "edit",
+    "get_goal",
+    "glob",
+    "grep",
+    "interrupt_agent",
+    "job_kill",
+    "job_list",
+    "job_output",
+    "list_agents",
+    "read",
+    "read_image",
+    "send_message",
+    "skill",
+    "subagent",
+    "subagent_fork",
+    "todo_write",
+    "update_goal",
+    "workflow",
+    "working_directory",
+    "write"
+   ],
+   "tools_json_bytes": 28545,
+   "tools_tokens_o200k": 6029,
+   "peer_tools_in_request": [
+    "codex_ask",
+    "codex_plan",
+    "codex_review",
+    "codex_status",
+    "codex_task"
+   ],
+   "peer_tools_json_chars": 9921,
+   "peer_tools_json_bytes": 9925,
+   "peer_tools_tokens_o200k": 2174,
+   "peer_tools_equal_static_fact_sheet_files": {
+    "codex_ask": true,
+    "codex_plan": true,
+    "codex_review": true,
+    "codex_status": true,
+    "codex_task": true
+   },
+   "system_json_bytes": 2260,
+   "system_tokens_o200k": 471,
+   "messages_json_bytes": 6393,
+   "messages_tokens_o200k": 1637,
+   "other_fields": [
+    "max_tokens",
+    "model",
+    "output_config",
+    "stream",
+    "thinking"
+   ],
+   "other_fields_sha256": "33ddfd51b626f6140f2a8069170a1ff70b6dd74e9b73f2061d926f998d90a7de",
+   "system_sha256": "cfe637ae06d290939b6b484365b48fc6e702eca8f52a5efc4bff480ecd723711",
+   "messages_sha256_cwd_normalized": "52d5fbb5754e75d37f96aa1ba87c5e90231af97ea521f9637fbb1688a8098c74",
+   "non_peer_tools_sha256": "d45ce9636b4775c5c9941269f5028381adfb66a7c04dfbe98ef53927b42a8a46"
+  },
+  "B2": {
+   "arm": "with",
+   "requests_captured": 1,
+   "path": "/anthropic/v1/messages",
+   "body_bytes": 37352,
+   "reserialization_faithful": true,
+   "body_tokens_o200k": 8175,
+   "body_sha256_cwd_normalized": "b053dbaa5d0fc139a388b413edef5601a79ba105926338042d7a8abaa9f5b463",
+   "tool_count": 27,
+   "tool_names": [
+    "bash",
+    "codex_ask",
+    "codex_plan",
+    "codex_review",
+    "codex_status",
+    "codex_task",
+    "create_goal",
+    "edit",
+    "get_goal",
+    "glob",
+    "grep",
+    "interrupt_agent",
+    "job_kill",
+    "job_list",
+    "job_output",
+    "list_agents",
+    "read",
+    "read_image",
+    "send_message",
+    "skill",
+    "subagent",
+    "subagent_fork",
+    "todo_write",
+    "update_goal",
+    "workflow",
+    "working_directory",
+    "write"
+   ],
+   "tools_json_bytes": 28545,
+   "tools_tokens_o200k": 6029,
+   "peer_tools_in_request": [
+    "codex_ask",
+    "codex_plan",
+    "codex_review",
+    "codex_status",
+    "codex_task"
+   ],
+   "peer_tools_json_chars": 9921,
+   "peer_tools_json_bytes": 9925,
+   "peer_tools_tokens_o200k": 2174,
+   "peer_tools_equal_static_fact_sheet_files": {
+    "codex_ask": true,
+    "codex_plan": true,
+    "codex_review": true,
+    "codex_status": true,
+    "codex_task": true
+   },
+   "system_json_bytes": 2260,
+   "system_tokens_o200k": 471,
+   "messages_json_bytes": 6393,
+   "messages_tokens_o200k": 1637,
+   "other_fields": [
+    "max_tokens",
+    "model",
+    "output_config",
+    "stream",
+    "thinking"
+   ],
+   "other_fields_sha256": "33ddfd51b626f6140f2a8069170a1ff70b6dd74e9b73f2061d926f998d90a7de",
+   "system_sha256": "cfe637ae06d290939b6b484365b48fc6e702eca8f52a5efc4bff480ecd723711",
+   "messages_sha256_cwd_normalized": "52d5fbb5754e75d37f96aa1ba87c5e90231af97ea521f9637fbb1688a8098c74",
+   "non_peer_tools_sha256": "d45ce9636b4775c5c9941269f5028381adfb66a7c04dfbe98ef53927b42a8a46"
+  },
+  "A2": {
+   "arm": "without",
+   "requests_captured": 1,
+   "path": "/anthropic/v1/messages",
+   "body_bytes": 27428,
+   "reserialization_faithful": true,
+   "body_tokens_o200k": 6003,
+   "body_sha256_cwd_normalized": "b9db4f6d91f35222513fb7345b0a2a3da9e850c67bbc45809a3e05ce6224ffac",
+   "tool_count": 22,
+   "tool_names": [
+    "bash",
+    "create_goal",
+    "edit",
+    "get_goal",
+    "glob",
+    "grep",
+    "interrupt_agent",
+    "job_kill",
+    "job_list",
+    "job_output",
+    "list_agents",
+    "read",
+    "read_image",
+    "send_message",
+    "skill",
+    "subagent",
+    "subagent_fork",
+    "todo_write",
+    "update_goal",
+    "workflow",
+    "working_directory",
+    "write"
+   ],
+   "tools_json_bytes": 18621,
+   "tools_tokens_o200k": 3857,
+   "peer_tools_in_request": [],
+   "peer_tools_json_chars": 2,
+   "peer_tools_json_bytes": 2,
+   "peer_tools_tokens_o200k": 0,
+   "peer_tools_equal_static_fact_sheet_files": null,
+   "system_json_bytes": 2260,
+   "system_tokens_o200k": 471,
+   "messages_json_bytes": 6393,
+   "messages_tokens_o200k": 1637,
+   "other_fields": [
+    "max_tokens",
+    "model",
+    "output_config",
+    "stream",
+    "thinking"
+   ],
+   "other_fields_sha256": "33ddfd51b626f6140f2a8069170a1ff70b6dd74e9b73f2061d926f998d90a7de",
+   "system_sha256": "cfe637ae06d290939b6b484365b48fc6e702eca8f52a5efc4bff480ecd723711",
+   "messages_sha256_cwd_normalized": "52d5fbb5754e75d37f96aa1ba87c5e90231af97ea521f9637fbb1688a8098c74",
+   "non_peer_tools_sha256": "d45ce9636b4775c5c9941269f5028381adfb66a7c04dfbe98ef53927b42a8a46"
+  },
+  "A3": {
+   "arm": "without",
+   "requests_captured": 1,
+   "path": "/anthropic/v1/messages",
+   "body_bytes": 27428,
+   "reserialization_faithful": true,
+   "body_tokens_o200k": 6003,
+   "body_sha256_cwd_normalized": "b9db4f6d91f35222513fb7345b0a2a3da9e850c67bbc45809a3e05ce6224ffac",
+   "tool_count": 22,
+   "tool_names": [
+    "bash",
+    "create_goal",
+    "edit",
+    "get_goal",
+    "glob",
+    "grep",
+    "interrupt_agent",
+    "job_kill",
+    "job_list",
+    "job_output",
+    "list_agents",
+    "read",
+    "read_image",
+    "send_message",
+    "skill",
+    "subagent",
+    "subagent_fork",
+    "todo_write",
+    "update_goal",
+    "workflow",
+    "working_directory",
+    "write"
+   ],
+   "tools_json_bytes": 18621,
+   "tools_tokens_o200k": 3857,
+   "peer_tools_in_request": [],
+   "peer_tools_json_chars": 2,
+   "peer_tools_json_bytes": 2,
+   "peer_tools_tokens_o200k": 0,
+   "peer_tools_equal_static_fact_sheet_files": null,
+   "system_json_bytes": 2260,
+   "system_tokens_o200k": 471,
+   "messages_json_bytes": 6393,
+   "messages_tokens_o200k": 1637,
+   "other_fields": [
+    "max_tokens",
+    "model",
+    "output_config",
+    "stream",
+    "thinking"
+   ],
+   "other_fields_sha256": "33ddfd51b626f6140f2a8069170a1ff70b6dd74e9b73f2061d926f998d90a7de",
+   "system_sha256": "cfe637ae06d290939b6b484365b48fc6e702eca8f52a5efc4bff480ecd723711",
+   "messages_sha256_cwd_normalized": "52d5fbb5754e75d37f96aa1ba87c5e90231af97ea521f9637fbb1688a8098c74",
+   "non_peer_tools_sha256": "d45ce9636b4775c5c9941269f5028381adfb66a7c04dfbe98ef53927b42a8a46"
+  },
+  "B3": {
+   "arm": "with",
+   "requests_captured": 1,
+   "path": "/anthropic/v1/messages",
+   "body_bytes": 37352,
+   "reserialization_faithful": true,
+   "body_tokens_o200k": 8175,
+   "body_sha256_cwd_normalized": "b053dbaa5d0fc139a388b413edef5601a79ba105926338042d7a8abaa9f5b463",
+   "tool_count": 27,
+   "tool_names": [
+    "bash",
+    "codex_ask",
+    "codex_plan",
+    "codex_review",
+    "codex_status",
+    "codex_task",
+    "create_goal",
+    "edit",
+    "get_goal",
+    "glob",
+    "grep",
+    "interrupt_agent",
+    "job_kill",
+    "job_list",
+    "job_output",
+    "list_agents",
+    "read",
+    "read_image",
+    "send_message",
+    "skill",
+    "subagent",
+    "subagent_fork",
+    "todo_write",
+    "update_goal",
+    "workflow",
+    "working_directory",
+    "write"
+   ],
+   "tools_json_bytes": 28545,
+   "tools_tokens_o200k": 6029,
+   "peer_tools_in_request": [
+    "codex_ask",
+    "codex_plan",
+    "codex_review",
+    "codex_status",
+    "codex_task"
+   ],
+   "peer_tools_json_chars": 9921,
+   "peer_tools_json_bytes": 9925,
+   "peer_tools_tokens_o200k": 2174,
+   "peer_tools_equal_static_fact_sheet_files": {
+    "codex_ask": true,
+    "codex_plan": true,
+    "codex_review": true,
+    "codex_status": true,
+    "codex_task": true
+   },
+   "system_json_bytes": 2260,
+   "system_tokens_o200k": 471,
+   "messages_json_bytes": 6393,
+   "messages_tokens_o200k": 1637,
+   "other_fields": [
+    "max_tokens",
+    "model",
+    "output_config",
+    "stream",
+    "thinking"
+   ],
+   "other_fields_sha256": "33ddfd51b626f6140f2a8069170a1ff70b6dd74e9b73f2061d926f998d90a7de",
+   "system_sha256": "cfe637ae06d290939b6b484365b48fc6e702eca8f52a5efc4bff480ecd723711",
+   "messages_sha256_cwd_normalized": "52d5fbb5754e75d37f96aa1ba87c5e90231af97ea521f9637fbb1688a8098c74",
+   "non_peer_tools_sha256": "d45ce9636b4775c5c9941269f5028381adfb66a7c04dfbe98ef53927b42a8a46"
+  }
+ },
+ "summary": {
+  "without": {
+   "body_bytes": {
+    "runs": [
+     27428,
+     27428,
+     27428
+    ],
+    "median": 27428
+   },
+   "body_tokens_o200k": {
+    "runs": [
+     6003,
+     6003,
+     6003
+    ],
+    "median": 6003
+   },
+   "tools_json_bytes": {
+    "runs": [
+     18621,
+     18621,
+     18621
+    ],
+    "median": 18621
+   },
+   "tools_tokens_o200k": {
+    "runs": [
+     3857,
+     3857,
+     3857
+    ],
+    "median": 3857
+   },
+   "tool_count": {
+    "runs": [
+     22,
+     22,
+     22
+    ],
+    "median": 22
+   },
+   "identical_cwd_normalized_bodies": true
+  },
+  "with": {
+   "body_bytes": {
+    "runs": [
+     37352,
+     37352,
+     37352
+    ],
+    "median": 37352
+   },
+   "body_tokens_o200k": {
+    "runs": [
+     8175,
+     8175,
+     8175
+    ],
+    "median": 8175
+   },
+   "tools_json_bytes": {
+    "runs": [
+     28545,
+     28545,
+     28545
+    ],
+    "median": 28545
+   },
+   "tools_tokens_o200k": {
+    "runs": [
+     6029,
+     6029,
+     6029
+    ],
+    "median": 6029
+   },
+   "tool_count": {
+    "runs": [
+     27,
+     27,
+     27
+    ],
+    "median": 27
+   },
+   "identical_cwd_normalized_bodies": true
+  }
+ },
+ "delta_with_minus_without_medians": {
+  "body_bytes": 9924,
+  "body_tokens_o200k": 2172,
+  "tools_json_bytes": 9924,
+  "tools_tokens_o200k": 2172,
+  "tool_count": 5
+ },
+ "all_six_share": {
+  "system": true,
+  "messages_cwd_normalized": true,
+  "non_peer_tools": true,
+  "other_request_fields": true
+ }
+}

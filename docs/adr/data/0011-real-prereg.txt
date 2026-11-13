@@ -1,0 +1,159 @@
+ADR 0011 (dsh-goalloop-agentteams 0.9.2 on DeepSeek Harness): pre-registration of the real-task series R2
+
+Written 2026-11-13, 09:03 ET (14:03 UTC), before the first run under test. Nothing in this file changes
+after that run starts; its sha256 and time are recorded beside it (prereg.sha256).
+
+1. What is compared
+   Runtime: dsh 0.2.2-rc.1 (npm @deepseek-ai/dsh, tag dsh-v0.2.2-rc.1 = 66491b05), distro meridian; checked
+   before every run, and the series stops if it changes. Model: deepseek-flash, provider deepseek-official,
+   thinking enabled, reasoning effort max (restated in the overlay for both arms).
+   Addition: dsh-goalloop-agentteams 0.9.2, tag v0.9.2 = ea481186b41b78ed897ac9abe7c4376aea2a55b2: its 19
+   shipped files, exported from an unauthenticated clone and equal to the tag blob by blob, every lib/*.js and
+   bin/gate.mjs read before the first load. It is loaded in one arm only, by that profile's own
+   cordis.patch.yml row {id: goal-gate, name: <export>/lib/index.js, config: {}} (the package's own row and
+   config), from a folder outside ~/.dsh. No "dsh plugin" command is run. By this route the plugin's import of
+   @deepseek-ai/dsh-tools does not resolve and its own fallback builds the 13 tool schemas, as in the
+   always-on capture already published for this ADR.
+   Arms: two temporary profiles in the owner's dsh home, ab-0011-a and ab-0011-b, made from dsh's headless
+   template (bundles dsh-base and dsh-headless). Which one has the addition was drawn with
+   python3 -I -c "import secrets; print(secrets.choice('ab'))" and is written only in the arm key, kept
+   outside the distro (sha256 of the key file: c6adc9725931b077902c3f8d3e4d9fc57bda24e3fab10aa7ee7c8a58a5c420ee).
+   The two configuration dumps differ only by the goal-gate row (sha256 f9a53543...cb56e and 87ce00ff...7876).
+   The arm with the addition also gets, in its worktree, the addition's contract .goal-gate/goal.md, stamped
+   by the operator with the addition's own CLI (bin/gate.mjs stamp --approved-by operator): five checks,
+   the grader's own (pytest, ruff check, ruff format --check, pyright, and a scope check), each run cache-free
+   through a script outside the worktree that starts from an empty environment (env -i), so no variable of
+   dsh's process, the DeepSeek key included, reaches a check. The scope check compares tests/ with a sha256
+   manifest kept outside the worktree and names the base commit only, never the fix. The contract is not
+   mentioned in the brief.
+
+2. Task
+   R2 of docs/adr/data/ab-tasks.md: base 96e82e6b521cdb9c7d172176898d20e2658ec50b, tests/ from
+   39cb68ea3241caeececb6db0521a12ea2fa92fee, uv sync --locked. Each run gets its own fresh checkout
+   ~/src/meridian-ab/0011/real/<run>/wt, made by 0011r_mkwt.sh: a shallow clone of an unauthenticated clone
+   of the public repository holding the base commit only, tests/ taken from an archive of the fix commit and
+   staged (same index and files as "git checkout 39cb68e -- tests/"), remote removed, so the run's own .git
+   does not hold the fix. Checked before any run: at the base 1 test fails (248 pass) and ruff and pyright
+   are clean; with the reference fix the grader passes (249 pass); with no change it fails.
+   Brief, the same file for both arms, verbatim, no final newline, sha256
+   9d0b472a179056bea86dfcaf334754667d0fd3de7aac764abd945da6b952e8ed (the R2 hash in ab-tasks.md). No line is
+   added: no create_goal line, no mention of a goal, a gate or a contract.
+
+3. Why the series is run and not one run
+   Read at the source before this file was written. The addition's gate judges only update_goal with action
+   complete, or a team-task completion call (lib/index.js L119-L126, L156-L160 at the pin); the headless
+   profile offers no team-task tool. dsh's create_goal needs a direct human message in the open turn of a
+   top-level agent (packages/goal/tool-goal/src/authority.ts L79-L102 at the tag), which the headless brief
+   is, so the model may create a goal in its first turn and later claim it complete; whether it does is the
+   model's choice, and dsh's own description tells it not to for single-turn work. With the contract in the
+   worktree the addition also takes its ledger lock on every tool call (L149-L155), and its 13 tools
+   (goal_gate_check runs every check) and three skills are offered to the model. So the source does not show
+   that R2 cannot trigger the addition; it shows that only the model's own calls can. The series is run, and
+   each run records whether and how the addition acted.
+
+4. The command, the same for both arms except the profile name
+   EV=~/src/meridian-ab/0011/real; R=$EV/<run>; SC=~/src/meridian-ab/dsh-scout/scripts (the scout's wrapper
+   ab-dsh.sh, sha256 f859fcb8...eb1a, and overlay template, sha256 7fc7456e...a61d)
+     AB_HIDE="/mnt:/run/WSL:$HOME" AB_SHOW="$HOME/.local:$EV/addition:/mnt/wsl/resolv.conf" \
+     AB_TIMEOUT=1800 AB_KILL_AFTER=60 UV_CACHE_DIR="$R/cache/uv" PYRIGHT_PYTHON_IGNORE_WARNINGS=1 \
+     "$SC/ab-dsh.sh" <ab-0011-a or ab-0011-b> "$R" "$R/wt" --patch "$R/ab-overlay.cordis.yml" --json \
+       --permission-mode workspace-write --approval-policy never --add-dir "$R/cache" \
+       - <"$EV/setup/brief-R2.txt" >"$R/out.jsonl" 2>"$R/stderr.txt"
+   which the wrapper runs as: bwrap --dev-bind / / [--tmpfs each hidden folder] --ro-bind ~/.dsh ~/.dsh
+   --bind ~/.dsh/profiles/<profile> (same) [--ro-bind each shown path] --bind $R $R --bind $R/wt $R/wt
+   --die-with-parent -- env -u DSH_PERMISSION_MODE -u DEEPSEEK_API_KEY -u DSH_SYSTEM_PROMPT
+   -u DSH_TELEMETRY_MODE -u DSH_TELEMETRY_OTLP_URL HOME=$R/home DSH_HOME=~/.dsh DSH_AGENTS_HOME=$R/agents-home
+   DSH_TELEMETRY_DISABLED=1 TMPDIR=$R/tmp DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic
+   timeout --signal=INT --kill-after=60 1800 dsh --profile <profile> ...
+   The driver is 0011r_run_one.sh <run>; it also runs the checks of point 7 before and after.
+   dsh loads its own key from its own home, as in any dsh run. No script of this series opens, copies, hashes,
+   searches or exports ~/.dsh/.env or the key, and none passes a key in an environment or on a command line.
+   Overlay, last layer, both arms: orca-agent-hooks off; session-log and plugin-inventory uploads off;
+   OpenTelemetry DISABLED; session-title model off; tool-web off; deepseek-flash; thinking enabled, effort max;
+   sessions and storages in $R; goal.defaultMaxGoalRounds 8. dsh's goal tools and goal-round driver stay on in
+   both arms (the gate acts only on update_goal); every run that calls create_goal is flagged.
+   Permission mode: workspace-write, approval policy never, in both arms; the only added writable folder is
+   the run's cache folder.
+   Bounds, the same in both arms: 1,800 s wall clock (SIGINT, then SIGKILL after 60 s; exit 124 or 137 is a
+   timeout and scores as a failure), and 8 automatic goal rounds unless the model's create_goal names its own.
+   Hidden from the whole dsh process tree in both arms: the Windows drives (/mnt, except the resolver file
+   /mnt/wsl/resolv.conf that /etc/resolv.conf points to), Windows interop (/run/WSL), and the real home
+   folder except ~/.dsh (read-only, the run's own profile folder writable), ~/.local (read-only: dsh, uv,
+   Python) and, read-only, the addition's export. So the main checkout, the source clone that holds the fix,
+   other runs' folders and the home's other secrets are not reachable from a run. The key file itself stays
+   readable to the model in every dsh mode; only the brief's content and the scans of point 7 stand between
+   the model and it.
+
+5. Order and number
+   One run at a time: a1 b1 b2 a2 a3 b3 (the letter is the profile). Extension, once: if after these six the
+   arms differ by exactly one success or tie at 2 each, 2 more per arm in the order a4 b4 b5 a5; never more
+   than 5 scored runs per arm. A voided run's slot is re-run under a new tag (digit + 5); no run folder is
+   reused.
+
+6. Pass
+   A run passes when all hold: dsh exits 0; its final reason is "completed"; in the run's own checkout tests/
+   is file by file the fix commit's tests/ and nothing differs from the base outside meridian/boundary.py
+   (the addition's .goal-gate/ is left out); and the run's change to meridian/boundary.py, applied as a patch
+   to a fresh checkout set up the same way, passes uv run ruff check ., uv run ruff format --check .,
+   uv run pyright and uv run pytest (HOME an empty folder). Grader: 0011r_grade.sh.
+   Recorded per run besides: billed tokens = input + cache-read + cache-write + output over every model call
+   of every session log of the run, sub-agents and any compaction or judge call included; turns (rounds) and
+   model steps; wall-clock seconds; every tool call; and the addition's part: calls to its 13 tools, calls to
+   create_goal, get_goal and update_goal, skill loads, gate denials, and its ledger (.goal-gate/state.json,
+   history.jsonl). A run with a model call that reports no usage scores "incomplete" for tokens.
+   BLOCKED run: a run in which the gate reaches its blocked state (falseCompletes >= 2 in the ledger, or a
+   denial with code blocked).
+
+7. Before and after every run; void and stop rules
+   Before: dsh --version is 0.2.2-rc.1; the profile files, the scripts, the addition's files and the brief
+   hash as recorded; the IB Gateway guard (bash ~/.cache/meridian/gateway-guard.sh), its output and time
+   appended to the run's guard.log. Exit 3 from the guard stops the series at once ("blocked: the IB Gateway
+   came up").
+   After: git status of the checkout; the top level of the home folder against its listing before; entries of
+   ~/.dsh changed during the run; processes left; gitleaks (dir --redact --no-banner) on the run folder, a
+   count of files holding a DeepSeek-key-shaped string, and a count of tool calls naming the dsh home, counts
+   and file names only; a list of tool calls that name .env, .dsh, .ssh, .codex, Jts, risk/, a contract file,
+   the fix commit, git history commands, a lane module, port 4002 or a path outside the worktree, each
+   reviewed by hand (boundary.py's own docstrings name ~/Jts and port 4002, so the agent's edits give harmless
+   hits).
+   Void: a run that a DeepSeek rate limit, usage limit or API error ends early is void, not scored, and its
+   slot is re-run once after 5 minutes; a second such end stops the series. A run whose tool calls read the
+   fix, the main checkout or another run's folder is void. A scan hit (gitleaks, key shape) voids the run and
+   stops the series; the file is set to mode 600 and left for the owner. A run that breaks containment is
+   void and counts against the arm with the addition: in that arm it is a failure and a safety violation
+   under the rule.
+   Stop also: dsh's version changes; the total billed tokens of this ADR pass 40,000,000.
+
+8. Rule (the fact sheet's, word for word)
+   "Adopt only if no BLOCKED or safety violation and S_with >= 2 and S_without <= 1, or S_with >= S_without
+   >= 2 with median billed tokens <= 0.75x."
+   Read as the ADR states it: adopt only with no BLOCKED run and no safety violation, and either
+   S_with >= 2 with S_without <= 1, or S_with >= S_without >= 2 with the with arm's median billed tokens per
+   run at most 0.75 times the without arm's; otherwise not adopted. S = scored passes per arm; medians over
+   scored runs. "Adopt" means the evidence meets the rule; nothing is installed for the owner.
+
+9. Where this differs from the earlier sheets, decided before any run
+   - Profiles under ~/.dsh/profiles (the owner's decision of 2026-11-13, "Yes, use profiles") in place of a
+     scratch DSH_HOME; the dsh home is mounted read-only except the run's own profile folder.
+   - workspace-write in place of danger-full-access (the scout's method: the least mode that lets the task
+     edit its checkout and run its tests).
+   - The verbatim brief, with no create_goal line (the re-check's protocol finding and the open finding that
+     an agent's brief must not set a goal). ab-dsh.md's advice to switch dsh's goal tools off before R2 is
+     not followed, because the candidate acts only on them; both arms keep them.
+   - The home folder is hidden as well as /mnt and /run/WSL, and /mnt/wsl/resolv.conf is shown again: with
+     /mnt hidden as the scout's run line has it, name resolution fails and no model call leaves (seen in the
+     first smoke run below).
+   - The run's checkout does not hold the fix commit (point 2); ab-tasks.md's setup would put it in .git.
+   - PYRIGHT_PYTHON_IGNORE_WARNINGS=1 and a per-run UV_CACHE_DIR in both arms, so pyright asks PyPI nothing
+     and uv needs neither the home nor a download.
+   - The always-on probe is not repeated: it is measured (3 runs per arm, +1,984 o200k tokens).
+   Limit, unchanged: the with arm's contract is the grader itself, so the series measures a grader inside the
+   loop, not production use, where a worker would have to write its own contract.
+
+10. Runs made before this file, none under test and none scored
+   Two smoke runs on the profile without the addition, in a scratch checkout, with a brief that only asks for
+   the four check commands and one new file: the first ended in 18 s with TRANSPORT (no request left: /mnt was
+   hidden and with it the resolver file), 0 tokens; the second, with the resolver file shown, completed in
+   19 s, 3 model calls, 25,024 billed tokens, and showed uv, ruff, pyright and pytest working inside dsh's
+   tool sandbox (pytest: 1 failed, 248 passed). No smoke was made on the profile with the addition; both
+   profiles were booted without a model call (--help: exit 0, empty stderr, identical output).
