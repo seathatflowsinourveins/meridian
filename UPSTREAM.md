@@ -154,7 +154,7 @@ Nothing in this table is installed. Each row names the ADR that measured it.
 
 | Component | Version or commit | Licence | Source URL (read) | Date read | Decision | ADR |
 |---|---|---|---|---|---|---|
-| semble (semantic code search), with its embedding model `minishlab/potion-code-16M-v2` | 0.7.2, tag commit `bb746c9c79925760df8a3759fcca658734e2eaf6`, wheel sha256 `e0cb9c8ea303f38d7390e5f441fc9c05dbc1eeae6e2afa20e2ab8bef10942e2d`; model revision `e9d2a44ca6a05ac6685f3b23709ea57eb7352d5b` | MIT; model MIT | https://github.com/MinishLab/semble/tree/v0.7.2 ; https://pypi.org/pypi/semble/json ; https://huggingface.co/api/models/minishlab/potion-code-16M-v2 | 2026-11-12 | not adopted: on 30 fixed questions it answered 3 fewer than ripgrep plus pyright within the top 1, 3 and 5 results | [0001](docs/adr/0001-semble-code-search.md) |
+| semble (semantic code search), with its embedding model `minishlab/potion-code-16M-v2` | 0.7.2, tag commit `bb746c9c79925760df8a3759fcca658734e2eaf6`, wheel sha256 `e0cb9c8ea303f38d7390e5f441fc9c05dbc1eeae6e2afa20e2ab8bef10942e2d`; model revision `e9d2a44ca6a05ac6685f3b23709ea57eb7352d5b` | MIT; model MIT | https://github.com/MinishLab/semble/tree/v0.7.2 ; https://pypi.org/pypi/semble/json ; https://huggingface.co/api/models/minishlab/potion-code-16M-v2 | 2026-11-12 | not adopted: on 30 fixed questions it answered 3 fewer than ripgrep plus pyright within the top 1, 3 and 5 results (3, 4 and 4 fewer once a helper wrongly accepted as a test answer is set aside) | [0001](docs/adr/0001-semble-code-search.md) |
 
 ## Notes on choices
 
