@@ -1,0 +1,2 @@
+ADR 0006 key (kept outside the run folders): the arm with compound-engineering@d8f8e03 is "a"; the other letter is the arm without. Drawn 2026-11-13T01:59:12-05:00 from /dev/urandom (byte mod 2 = 0).
+[Published copy (docs/adr/data/0006-key.txt) of the key written 2026-11-13 01:59:12 ET, before the first run; the first line is the original byte for byte (sha256 of the original file, LF endings: ce6738931588c01746bc2f01aee7f3541f2f382771061cb1bc6085c8019757e6), and this line is added.]

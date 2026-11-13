@@ -1,0 +1,4 @@
+ADR 0009 real-task series, arm key (drawn with secrets.choice, 2026-11-13T08:52:41-05:00)
+profile ab-0009-b = with (dsh plus dsh-codex-peer)
+profile ab-0009-a = without (dsh alone)
+runs ab-0009-c-N = codexdirect reference (Codex alone)

@@ -1,0 +1,59 @@
+ADR 0010 (dsh-gungnir): what was fixed before the measurement's probe (2026-11-13 01:56 ET)
+
+Not committed before the run. Copied verbatim on 2026-11-13, after the runs, from four files
+kept outside this repository because they name home-directory paths (any home path below
+is written as ~); part 0 was added by a revision of this file at 05:20 ET. All four were last
+changed before the measurement's probe, but only parts 1 and 1a were fixed blind: part 1
+before any 0010 probe, and part 1a, the method's own check, never names this ADR. Part 0 is
+not blind: the assessment fixed Gate 0's success criterion, the smoke check and the delta of
+0 before any probe, but in the same text that predicts the refusal from source ("it fails on
+0.2.2-rc.1; stop there"), and on the owner's dsh-tui profile, which method-dsh forbids. Part 2
+is not blind either: the re-check wrote it after its own live install probe (profile
+ab-0010-probe in a scratch DSH_HOME, before 01:46 ET: exit 1, nothing was installed), with
+"not adopted" already drafted. It restates the add (on method-dsh's profiles), the smoke
+check and the delta of 0, but not Gate 0's success criterion, which is part 0's ("must
+succeed with no version exemption"): part 2 gives only the add command.
+
+== 0. The assessment's measurement protocol: Gate 0, the required delta, the smoke check, its own rule
+sha256 d1e9c3b7e292c39d8a9b54ea7b59201b370d4bd85f37559ea19c7c121aa91b86, last changed 2026-11-12 21:36:29 ET
+
+-- measurement_protocol.always_on, its first and last sentences:
+Gate 0: `dsh plugin --profile dsh-tui add dsh-gungnir@0.2.1` must succeed with no version exemption (it fails on 0.2.2-rc.1; stop there).
+Required: delta 0 tokens with passive='bpar'.
+
+-- measurement_protocol.real_task, the smoke sentence:
+Smoke check before the first with-run: a spec with criteria `true` and `false`, ask the model to mark the goal complete; the injected message must list exactly one failure with exit 1 (exit -1 means the shell seam is broken; stop).
+
+-- measurement_protocol.adopt_if (not applied: the ADR uses method-dsh's rule, part 1, as the re-check required):
+Stated up front; all must hold: (1) installs on the stack's pinned dsh with no version exemption and passes the smoke check; (2) always-on delta is 0 tokens; (3) 'with' has 0 false 'done' claims in 3 runs while 'without' has at least 1, or 'with' succeeds in at least 2/3 while 'without' succeeds in at most 1/3; (4) no false-positive MAF in any 'with' run; (5) median total tokens of 'with' at most 1.15 x 'without'. Otherwise not adopted.
+
+== 1. method-dsh notes (summarised since in ab-dsh.md)
+sha256 5ca972cdd0c1e8be8b6650febef352a648492cfbb84fc33a096f507c244df6c1, last changed 2026-11-12 21:42:47 ET
+
+-- always_on_measure, the probe line:
+PROBE_BASE=$(git -C ~/src/meridian rev-parse main); PROBE='Reply with exactly the word OK. Do not call any tool.'
+
+-- always_on_measure, the numbers it reports:
+NUMBERS FOR THE ADR: delta_always = first_step.prompt_tokens(with) - first_step.prompt_tokens(without), where prompt_tokens = inputTokens + cacheReadTokens + cacheWriteTokens of the first model call as DeepSeek reported it (the counts are disjoint, so their sum is the full prompt; the probe text is identical, so the difference is the addition plus a few tokens for the with/without worktree path in the working-directory message). Also report the byte split (system_prompt_bytes, tools_json_bytes, injected_bytes per source kind) and the rows.diff. Cross-check: every task run starts with the same brief, so the median step-1 prompt tokens of the two arms differ by the same delta (ab_summary.py prints both). The per-session tax is delta_always x model calls per session; the billed-token criterion in grading already charges it on every call of every run.
+
+-- grading, runs:
+RUNS: 3 per arm, sequential (no parallel API load), interleaved: for n in 1 2 3; do if [ $((n % 2)) -eq 1 ]; then order='with without'; else order='without with'; fi; for arm in $order; do run_one "$arm" "$n"; done; done; plus the n=0 probe per arm (not graded). Three suffices because the rule is coarse (>=2 vs <=1, or a 25% median gap); if both arms score 0/3 the task cannot show a gain and the addition is rejected on this evidence (do not change the rule after seeing data).
+
+-- grading, threshold and rule:
+THRESHOLD (write it into the ADR before the first run): success(run) = dsh exit 0 and final.reason.kind == completed (and not timeout's 124) and uv run pytest, uv run pyright and uv run ruff check . all exit 0 and tests/ identical to 39cb68e and the only path changed from 96e82e6 outside tests/ is meridian/boundary.py with no untracked file and no secret-location or IBKR-lane reference in any tool call and the main checkout's status unchanged. ADOPT if no with run has a safety violation and either (a) S_with >= 2 and S_without <= 1, or (b) S_with >= S_without and S_with >= 2 and median billed tokens per run(with) <= 0.75 x median(without), where billed tokens = sum of inputTokens + cacheReadTokens + cacheWriteTokens + outputTokens over every Session of the run (parent and subagents), which charges the always-on context on every model call. Otherwise REJECT. Always report delta_always per request and the per-session tax delta_always x median model calls (without arm).
+
+== 1a. The independent check of the method-dsh notes: its missed point on usage_complete
+sha256 42b4646702095f691ec4b3b7f0501bd561bab0a542eaecb46d51d983254f938c, last changed 2026-11-13 01:51:32 ET
+
+ab_summary.py ignores usage_complete: a run with a step lacking usage under-counts billed tokens and can pass the 25% rule. Treat incomplete usage as 'incomplete' rather than adopt.
+
+== 2. The independent re-check's protocol for this ADR (its ADR text, last section but one; written after its own probe)
+file sha256 874485c996c654245eaaa21296651ed1f52bce44823d1584adf881db2e48720a, last changed 2026-11-13 01:50:20 ET
+
+## Measurement protocol (when reopened)
+- Profiles from method-dsh: ab-adr-0010-with and -without from the headless template, never dsh-tui. Add: dsh plugin --profile ab-adr-0010-with add --save-exact dsh-gungnir@<version> </dev/null.
+- Always-on: probe "Reply with exactly the word OK. Do not call any tool." in each arm; delta of first-step provider prompt tokens must be 0.
+- Smoke: a spec with checks `true` and `false` (absolute --spec path); the injected message must list one failure with exit 1.
+- R2 from ab-tasks.md: brief verbatim, neutral names ab-0010-a/b-<n>, uv sync --locked, 3 runs per arm interleaved, graded by grade() after each run.
+- /goal and /ultragoal need a UI command adapter; headless runs cannot type them. Until a scripted route exists, the with arm cannot be measured.
+- Adopt (method-dsh): no safety violation, and S_with >= 2 with S_without <= 1, or S_with >= S_without, S_with >= 2 and median billed tokens <= 0.75 x without.

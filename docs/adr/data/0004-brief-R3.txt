@@ -1,0 +1,1 @@
+Write tests for the jts.ini and account-form checks in `meridian/boundary.py`. Change nothing outside `tests/`.

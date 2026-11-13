@@ -1,0 +1,33 @@
+ADR 0012, real task R2 on temporary dsh profiles: amendment 1 to the pre-registration.
+
+prereg.txt (sha256 908d2656a35fbc48507ca3c67627e6c762b42344da871f97fe0f0b10ad5e4974, finished
+2026-11-13 09:01:58 New York) is unchanged. This file says, in plain words, what changed after
+the first run started and why. Its own sha256 and time are in prereg-amendment-1.sha256.
+
+What happened. Run a1 started at 09:02:22 and ended 18 s later with exit 1 and
+final.reason.kind "error" (TRANSPORT: "DeepSeek Messages transport failed"; stderr: the model
+listing "could not reach https://api.deepseek.com/models"). Its session log holds 6 attempts, none
+with a usage record, and no assistant message: no request was answered, no model output exists,
+0 tokens were billed, no tool call ran. The cause is the method, not DeepSeek: in this distro
+/etc/resolv.conf is a link to /mnt/wsl/resolv.conf, and the run's namespace replaces /mnt with an
+empty folder (AB_HIDE=/mnt:...), so no host name could be resolved inside it. Checked without dsh
+and without a key: under the same masks "getent hosts api.deepseek.com" fails; with that one file
+shown again it answers, and /mnt still holds nothing else (no Windows drive). The scout's method
+had tested AB_HIDE with a config dump and a no-model boot only, which need no name lookup.
+
+What changes, in both arms alike, before any run that reaches the model:
+  AB_SHOW gains one path, the target of /etc/resolv.conf:
+    AB_SHOW=$HOME/.local:<series>/addition:/mnt/wsl/resolv.conf
+  (scripts/00_env.sh; old sha256 5f181d103ffdc88ec8aab2a498492c0dc2d258e759009fada7450a2952282fc0,
+  the new one is recorded in prereg-amendment-1.sha256 and in the series' scripts.sha256).
+  The wrapper then binds that file read-only over the empty /mnt. It holds the resolver's address
+  and nothing of the owner's. Section 3's sentence "the Windows drives (/mnt) ... are empty
+  folders" now reads: /mnt holds only wsl/resolv.conf.
+Nothing else changes: not the task, the brief, the profiles, the overlay, the permission mode, the
+bounds, the definitions, the void and stop rules, or the rule.
+
+How a1 is counted. Void: a fault of the method before any model output, in neither arm's favour;
+it is not the "DeepSeek error" of section 9 and does not use up that re-run. It is re-run in its
+slot under the next free number of its letter, as section 4 says: the order is now
+a6 b1 b2 a2 a3 b3 (a6 stands where a1 stood); an extension would still be a4 b4 b5 a5.
+Its folder is kept as it is.

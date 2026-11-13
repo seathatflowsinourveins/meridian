@@ -1,0 +1,3 @@
+R5: b=with (supply-chain-risk-auditor via --plugin-dir), a=without
+always-on: x=scra y=none z=pbt
+2026-11-13T01:58:00-05:00

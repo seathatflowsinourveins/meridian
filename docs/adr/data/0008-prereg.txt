@@ -1,0 +1,164 @@
+ADR 0008 pre-registration. Published copy, assembled on 2026-11-13 after the series from records
+written before its runs, and corrected three times the same day after independent checks. Times are file
+times, ET, on the owner's machine, and cannot be proved from the repository: no commit published
+before the runs holds the fact sheet or the rule.
+
+RECORDS
+- The fact sheet of the independent verification of the 0008 assessment, below verbatim (12,309
+  characters as stored, sha256 d93fde61116dced627516370997e4a96a811c8647f47e9a40baf85fddc2a1971 of
+  its UTF-8 text). Its file was last written 2026-11-13 01:51:57, before any run. Its "Measurement
+  protocol" section is the method; its last bullet there is the rule. The verification's other
+  parts and the assessment hold local paths and are not published.
+- The shared method sheets ab-codex.md and ab-tasks.md describe the series' methods as revised on
+  2026-11-13 after the series. This file and the 0008_* scripts record what ran, and win where a
+  sheet differs.
+- Run 1 rendered M2 at 02:06:42-43 and stopped at 02:07 before its first M1 run (the old guard's
+  false match; see the ADR). Run 2: the route proof 04:09:29 to 04:12:38 (0008_proof.sh's install,
+  setup, trust and selftrust stages, and between trust and selftrust, run by hand at 04:11, the
+  exec-noauth probe, whose command was not kept and is in no published script); the arm key drawn
+  04:12:48 (0008-key.txt); M1's scripts copied into the series folder 04:13:33, first M1 run
+  04:13:40, last 04:14:47 (its folder closed 04:14:56); R1's script, void scan and brief copied there 04:17:29, first R1 run
+  04:17:40, last R1 run 04:35:13. The 0008_* scripts are published as that folder held them (sha256
+  and copy times in 0008-results.json). 0008_common2.sh (last written 04:10:19) and 0008_proof.sh
+  (04:12:05) are final versions: the install stage ran under earlier versions of both, and the setup
+  (04:10:23) and trust (04:10:49) stages before proof.sh's last edit, which added the selftrust stage
+  (its usage line still omits it).
+
+CHANGES FROM THE FACT SHEET (the rule did not change). 1 to 8 were each made before the first run
+of the measurement it governs: 1 to 5 and 7 were fixed before the first M1 run (04:13:40); 6 and 8
+are in 0008_r1.sh and 0008_scan_run.py, written 04:16:35 to 04:17:24 and copied into the series
+folder at 04:17:29, after the six M1 runs had finished, before the first R1 run (04:17:40). 9 and
+10 are steps of the fact sheet that were skipped or deferred, added to this list at the third
+check, after the runs.
+1. Homes. The fact sheet's arms ran in two throwaway CODEX_HOMEs, each signed in by the owner
+   with `codex login --device-auth`. The owner had not signed them in, and no agent copies a
+   sign-in file, so both arms ran in the owner's signed-in ~/.codex, the M1 home of ab-codex.md.
+2. Scope. Arm b was user scope in its throwaway home. It ran in project scope instead:
+   `omx setup --scope project --install-mode legacy --mcp none --merge-agents` in each b run's
+   clone, with HOME, CODEX_HOME and the XDG folders throwaway and no GitHub token
+   (omx_project_setup in 0008_common2.sh). Codex 0.167.2 loads a project's .codex only for a
+   trusted project and ignores its hook trust state and notify, so OMX's notify did not run in
+   arm b and its hooks ran because of item 3. Setup also merged OMX's block into the clone's
+   AGENTS.md (at 27aa964 5,717 -> 32,442 bytes; at main 9c5daaa 8,320 -> 35,045, which Codex
+   cuts at 32,768), added 10 .gitignore lines and wrote .codex/ and .omx/ in the clone.
+3. Flags, identical in both arms: the fact sheet's M1 command plus
+   --dangerously-bypass-hook-trust, -c projects={"<clone>"={trust_level="trusted"}} for that run
+   only, and Orca's 9 hooks in ~/.codex/hooks.json switched off for that run only by session-flag
+   hooks.state (codex_flags and orca_off in 0008_common2.sh).
+4. Working copies: fresh standalone clones of the public repository from a bare seed, as
+   ab-codex.md requires, not worktrees; neutral names ab-0008-a-N and ab-0008-b-N, and one path,
+   ab-0008-ctx, for every M1 run.
+5. M1 order a1 a2 a3 b1 b2 b3 (ab-codex.md: without, then with). R1 order as fixed.
+6. Grade for arm b: setup's .gitignore lines are removed before the agent's .gitignore is applied
+   to the grading clone, and the scope check accepts AGENTS.md only byte-equal to the copy made
+   right after setup (0008_r1.sh).
+7. Containment snapshot: names, sizes and modification times under ~/.codex, ~/.omx, ~/.npm and
+   ~/.config; the names at the top of the home folder, ~/.cache, ~/.local/state and /tmp; which
+   OMX paths exist in the home folder; sha256 of ~/.codex/config.toml and hooks.json; the count
+   of [projects] trust entries in config.toml; the main checkout's head, status, info/exclude
+   and worktree list; OMX processes and tmux (snaphome in 0008_common2.sh). Not in it, unlike the
+   fact sheet's list: ~/.claude/settings.json, which setup writes only in user scope with
+   --mcp compat (neither was used), and the global npm list, since the install went to a
+   throwaway prefix.
+8. Void scan: 0008_scan_run.py flags tool inputs by pattern in the root and sub-agent rollouts,
+   and each flagged input is reviewed by hand.
+9. Skipped: the installed tree's advisories. The fact sheet's "query the real `npm ls --all` tree
+   before any run" was half done: both runs listed that tree (run 1 at 02:04:55, run 2 at
+   04:09:36), but no advisory was queried for it (0 API calls). The ADR's advisory counts are for
+   package-lock.json at the pin; the installed tree differs from it in many packages, among them
+   ajv and all 7 packages that carry the 45 active advisories (versions in the ADR).
+10. Deferred: "Raw streams to meridian-evidence". The raw streams and rollouts stay on the
+    owner's machine; the ADR keeps aggregates.
+
+CRITERIA READ DIFFERENTLY AFTER THE RUNS (decided after the results were seen; the rule's own
+outcome does not depend on any of them)
+- M1 validity. The fact sheet counts a run valid "only with agent_message items and one
+  token_usage_record". With --dangerously-bypass-hook-trust (item 3), Codex 0.167.2 also logs two
+  items of type error in every run of both arms, each the warning that the flag is on, so no M1
+  run meets that test as written. After the runs the test was relaxed to admit those warnings,
+  and the six M1 runs were counted valid on it: one token_usage_record, the agent message OK, and
+  only those two warnings besides.
+- Containment. The fact sheet's test (the snapshot "must differ only by the ab-0008 worktrees")
+  failed in every run once change 1 put both arms in the owner's ~/.codex: every run wrote its
+  rollouts and Codex's state there. A narrower test was then defined, after the runs: the part
+  of item 7's snapshot that counts (owner config.toml and hooks.json sha256, trust-key count, OMX
+  paths, OMX processes). The ADR reports both and what the runs wrote in ~/.codex;
+  0008-results.json carries both outcomes.
+- Wall time without the agents' sleeps. The fact sheet records wall time and sets no criterion on
+  it. After the results were seen, the aggregator's second revision added each run's seconds less
+  the time it idled in Codex's sleep tool (seconds_without_sleep): runs a-2 and a-3 slept 60 s and
+  30 s after their checks had passed, waiting for an answer to their own question; no other run
+  slept. The ADR gives both readings: median 208 s without and 139 s with oh-my-codex as recorded,
+  148 s and 139 s without the sleeps.
+
+FACT SHEET (verbatim)
+
+# ADR 0008 fact sheet: oh-my-codex for Codex CLI (verified, read 2026-11-13)
+
+## Pin
+- Tag v0.22.6 (lightweight) = commit 610be90863964394fd311b5198e8324bf96157c0, committed 2026-11-10T13:18:00Z, = main HEAD; highest of 312 tag refs; GitHub release v0.22.6 published 2026-11-10T13:48:14Z, isLatest (unauthenticated `git ls-remote`; GraphQL repository.releases).
+- npm oh-my-codex@0.22.6: dist-tag latest, published 2026-11-10T14:06:18.017Z, gitHead 610be90, integrity sha512-ZpMHipwnaiHV/T8rp/czmF5U+ugqVdUOb28obL5U61q9WQwvfKAmzP4k1V82EnUXYMvsBgZIzFl0I3HADBbFEQ==, shasum f87e0fce3d1594cee121ffbb477bae8ec030b172, 3,939 files, 44,799,848 bytes unpacked, GitHub Actions trusted publisher with SLSA v1 provenance (registry.npmjs.org/oh-my-codex).
+- Tarball (7,047,445 bytes) re-hashed locally = registry values; templates/AGENTS.md, templates/catalog-manifest.json, package.json, plugin hooks.json, LICENSE, skills/, prompts/ byte-identical to git at 610be90; the reconstructed literals occur verbatim in the published dist JS.
+- No newer release; dev (04787be, 2026-11-10T14:50:56Z) already bumps to 0.22.7. On 2026-11-13 the release is 3 days old.
+
+## Licence, maintainers, activity
+- MIT: LICENSE at 610be90 (21 lines, sha256 4fd42de3188b327edb30d8997f8669b590ccfde847bb85af2e73a5c7161d4ec0), package.json, GraphQL licenseInfo. Licences of the 130 locked runtime packages not audited.
+- Individual owner: GitHub user Yeachan-Heo (type User, display name Bellman, company field @Layoff-Labs); sole npm maintainer bellman_04; 96 contributors (REST Link header), top Yeachan-Heo 2,995, HaD0Yun 139, iqdoctor 92, dependabot[bot] 83.
+- 898 commits on main since 2026-08-14 (`git rev-list --count --since`), 4,435 since 2026-02-02; 184 npm versions since 2026-02-13 (56 in the last 90 days, 12 from 0.21.44 to 0.22.6; 0.11.5 unpublished); 3 open of 1,336 issues, 1 open of 2,682 PRs; 33,777 stars, 2,548 forks (GraphQL).
+- Repository has Dependabot vulnerability alerts off (hasVulnerabilityAlertsEnabled false) and no security policy (securityPolicyUrl null).
+
+## Advisories (read 2026-11-13; 2 GraphQL, 5 REST calls, logged)
+- GraphQL securityVulnerabilities(NPM, "oh-my-codex"): 0. REST repos/Yeachan-Heo/oh-my-codex/security-advisories: []. REST advisories?ecosystem=npm&affects=oh-my-codex: [].
+- Direct deps (GraphQL): @iarna/toml, @napi-rs/lzma, tar-stream 0; @modelcontextprotocol/sdk 9, zod 2, yauzl 1, none affecting the locked 1.32.2 / 4.6.7 / 3.4.0; ajv 2, none affecting 8.18.0.
+- REST advisories affects=<130 non-dev name@version from package-lock.json at the pin>: 47 items, 2 of them withdrawn (GHSA-p3hm-x653-5rc6, GHSA-6623-4q32-82v8); 45 active = 1 critical (GHSA-jqcg-44mw-7w3h, proxy-addr 2.0.7), 9 high, 30 medium, 5 low, in hono 17, fast-uri 11, ip-address 8, @hono/node-server 3, qs 3, body-parser 2, proxy-addr 1: the HTTP-server subtree of @modelcontextprotocol/sdk, which OMX uses only for stdio servers in --mcp compat.
+- The package ships no lockfile (^ ranges resolve on install day; sdk latest 1.32.2 asks hono ^4.11.4): query the real `npm ls --all` tree before any run.
+
+## What it installs and sends (user scope, legacy, --mcp none = setup defaults; src/cli/setup.ts L294, L455-456)
+- Global npm CLI `omx` (bin dist/cli/omx.js, node >= 20; distro has node v24.22.3). postinstall (global installs only) fetches native-release-manifest.json + omx-runtime from the v0.22.6 GitHub release (sha256-checked, 120 s), caches in ~/.cache/oh-my-codex/native, writes $CODEX_HOME/.omx/install-state.json; OMX_NATIVE_AUTO_FETCH=0 skips the fetch; --ignore-scripts skips all of it (src/scripts/postinstall.ts).
+- `omx setup` writes $CODEX_HOME/config.toml (developer_instructions replaced, notify = node notify-hook.js, [features] hooks/goals = true, USE_OMX_EXPLORE_CMD, [tui] status_line, and [hooks.state."…"] trusted_hash for its own 8 hooks), hooks.json (8 hooks merged beside foreign ones), AGENTS.md (26,674 bytes), 18 agents/*.toml, 32 prompts/*.md, 24 skills/; also <cwd>/.omx/ and ~/.omx/backups (src/config/generator.ts, src/cli/setup.ts).
+- Hooks: SessionStart (startup|resume|clear), PreToolUse, PostToolUse, UserPromptSubmit, PreCompact, PostCompact, SubagentStop, Stop (timeout 30 s); others get Codex's 600 s default. Each event starts node on a 1,047,778-byte dispatcher (two per tool call); it runs git, tmux if present, and <cwd>/.omx/hooks/*.mjs (src/config/codex-hooks.ts L436-474; codex-rs/hooks/src/engine/discovery.rs).
+- Codex 0.167.2 runs a user hook only when its trust state is Trusted (trusted_hash equals Codex's hash) or managed; OMX writes those hashes itself (codex-rs/hooks/src/engine/discovery.rs L840-925). Policy: /etc/codex/requirements.toml (109 bytes) pins apps, plugins, skill_mcp_dependency_install, memories off and blocks MCP; it does not restrict hooks.
+- Runtime effects: first SessionStart in a repo where .omx/ is not ignored appends '.omx/' to `git rev-parse --git-path info/exclude` (the main checkout's .git/info/exclude from a linked worktree; tested); Stop auto-nudge blocks a stop whose last message matches a stall pattern, including permission-seeking wording (detectNativeStopStallPattern, allowPermissionSeeking true); PostToolUse blocks after 'command not found'/'permission denied'/'no such file or directory'.
+- Network: no telemetry host in dist JS (hosts: github.com, api.github.com, registry.npmjs.org, discord.com, api.telegram.org, herdr.dev, api.layofflabs.com in the eval collector only). The `omx` launcher (not used by Orca) adds an npm update check, a default-yes star prompt via gh, model_instructions_file override, --madmax, --hotswap auth rotation.
+- --mcp compat adds 6 node stdio MCP servers and syncs ~/.omx/mcp-registry.json into ~/.claude/settings.json (blocked here by requirements.toml anyway); plugin mode needs plugins = true (pinned false).
+
+## Always-on texts (reconstructed from source at 610be90; o200k_base; characters, then tokens)
+| Text | Chars | Tokens |
+| --- | --- | --- |
+| developer_instructions (generator.ts OMX_DEVELOPER_INSTRUCTIONS) | 1,104 | 233 |
+| $CODEX_HOME/AGENTS.md (template + marker + model table, 18 roles) | 26,648 | 5,715 |
+| 24 skill lines, Codex 0.167.2 format with r0 alias (generic '- name: desc': 2,706 / 655) | 3,467 | 967 |
+| 18 roles in the spawn_agent description (multi_agent on, v2 off in the distro) | 2,610 | 601 |
+| SessionStart '[Execution environment]' (native launcher, outside tmux) | 358 | 78 |
+| Bundle, joined by blank lines (generic skill lines: 33,420 / 7,279) | 34,194 | 7,594 |
+| Baseline: meridian AGENTS.md on main 9c5daaa (126 lines, 8,320 bytes) | 8,318 | 2,159 |
+- Ratio: 3.5 times the repo's own instructions in tokens (3.4 with generic skill lines). Per event, not always on: triage HEAVY 327/63, LIGHT 172-248/32-42; PostToolUse block 274/53; Stop auto-nudge 159/30. 32 prompts: no prompts-directory loader in the 0.167.2 core/config/exec sources checked.
+- Project scope --merge-agents on main's AGENTS.md: 35,045 bytes (35,017 chars, 7,890 tokens), over Codex's 32,768-byte project_doc_max_bytes (config_toml.rs L77), so Codex would truncate it. User scope's global AGENTS.md does not consume that budget (core/src/agents_md.rs L58-115).
+
+## Overlap
+- Codex built-ins: goals (stable, default on; on in the distro) that OMX's ultragoal and performance-goal skills drive through create_goal/get_goal/update_goal; native subagents (multi_agent on); hooks; skills; AGENTS.md. Other runtimes' built-in /goal (Claude Code, dsh, agy) cover the same job.
+- Orca 1.4.257: worktrees, team/task orchestration, status; Orca's Codex hooks live in ~/.codex/hooks.json (no notify key), where user-scope setup would merge OMX's 8 self-trusted hooks.
+- codex-plugin-cc (/codex:review) vs OMX code-review; planning/review skill ADRs 0004-0006; 0009/0011/0012 by name (peer consultation, goal loops/teams, stop control).
+
+## Outcome evidence
+- None comparing Codex with and without OMX. ASTRA_EVAL_RESULTS.md (2026-10-12): 4 model configs inside OMX x 6 fixtures, 24 runs, text-scored. README L134: "If you want plain Codex with no extra workflow layer, you probably do not need OMX."
+
+## Pinned install and removal (contained; nothing installed for this check)
+- `[ "$(npm view oh-my-codex@0.22.6 dist.integrity)" = "sha512-ZpMH…FEQ==" ] && HOME="$T/home" npm_config_userconfig=/dev/null npm_config_cache="$T/npm-cache" npm install --global --prefix "$T/npm" --ignore-scripts oh-my-codex@0.22.6`, then `(cd "$T/setup-cwd" && HOME="$T/home" CODEX_HOME="$HB" OMX_AUTO_UPDATE=0 OMX_NATIVE_AUTO_FETCH=0 "$T/npm/bin/omx" setup --scope user --install-mode legacy --mcp none --verbose)`. --ignore-scripts means no omx-runtime (the hooks fall back to TS paths); the method sheet's --strict-allow-scripts would refuse this package because of its postinstall.
+- Removal: `HOME="$T/home" CODEX_HOME="$HB" "$T/npm/bin/omx" uninstall --scope user --dry-run`, then without --dry-run (--purge also deletes <cwd>/.omx); `npm uninstall --global --prefix "$T/npm" oh-my-codex`. uninstall has no code for ~/.omx, ~/.cache/oh-my-codex, $CODEX_HOME/.omx/install-state.json or the info/exclude line (src/cli/uninstall.ts).
+
+## Measurement protocol (method-codex.json + ab-tasks.md; owner present, IB Gateway logged out)
+- Homes: HA=$HOME/.codex-ab/0008-a, HB=$HOME/.codex-ab/0008-b (mode 0700) with the method sheet's written non-secret config.toml; the owner runs `CODEX_HOME=<home> codex login --device-auth` in each; OMX only in HB; the a/b key kept outside run folders. Both arms: `export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.excludesFile GIT_CONFIG_VALUE_0="$T/omx-ignore" OMX_AUTO_UPDATE=0 OMX_NATIVE_AUTO_FETCH=0` ('.omx/' in $T/omx-ignore).
+- Always-on (M1): one worktree ab-0008-ctx at 9c5daaa for both arms; 3 runs each: `codex exec --json --color never -m gpt-6-astra -c model_reasoning_effort=high --dangerously-bypass-approvals-and-sandbox -C "$WT" 'Reply with exactly the word OK. Do not run any command or call any tool.'`; valid only with agent_message items and one token_usage_record; delta = median input_tokens(b) - median(a). The with-arm rollout must show '[Execution environment]' (hooks trusted and run); M2 `codex debug prompt-input` attributes the sections.
+- Real task R1 (ab-tasks.md): worktrees ab-0008-a-N / ab-0008-b-N at 27aa964 with tests/ from 5d51c9c and `uv sync --locked`; verbatim brief (sha256 recorded; OMX triage classes it PASS); order a1, b1, b2, a2, a3, b3; one success apart or 2-2 means 2 more runs per arm.
+- Grade: the run's meridian/ and .gitignore patch applied to a fresh worktree passes `uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest` (281 passed); tests/ unchanged; nothing changed outside; a run that reads the fix (git history, ~/src/meridian, another run's folder) is void; record tokens incl. sub-agents, wall time, Stop auto-nudges.
+- Containment: the assessor's before/after snapshot (metadata and hashes of ~/.codex, ~/.omx, ~/.cache/oh-my-codex, ~/.local/state/oh-my-codex, ~/.claude/settings.json, ~/src/meridian .git/info/exclude, .gitignore, AGENTS.md, worktree list, global npm list) must differ only by the ab-0008 worktrees.
+- Adopt only if the with arm passes more R1 runs (2 of 3 vs at most 1, after any extension), or both pass all with at least 25% fewer total tokens; and containment passes, no tests/ edit, no auto-nudge continuation, no write outside the run worktree. Raw streams to meridian-evidence; the ADR keeps aggregates.
+
+## Provisional verdict: not adopted
+- About 7.6k o200k tokens (34.2k chars) on every request, 3.5 times the repo's AGENTS.md, plus a node hook on every prompt, tool call and stop; no outcome evidence; an always-on "EXECUTE TASKS TO COMPLETION WITHOUT ASKING FOR PERMISSION" directive; self-trusted hooks; Stop auto-continue; auth rotation in the launcher; overlaps Codex goals/subagents and Orca.
+
+## Open questions
+- Whether OMX's computed trusted_hash equals Codex 0.167.2's hook hash (if not, the hooks stay inert): the rollout check answers it.
+- Whether a 3-day-old release passes the owner's release-age rule for tools outside the repo; Codex rust-v0.168.0 is out and the distro self-updates, so both arms must run one version.
+- Real installed dependency tree and its advisories; whether the TUI still reads $CODEX_HOME/prompts.

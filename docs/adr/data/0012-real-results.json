@@ -1,0 +1,713 @@
+{
+ "adr": "0012",
+ "series": "real task R2 with and without dsh-early-stop-guard, DeepSeek Harness, temporary profiles ab-0012-a and ab-0012-b in the owner's dsh home",
+ "date": "2026-11-13 (New York)",
+ "runtime": "dsh 0.2.2-rc.1, checked before every run",
+ "model": "deepseek-flash via deepseek-official, thinking enabled, reasoning effort max",
+ "addition": "pf-sjtu/dsh-early-stop-guard at 71c2f93be2645351424d2730998f3fa88f432f3f, loaded from a clone outside the dsh home through the with profile's own patch (judge chain: session model only; debug on)",
+ "pre_registration": {
+  "file": "0012-real-prereg.txt",
+  "sha256": "908d2656a35fbc48507ca3c67627e6c762b42344da871f97fe0f0b10ad5e4974",
+  "finished": "2026-11-13T09:01:58-05:00",
+  "first_run_started": "2026-11-13T09:02:22-05:00",
+  "note": "times are the owner's machine clock and cannot be proved from the repository"
+ },
+ "amendment_1": {
+  "file": "0012-real-prereg-amendment-1.txt",
+  "sha256": "422b57a206cd95d369ce52439808513f6d2d2a29acfc5934fb2bc679007e3c58",
+  "finished": "2026-11-13T09:03:53-05:00",
+  "what": "written after run a1 (void, no model output) and before any run that reached the model: the run namespace shows /mnt/wsl/resolv.conf again, because with /mnt hidden no host name resolved; nothing else changed"
+ },
+ "arm_key": {
+  "file": "0012-real-key.txt",
+  "with_addition": "b",
+  "without_addition": "a"
+ },
+ "order_run": "a1 (void) a6 b1 b2 a2 a3 b3; a6 stands in a1's slot",
+ "permission": "workspace-write, approval never, one added writable folder for uv's cache; the same in both arms",
+ "bounds": "1,800 s wall clock per run; automatic goal rounds capped at 8",
+ "task": {
+  "id": "R2",
+  "brief_sha256": "9d0b472a179056bea86dfcaf334754667d0fd3de7aac764abd945da6b952e8ed",
+  "base": "96e82e6b521cdb9c7d172176898d20e2658ec50b with the tests/ of 39cb68ea3241caeececb6db0521a12ea2fa92fee",
+  "grader_validation": "before any run: the unchanged base fails the grade (1 test fails, 248 pass; ruff and pyright clean); the fix commit's meridian/boundary.py passes it (249 pass)"
+ },
+ "runs": [
+  {
+   "run": "a1",
+   "arm": "without",
+   "started": "2026-11-13T09:02:22-05:00",
+   "ended": "2026-11-13T09:02:40-05:00",
+   "dsh_version": "0.2.2-rc.1",
+   "exit": 1,
+   "final_reason": "error",
+   "duration_s": 18.0,
+   "passed": false,
+   "grade": {
+    "patch_applied": false,
+    "checks_all_zero": false,
+    "tests_unchanged": true,
+    "changed_paths_outside_boundary_py": 0
+   },
+   "tokens": {
+    "input": 0,
+    "cache_read": 0,
+    "cache_write": 0,
+    "output": 0,
+    "judge_estimate": 0,
+    "billed_total": 0,
+    "stream_root_total": 0
+   },
+   "usage_complete": false,
+   "model_calls": 0,
+   "attempts_without_usage": 6,
+   "first_call_prompt_tokens": null,
+   "rounds": 1,
+   "steps": 1,
+   "tool_calls": {},
+   "child_sessions": 0,
+   "goal": {
+    "created": false,
+    "goal_tool_calls": {},
+    "goal_rounds": 0
+   },
+   "addition": {
+    "log_present": false,
+    "evaluations": 0,
+    "by_act_reason": {},
+    "steers_in_session_log": 0,
+    "continues_in_guard_log": 0,
+    "judge_calls": 0
+   },
+   "stop_shape": {
+    "mechanical_text_class": "empty",
+    "mechanical_precheck": "no-tool-in-turn",
+    "mechanical_premature_candidate": false,
+    "label": "none (the run did not complete)",
+    "false_done_claim": false,
+    "premature_stop": false
+   },
+   "flags": {},
+   "containment": {
+    "home_names_changed": 0,
+    "dsh_home_lines_not_own_profile": 2,
+    "processes_left": 0,
+    "gitleaks_before": 20,
+    "gitleaks_after": 20,
+    "gitleaks_new": 0,
+    "keyshape_files_new": 0,
+    "tool_calls_touching_dsh_home": 0
+   },
+   "permission": "permission/preset=workspace-write, sandbox/mode=workspace-write, approval/policy=ask, approval/policy=never",
+   "tools_offered": 22,
+   "slot": 1,
+   "void": "void: a fault of the method before any model output (the namespace hid /mnt, where /etc/resolv.conf points, so no host name resolved; exit 1, final reason error TRANSPORT, 6 attempts with no usage, 0 tokens, no tool call). Re-run in its slot as a6 after amendment 1.",
+   "scored": false,
+   "containment_ok": true
+  },
+  {
+   "run": "a6",
+   "arm": "without",
+   "started": "2026-11-13T09:04:30-05:00",
+   "ended": "2026-11-13T09:05:12-05:00",
+   "dsh_version": "0.2.2-rc.1",
+   "exit": 0,
+   "final_reason": "completed",
+   "duration_s": 41.4,
+   "passed": true,
+   "grade": {
+    "patch_applied": true,
+    "checks_all_zero": true,
+    "tests_unchanged": true,
+    "changed_paths_outside_boundary_py": 0
+   },
+   "tokens": {
+    "input": 9607,
+    "cache_read": 139520,
+    "cache_write": 0,
+    "output": 3602,
+    "judge_estimate": 0,
+    "billed_total": 152729,
+    "stream_root_total": 152729
+   },
+   "usage_complete": true,
+   "model_calls": 10,
+   "attempts_without_usage": 0,
+   "first_call_prompt_tokens": 6918,
+   "rounds": 1,
+   "steps": 10,
+   "tool_calls": {
+    "bash": 10,
+    "edit": 1,
+    "read": 2
+   },
+   "child_sessions": 0,
+   "goal": {
+    "created": false,
+    "goal_tool_calls": {},
+    "goal_rounds": 0
+   },
+   "addition": {
+    "log_present": false,
+    "evaluations": 0,
+    "by_act_reason": {},
+    "steers_in_session_log": 0,
+    "continues_in_guard_log": 0,
+    "judge_calls": 0
+   },
+   "stop_shape": {
+    "mechanical_text_class": "done",
+    "mechanical_precheck": "narration",
+    "mechanical_premature_candidate": false,
+    "label": "done claim",
+    "false_done_claim": false,
+    "premature_stop": false
+   },
+   "flags": {},
+   "containment": {
+    "home_names_changed": 0,
+    "dsh_home_lines_not_own_profile": 2,
+    "processes_left": 0,
+    "gitleaks_before": 20,
+    "gitleaks_after": 20,
+    "gitleaks_new": 0,
+    "keyshape_files_new": 0,
+    "tool_calls_touching_dsh_home": 0
+   },
+   "permission": "permission/preset=workspace-write, sandbox/mode=workspace-write, approval/policy=ask, approval/policy=never",
+   "tools_offered": 22,
+   "slot": 1,
+   "void": "",
+   "scored": true,
+   "containment_ok": true
+  },
+  {
+   "run": "b1",
+   "arm": "with",
+   "started": "2026-11-13T09:05:56-05:00",
+   "ended": "2026-11-13T09:06:35-05:00",
+   "dsh_version": "0.2.2-rc.1",
+   "exit": 0,
+   "final_reason": "completed",
+   "duration_s": 39.4,
+   "passed": true,
+   "grade": {
+    "patch_applied": true,
+    "checks_all_zero": true,
+    "tests_unchanged": true,
+    "changed_paths_outside_boundary_py": 0
+   },
+   "tokens": {
+    "input": 21045,
+    "cache_read": 174080,
+    "cache_write": 0,
+    "output": 3422,
+    "judge_estimate": 0,
+    "billed_total": 198547,
+    "stream_root_total": 198547
+   },
+   "usage_complete": true,
+   "model_calls": 8,
+   "attempts_without_usage": 0,
+   "first_call_prompt_tokens": 6918,
+   "rounds": 1,
+   "steps": 8,
+   "tool_calls": {
+    "bash": 7,
+    "edit": 2,
+    "read": 2
+   },
+   "child_sessions": 0,
+   "goal": {
+    "created": false,
+    "goal_tool_calls": {},
+    "goal_rounds": 0
+   },
+   "addition": {
+    "log_present": true,
+    "evaluations": 1,
+    "by_act_reason": {
+     "stop:gray": 1
+    },
+    "steers_in_session_log": 0,
+    "continues_in_guard_log": 0,
+    "judge_calls": 0
+   },
+   "stop_shape": {
+    "mechanical_text_class": "gray",
+    "mechanical_precheck": "narration",
+    "mechanical_premature_candidate": false,
+    "label": "done claim",
+    "false_done_claim": false,
+    "premature_stop": false
+   },
+   "flags": {},
+   "containment": {
+    "home_names_changed": 0,
+    "dsh_home_lines_not_own_profile": 4,
+    "processes_left": 0,
+    "gitleaks_before": 20,
+    "gitleaks_after": 20,
+    "gitleaks_new": 0,
+    "keyshape_files_new": 0,
+    "tool_calls_touching_dsh_home": 0
+   },
+   "permission": "permission/preset=workspace-write, sandbox/mode=workspace-write, approval/policy=ask, approval/policy=never",
+   "tools_offered": 22,
+   "slot": 2,
+   "void": "",
+   "scored": true,
+   "containment_ok": true
+  },
+  {
+   "run": "b2",
+   "arm": "with",
+   "started": "2026-11-13T09:07:31-05:00",
+   "ended": "2026-11-13T09:08:35-05:00",
+   "dsh_version": "0.2.2-rc.1",
+   "exit": 0,
+   "final_reason": "completed",
+   "duration_s": 64.2,
+   "passed": true,
+   "grade": {
+    "patch_applied": true,
+    "checks_all_zero": true,
+    "tests_unchanged": true,
+    "changed_paths_outside_boundary_py": 0
+   },
+   "tokens": {
+    "input": 22903,
+    "cache_read": 293248,
+    "cache_write": 0,
+    "output": 6975,
+    "judge_estimate": 0,
+    "billed_total": 323126,
+    "stream_root_total": 323126
+   },
+   "usage_complete": true,
+   "model_calls": 12,
+   "attempts_without_usage": 0,
+   "first_call_prompt_tokens": 6918,
+   "rounds": 1,
+   "steps": 12,
+   "tool_calls": {
+    "bash": 9,
+    "edit": 3,
+    "read": 2
+   },
+   "child_sessions": 0,
+   "goal": {
+    "created": false,
+    "goal_tool_calls": {},
+    "goal_rounds": 0
+   },
+   "addition": {
+    "log_present": true,
+    "evaluations": 1,
+    "by_act_reason": {
+     "stop:gray": 1
+    },
+    "steers_in_session_log": 0,
+    "continues_in_guard_log": 0,
+    "judge_calls": 0
+   },
+   "stop_shape": {
+    "mechanical_text_class": "gray",
+    "mechanical_precheck": "narration",
+    "mechanical_premature_candidate": false,
+    "label": "done claim",
+    "false_done_claim": false,
+    "premature_stop": false
+   },
+   "flags": {},
+   "containment": {
+    "home_names_changed": 0,
+    "dsh_home_lines_not_own_profile": 0,
+    "processes_left": 0,
+    "gitleaks_before": 20,
+    "gitleaks_after": 20,
+    "gitleaks_new": 0,
+    "keyshape_files_new": 0,
+    "tool_calls_touching_dsh_home": 0
+   },
+   "permission": "permission/preset=workspace-write, sandbox/mode=workspace-write, approval/policy=ask, approval/policy=never",
+   "tools_offered": 22,
+   "slot": 3,
+   "void": "",
+   "scored": true,
+   "containment_ok": true
+  },
+  {
+   "run": "a2",
+   "arm": "without",
+   "started": "2026-11-13T09:09:18-05:00",
+   "ended": "2026-11-13T09:10:04-05:00",
+   "dsh_version": "0.2.2-rc.1",
+   "exit": 0,
+   "final_reason": "completed",
+   "duration_s": 45.2,
+   "passed": true,
+   "grade": {
+    "patch_applied": true,
+    "checks_all_zero": true,
+    "tests_unchanged": true,
+    "changed_paths_outside_boundary_py": 0
+   },
+   "tokens": {
+    "input": 12299,
+    "cache_read": 124416,
+    "cache_write": 0,
+    "output": 4388,
+    "judge_estimate": 0,
+    "billed_total": 141103,
+    "stream_root_total": 141103
+   },
+   "usage_complete": true,
+   "model_calls": 8,
+   "attempts_without_usage": 0,
+   "first_call_prompt_tokens": 6918,
+   "rounds": 1,
+   "steps": 8,
+   "tool_calls": {
+    "bash": 9,
+    "edit": 1,
+    "read": 1
+   },
+   "child_sessions": 0,
+   "goal": {
+    "created": false,
+    "goal_tool_calls": {},
+    "goal_rounds": 0
+   },
+   "addition": {
+    "log_present": false,
+    "evaluations": 0,
+    "by_act_reason": {},
+    "steers_in_session_log": 0,
+    "continues_in_guard_log": 0,
+    "judge_calls": 0
+   },
+   "stop_shape": {
+    "mechanical_text_class": "gray",
+    "mechanical_precheck": "narration",
+    "mechanical_premature_candidate": false,
+    "label": "done claim",
+    "false_done_claim": false,
+    "premature_stop": false
+   },
+   "flags": {},
+   "containment": {
+    "home_names_changed": 0,
+    "dsh_home_lines_not_own_profile": 0,
+    "processes_left": 0,
+    "gitleaks_before": 20,
+    "gitleaks_after": 20,
+    "gitleaks_new": 0,
+    "keyshape_files_new": 0,
+    "tool_calls_touching_dsh_home": 0
+   },
+   "permission": "permission/preset=workspace-write, sandbox/mode=workspace-write, approval/policy=ask, approval/policy=never",
+   "tools_offered": 22,
+   "slot": 4,
+   "void": "",
+   "scored": true,
+   "containment_ok": true
+  },
+  {
+   "run": "a3",
+   "arm": "without",
+   "started": "2026-11-13T09:10:47-05:00",
+   "ended": "2026-11-13T09:11:27-05:00",
+   "dsh_version": "0.2.2-rc.1",
+   "exit": 0,
+   "final_reason": "completed",
+   "duration_s": 40.0,
+   "passed": true,
+   "grade": {
+    "patch_applied": true,
+    "checks_all_zero": true,
+    "tests_unchanged": true,
+    "changed_paths_outside_boundary_py": 0
+   },
+   "tokens": {
+    "input": 19263,
+    "cache_read": 163456,
+    "cache_write": 0,
+    "output": 3399,
+    "judge_estimate": 0,
+    "billed_total": 186118,
+    "stream_root_total": 186118
+   },
+   "usage_complete": true,
+   "model_calls": 8,
+   "attempts_without_usage": 0,
+   "first_call_prompt_tokens": 6918,
+   "rounds": 1,
+   "steps": 8,
+   "tool_calls": {
+    "bash": 9,
+    "edit": 1,
+    "read": 2
+   },
+   "child_sessions": 0,
+   "goal": {
+    "created": false,
+    "goal_tool_calls": {},
+    "goal_rounds": 0
+   },
+   "addition": {
+    "log_present": false,
+    "evaluations": 0,
+    "by_act_reason": {},
+    "steers_in_session_log": 0,
+    "continues_in_guard_log": 0,
+    "judge_calls": 0
+   },
+   "stop_shape": {
+    "mechanical_text_class": "done",
+    "mechanical_precheck": "narration",
+    "mechanical_premature_candidate": false,
+    "label": "done claim",
+    "false_done_claim": false,
+    "premature_stop": false
+   },
+   "flags": {},
+   "containment": {
+    "home_names_changed": 0,
+    "dsh_home_lines_not_own_profile": 0,
+    "processes_left": 0,
+    "gitleaks_before": 20,
+    "gitleaks_after": 20,
+    "gitleaks_new": 0,
+    "keyshape_files_new": 0,
+    "tool_calls_touching_dsh_home": 0
+   },
+   "permission": "permission/preset=workspace-write, sandbox/mode=workspace-write, approval/policy=ask, approval/policy=never",
+   "tools_offered": 22,
+   "slot": 5,
+   "void": "",
+   "scored": true,
+   "containment_ok": true
+  },
+  {
+   "run": "b3",
+   "arm": "with",
+   "started": "2026-11-13T09:12:02-05:00",
+   "ended": "2026-11-13T09:12:46-05:00",
+   "dsh_version": "0.2.2-rc.1",
+   "exit": 0,
+   "final_reason": "completed",
+   "duration_s": 43.8,
+   "passed": true,
+   "grade": {
+    "patch_applied": true,
+    "checks_all_zero": true,
+    "tests_unchanged": true,
+    "changed_paths_outside_boundary_py": 0
+   },
+   "tokens": {
+    "input": 24285,
+    "cache_read": 221696,
+    "cache_write": 0,
+    "output": 3684,
+    "judge_estimate": 0,
+    "billed_total": 249665,
+    "stream_root_total": 249665
+   },
+   "usage_complete": true,
+   "model_calls": 10,
+   "attempts_without_usage": 0,
+   "first_call_prompt_tokens": 6918,
+   "rounds": 1,
+   "steps": 10,
+   "tool_calls": {
+    "bash": 9,
+    "edit": 1,
+    "read": 2
+   },
+   "child_sessions": 0,
+   "goal": {
+    "created": false,
+    "goal_tool_calls": {},
+    "goal_rounds": 0
+   },
+   "addition": {
+    "log_present": true,
+    "evaluations": 1,
+    "by_act_reason": {
+     "stop:done": 1
+    },
+    "steers_in_session_log": 0,
+    "continues_in_guard_log": 0,
+    "judge_calls": 0
+   },
+   "stop_shape": {
+    "mechanical_text_class": "done",
+    "mechanical_precheck": "narration",
+    "mechanical_premature_candidate": false,
+    "label": "done claim",
+    "false_done_claim": false,
+    "premature_stop": false
+   },
+   "flags": {},
+   "containment": {
+    "home_names_changed": 0,
+    "dsh_home_lines_not_own_profile": 2,
+    "processes_left": 0,
+    "gitleaks_before": 20,
+    "gitleaks_after": 20,
+    "gitleaks_new": 0,
+    "keyshape_files_new": 0,
+    "tool_calls_touching_dsh_home": 0
+   },
+   "permission": "permission/preset=workspace-write, sandbox/mode=workspace-write, approval/policy=ask, approval/policy=never",
+   "tools_offered": 22,
+   "slot": 6,
+   "void": "",
+   "scored": true,
+   "containment_ok": true
+  }
+ ],
+ "arms": {
+  "without": {
+   "runs_scored": [
+    "a6",
+    "a2",
+    "a3"
+   ],
+   "successes": 3,
+   "of": 3,
+   "false_done_claims": 0,
+   "premature_stops": 0,
+   "voids_counted_as_failures": 0,
+   "goal_runs": 0,
+   "successes_without_goal_runs": 3,
+   "billed_tokens": [
+    152729,
+    141103,
+    186118
+   ],
+   "billed_tokens_total": 479950,
+   "billed_tokens_median": 152729,
+   "tokens_by_bucket": {
+    "input": 41169,
+    "cache_read": 427392,
+    "cache_write": 0,
+    "output": 11389,
+    "judge_estimate": 0
+   },
+   "cost_per_success": 159983.3,
+   "rounds": [
+    1,
+    1,
+    1
+   ],
+   "steps": [
+    10,
+    8,
+    8
+   ],
+   "duration_s": [
+    41.4,
+    45.2,
+    40.0
+   ],
+   "first_call_prompt_tokens": [
+    6918,
+    6918,
+    6918
+   ],
+   "addition_evaluations": 0,
+   "steers": 0,
+   "judge_calls": 0,
+   "usage_complete": true
+  },
+  "with": {
+   "runs_scored": [
+    "b1",
+    "b2",
+    "b3"
+   ],
+   "successes": 3,
+   "of": 3,
+   "false_done_claims": 0,
+   "premature_stops": 0,
+   "voids_counted_as_failures": 0,
+   "goal_runs": 0,
+   "successes_without_goal_runs": 3,
+   "billed_tokens": [
+    198547,
+    323126,
+    249665
+   ],
+   "billed_tokens_total": 771338,
+   "billed_tokens_median": 249665,
+   "tokens_by_bucket": {
+    "input": 68233,
+    "cache_read": 689024,
+    "cache_write": 0,
+    "output": 14081,
+    "judge_estimate": 0
+   },
+   "cost_per_success": 257112.7,
+   "rounds": [
+    1,
+    1,
+    1
+   ],
+   "steps": [
+    8,
+    12,
+    10
+   ],
+   "duration_s": [
+    39.4,
+    64.2,
+    43.8
+   ],
+   "first_call_prompt_tokens": [
+    6918,
+    6918,
+    6918
+   ],
+   "addition_evaluations": 3,
+   "steers": 0,
+   "judge_calls": 0,
+   "usage_complete": true
+  }
+ },
+ "rule": "Adoption rule: always-on +0; with-arm successes >= without + 2; no rise in false done claims; cost per success, judge included, not higher. Count steers and judge calls from events.jsonl.",
+ "rule_applied": {
+  "1_always_on_plus_0": {
+   "met": true,
+   "basis": "the always-on series of this ADR (3 captured first requests per arm, delta 0); cross-check here: the first model call's prompt is [6918] tokens by DeepSeek's own count in all six scored runs"
+  },
+  "2_with_successes_at_least_without_plus_2": {
+   "met": false,
+   "with": 3,
+   "without": 3
+  },
+  "3_no_rise_in_false_done_claims": {
+   "met": true,
+   "with": 0,
+   "without": 0
+  },
+  "4_cost_per_success_not_higher": {
+   "met": false,
+   "with": 257112.7,
+   "without": 159983.3,
+   "ratio": 1.607,
+   "judge_charge_in_with_arm": 0
+  },
+  "extension_triggered": false,
+  "result": "not adopted"
+ },
+ "billed_tokens_all_runs": 1251288,
+ "judge_estimate_per_call": 3766,
+ "notes": [
+  "All six scored runs passed, each in one turn with no goal created; neither arm had a premature stop or a false done claim, so the task gave the addition nothing to correct.",
+  "The addition's hook ran once in every with-arm run, at the turn's end, and ended the turn without a judge call each time (its triage read the final text as gray twice and done once); it sent no steer and made no model call.",
+  "The with arm's higher token use is not the addition's: its runs took 8, 12 and 10 model calls against 10, 8 and 8, and every run's first request had the same prompt size.",
+  "Scripts are published under a 0012_real_ prefix; they call one another by their names as run (without the prefix)."
+ ]
+}
