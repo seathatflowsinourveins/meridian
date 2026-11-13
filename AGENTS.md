@@ -10,8 +10,8 @@ A paper-trading harness on NautilusTrader. One repo, one WSL2 distro (`meridian`
 - **`risk/` and `*.contract.json` belong to the owner.** Read them. Never create or edit them.
 - **Only the engine places orders**, in a run the owner starts and attends in a terminal Orca
   did not start. No agent, script or tool call submits, changes or cancels an order directly,
-  and no agent starts the lane in any mode. Order mode asks for a typed word at a terminal and
-  refuses without one; do not work around that. That check only proves a terminal, and any Orca
+  and no agent starts the lane in any mode. The modes that place orders ask for a typed word at
+  a terminal and refuse without one; do not work around that. That check only proves a terminal, and any Orca
   session can type into an Orca terminal (`orca-ide terminal send`): this rule keeps agents out.
 - **Never read, print, copy or move a credential or key value.**
 - **Account ids stay out of the repo and out of `evidence/`.** The allowlist holds SHA-256
