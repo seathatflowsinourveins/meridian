@@ -53,15 +53,37 @@ write_files:
       {
         "disableClaudeAiConnectors": true
       }
+  # Claude Code, machine-wide: no MCP server at all. This file takes exclusive control of MCP,
+  # so no server starts from a project's .mcp.json, the user's config, a plugin or --mcp-config.
+  # An evidence record that adds a server adds it here.
+  - path: /etc/claude-code/managed-mcp.json
+    permissions: "0644"
+    content: |
+      {
+        "mcpServers": {}
+      }
+  # Codex CLI, machine-wide requirements: an empty MCP allowlist, so no server starts from any
+  # config layer (a project's .codex/config.toml included), and the account-linked features
+  # pinned off in every layer.
+  - path: /etc/codex/requirements.toml
+    permissions: "0644"
+    content: |
+      [mcp_servers]
+
+      [features]
+      apps = false
+      plugins = false
+      skill_mcp_dependency_install = false
+      memories = false
 
 package_update: true
 # Bring the image's packages up to date on first boot.
 package_upgrade: true
 # apt's default applies: recommended packages are installed too (the Gateway libraries bring
 # about 67 packages that way, a terminal emulator among them). git and curl are in the image.
+# No gh here: Ubuntu's (2.46.0) is inside two high advisories; `setup.sh gh` installs GitHub's.
 packages:
   - git
-  - gh
   - build-essential
   - curl
   - jq
@@ -110,3 +132,7 @@ runcmd:
       su apoth -c 'ubuntu-insights consent "$0" -s=false >/dev/null' -- "${source}"
     done
     systemctl --global disable ubuntu-insights-collect.timer ubuntu-insights-upload.timer
+  # The owner's user services (the Orca server that `setup.sh orca` installs) start at boot
+  # without a login session. WSL still stops the distro about 15 s after its last WSL session
+  # ends (instanceIdleTimeout in %USERPROFILE%\.wslconfig): see UPSTREAM.md.
+  - loginctl enable-linger apoth
