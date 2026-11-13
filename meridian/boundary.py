@@ -5,14 +5,14 @@ The lane may start only when every check below holds. They run before the engine
 and again after the run, and each one refuses on anything it does not recognise:
 
 1. The IB Gateway's own settings file, ``~/Jts/jts.ini``, has ``tradingMode=p`` under
-   ``[Logon]``. The Gateway writes it at login (seen on this machine: the file changed at the
-   owner's Paper Trading login). No file, no key, a duplicate, or any other value refuses.
+   ``[Logon]``. The Gateway writes it when it logs in. No file, no key, a duplicate, or any
+   other value refuses.
 2. The Gateway installed under ``~/Jts/ibgateway`` is running and listens on exactly one TCP
    port, the paper port 4002 (read from ``/proc``). No Gateway, another port, or an extra
    port refuses.
 3. The Gateway reports exactly one account, and its id has the paper form: a capital D,
-   capital letters, then digits. That is a convention seen in this Gateway's paper login and
-   in the examples of IBKR and NautilusTrader. It is not a documented guarantee: IBKR's API
+   capital letters, then digits, the form of the paper accounts in IBKR's and NautilusTrader's
+   documentation examples. It is a convention, not a documented guarantee: IBKR's API
    documentation says the API makes no difference between live and paper trading.
 4. Only if the owner has created ``risk/boundary.contract.json``: the account is on its
    allowlist. The file is optional. When present it can only make the check stricter, and a
@@ -63,7 +63,7 @@ CONTRACT_PROBE_CLIENT_ID = 1598
 CONFIRM_WORD = "PAPER"
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}")
 _ACCOUNT_ID = re.compile(r"[A-Za-z0-9]+")
-# A capital D, then capital letters, then digits (check 3 in the module text).
+# The paper form of the documentation examples (check 3): a capital D, capital letters, digits.
 _PAPER_FORM = re.compile(r"D[A-Z]*[0-9]+")
 _TCP_LISTEN = "0A"
 

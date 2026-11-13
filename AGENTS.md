@@ -9,8 +9,10 @@ A paper-trading harness on NautilusTrader. One repo, one WSL2 distro (`meridian`
   key name appears. That scan is a tripwire; the boundary itself is `meridian/boundary.py`.
 - **`risk/` and `*.contract.json` belong to the owner.** Read them. Never create or edit them.
 - **Only the engine places orders**, in a run the owner starts and attends. No agent, script or
-  tool call submits, changes or cancels an order directly. Order mode asks for a typed word at
-  a terminal and refuses without one; do not work around that.
+  tool call submits, changes or cancels an order directly, and no agent starts the lane in
+  either mode (`order` or `restart`). Order mode asks for a typed word at a terminal and
+  refuses without one; do not work around that. That check only proves a terminal, and the
+  terminals Orca gives agents are terminals too, so this rule is what keeps agents out.
 - **Never read, print, copy or move a credential or key value.**
 - **Account ids stay out of the repo and out of `evidence/`.** The allowlist holds SHA-256
   hashes. A hash of a short id can be reversed by trying every id, so treat
@@ -85,7 +87,8 @@ Before a run:
   in the Gateway's encrypted settings and can only be checked in its window.
 - The lane refuses unless the Gateway's `~/Jts/jts.ini` says `tradingMode=p`, the Gateway
   listens on port 4002 only, and it reports one account whose id has the paper form (a D
-  prefix: an observed convention, not a documented rule). Details in `meridian/boundary.py`.
+  prefix, as in IBKR's documentation examples: a convention, not a documented rule). Details
+  in `meridian/boundary.py`.
 - Optional, stricter: an allowlist in `risk/boundary.contract.json`. To create it, the owner
   runs this; it shows the reported account and prints the contract only after PAPER is typed:
   `mkdir -p risk && C="$(uv run python -m meridian.boundary contract)" && printf '%s\n' "$C" > risk/boundary.contract.json`
