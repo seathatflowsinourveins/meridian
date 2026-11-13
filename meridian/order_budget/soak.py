@@ -29,8 +29,10 @@ A run passes when:
   - every action is either sent exactly once or withdrawn by its caller; nothing else is lost.
 
 What the budget counts: every request it lets through, of all five kinds, because Alpaca's
-200 a minute counts queries too. The pacer's other refusals (an entry that would eat the
-protection reserve, or whose reserve cannot be worked out) are covered by the harvested tests.
+200 a minute counts queries too. An entry that would eat the protection reserve waits, as
+anything past the budget does. Not in the soak, and covered by the harvested tests: an entry
+whose reserve reaches the burst is refused; one whose reserve cannot be worked out is dropped
+silently.
 The soak keeps one record in ``evidence/``: a passing run replaces the earlier one, and git
 keeps the history.
 

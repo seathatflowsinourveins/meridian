@@ -7,6 +7,7 @@ breaks it.
 
 import ast
 import copy
+import heapq
 import json
 import socket
 from pathlib import Path
@@ -277,6 +278,23 @@ def test_a_429_holds_every_request_for_the_backoff_even_with_tokens_left():
     assert p.consecutive_429 == 0
 
 
+def test_a_429_pauses_every_request_and_empties_the_bucket():
+    # The fixture rows refill one token every 0.37 s, and the first backoff is 1 s.
+    clock, sent = [0], []
+    p = pacer_module.AccountPacer(controls(), lambda: clock[0])
+    assert p.bucket.tokens == p.bucket.burst == 18  # a full burst before the 429
+    p.on_rate_limited()
+    for _ in range(3):
+        p.request(pacer_module.ActionKind.CANCEL, lambda mark: (mark(), sent.append(clock[0])))
+    clock[0] = SEC // 2  # one refill is due by now: only the pause holds the cancels
+    p.drain()
+    assert sent == []
+    clock[0] = SEC  # the pause is over: the two refills since the 429 go, not the old burst
+    p.drain()
+    assert sent == [SEC, SEC]
+    assert len(p.queue) == 1  # the third waits for the next refill
+
+
 def test_the_simulated_venue_answers_429_past_its_limit():
     venue = soak.SimulatedVenue(limit=3, window_ns=60 * SEC)
     assert [venue.receive(i, i * SEC) for i in range(4)] == [200, 200, 200, 429]
@@ -331,3 +349,27 @@ def test_the_soak_fails_a_pacer_that_drops_a_wanted_entry(monkeypatch):
     monkeypatch.setattr(pacer_module.AccountPacer, "request", dropping)
     found = soak.run_soak(seconds=1200)["problems"]
     assert "an action was neither sent nor withdrawn by its caller" in found
+
+
+def test_the_soak_fails_a_pacer_that_drops_an_entry_while_demand_pauses(monkeypatch):
+    # When the quiet spell starts, the pacer drops its newest queued entry without asking its
+    # caller. Nothing newer is requested before that entry's 30 s are over, so the priority
+    # check does not see it, and its deadline falls inside the run: only counting as withdrawn
+    # what the caller itself withdrew shows it as lost.
+    drain, quiet, done = pacer_module.AccountPacer.drain, soak.demand(seconds=1200).quiet, set()
+
+    def dropping(self):
+        now = self.now_ns()
+        for n, (start, end) in enumerate(quiet):
+            entries = [q for q in self.queue if q.kind == pacer_module.ActionKind.SUBMIT]
+            if n not in done and start <= now < end and entries:
+                done.add(n)
+                self.queue.remove(max(entries, key=lambda q: q.sequence))
+                heapq.heapify(self.queue)
+        return drain(self)
+
+    monkeypatch.setattr(pacer_module.AccountPacer, "drain", dropping)
+    record = soak.run_soak(seconds=1200)
+    assert done == {0}, "the mutant should have dropped one entry in the one quiet spell"
+    assert record["observed"]["lost"] == 1
+    assert "an action was neither sent nor withdrawn by its caller" in record["problems"]

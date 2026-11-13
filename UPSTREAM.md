@@ -158,11 +158,11 @@ each harvested file is the source but for the import lines listed there.
 
 | Component | Version or commit | Source URL (read) | Date read | Used for | Origin |
 |---|---|---|---|---|---|
-| `meridian/order_budget/pacer.py` | `src/sextant/execution/pacer.py`, git blob `49a30e965aac62dea17cb3d6b4c09fee685e9742`, last changed in `49654edc56419a51445bff40b16ec3a12c8c3593` (2026-11-10). Changed here: the import line of the controls | https://github.com/seathatflowsinourveins/sextant/blob/33cdee7b65d53c93ab106b7b3196fc790b14a5a8/src/sextant/execution/pacer.py | 2026-11-12 | the order budget, one pacer per account. Every paced request (CANCEL, REDUCE, MODIFY, QUERY, SUBMIT) takes a token from a bucket of `request_budget x burst_fraction` tokens that refills one token per `window // (budget - burst) + 1` ns; waiting requests go out by kind in that order, first in first out within a kind; admission is checked again at send; a 429 empties the bucket and pauses every request | own design (the owner's, from Sextant) |
+| `meridian/order_budget/pacer.py` | `src/sextant/execution/pacer.py`, git blob `49a30e965aac62dea17cb3d6b4c09fee685e9742`, last changed in `49654edc56419a51445bff40b16ec3a12c8c3593` (2026-11-10). Changed here: the import line of the controls | https://github.com/seathatflowsinourveins/sextant/blob/33cdee7b65d53c93ab106b7b3196fc790b14a5a8/src/sextant/execution/pacer.py | 2026-11-12 | the order budget, one pacer per account, within one process. Every paced request (CANCEL, REDUCE, MODIFY, QUERY, SUBMIT) takes a token from a bucket of `request_budget x burst_fraction` tokens that refills one token per `window // (budget - burst) + 1` ns; waiting requests go out by kind in that order, first in first out within a kind; admission is checked again at send; a 429 empties the bucket and pauses every request | own design (the owner's, from Sextant) |
 | `meridian/order_budget/controls.py` | `src/sextant/risk/controls.py`, blob `d7fed7b1c9252d425a8ec32ec985560a39231273`, last changed in `09c148480a0cc9dda2b5b6d0835fd9aea594f86e` (2026-11-10). Unchanged; its docstring points into the owner's earlier repositories | https://github.com/seathatflowsinourveins/sextant/blob/33cdee7b65d53c93ab106b7b3196fc790b14a5a8/src/sextant/risk/controls.py | 2026-11-12 | validates the control rows: every control named once, with source, unit, calibration and scope; fixture rows only with `fixture=True`; the budget at most the broker limit; `1 <= burst < budget`. It is not under a `risk/` folder here, because `risk/` belongs to the owner | own design (the owner's, from Sextant) |
 | `tests/test_order_budget_pacer.py` | `tests/proofs/custody/test_pacer.py`, blob `97c32c1016f1343b929bd5f20ba7cd39c0677a3b`, last changed in `09c148480a0cc9dda2b5b6d0835fd9aea594f86e`. Changed here: its import lines | https://github.com/seathatflowsinourveins/sextant/blob/33cdee7b65d53c93ab106b7b3196fc790b14a5a8/tests/proofs/custody/test_pacer.py | 2026-11-12 | the pacer's own tests: priority and FIFO, no window over the budget, admission checked again after a wait, the 429 path, entry reserves, the wire hook used once, restore | own design (the owner's, from Sextant) |
 | `meridian/order_budget/rows.py`, `tests/order_budget_fixtures.py` | this repo; the values and helpers are `control_rows()` and `controls()` in `tests/proofs/custody/conftest.py` (blob `0bdc6ac9cab4a154a4c661c95d59e8e5a716c129`), pinned by `tests/test_order_budget_harvest.py` | https://github.com/seathatflowsinourveins/sextant/blob/33cdee7b65d53c93ab106b7b3196fc790b14a5a8/tests/proofs/custody/conftest.py | 2026-11-12 | the soak's and the tests' control rows: budget 180, broker limit 200, window 60 s, burst fraction 0.1 (burst 18), reserves 1, all `FIXTURE_ONLY` and `UNCALIBRATED`. `Controls.from_rows` refuses them unless it is called with `fixture=True`, which only the soak and the tests do; a lane builds its controls without it, as Sextant's Alpaca execution factory does, and needs rows the owner has reviewed | own design |
-| `meridian/order_budget/soak.py`, `tests/test_order_budget_soak.py`, `tests/test_order_budget_harvest.py` | this repo | n/a | 2026-11-12 | the offline soak against a simulated venue, its run record in `evidence/`, the checks that each of its conditions can fail, a test of the 429 pause, and the check of the harvested files | own design |
+| `meridian/order_budget/soak.py`, `tests/test_order_budget_soak.py`, `tests/test_order_budget_harvest.py` | this repo | n/a | 2026-11-12 | the offline soak against a simulated venue, its run record in `evidence/`, the checks that each of its conditions can fail, tests of the 429 pause and of the bucket it empties, and the check of the harvested files | own design |
 | Sextant's design notes on the budget (read, not copied) | `docs/adr/0009-order-rate-limits.md` (blob `27010a67a625483233f0fb8ccffa0fcbf7b88d74`), `docs/handbook/alpaca-execution.md` (blob `24e3d0491883fd1c12082756e180b11a159c5e86`) | https://github.com/seathatflowsinourveins/sextant/blob/33cdee7b65d53c93ab106b7b3196fc790b14a5a8/docs/adr/0009-order-rate-limits.md ; https://github.com/seathatflowsinourveins/sextant/blob/33cdee7b65d53c93ab106b7b3196fc790b14a5a8/docs/handbook/alpaca-execution.md | 2026-11-12 | the budget's reasons: 180 order actions a minute under Alpaca's 200, queries counted, the burst inside the budget, priority CANCEL > REDUCE > MODIFY > QUERY > SUBMIT; and how the Alpaca adapter calls the pacer (every REST request through it, the SDK's own retries off, a pacer refusal is a not-sent refusal) | own design (the owner's) |
 | Alpaca Trading API rate limit | n/a (Alpaca support article, December 2022) | https://alpaca.markets/support/usage-limit-api-calls | 2026-11-12 | "currently 200 requests per minute, per account", every request counted, 429 past it; the budget keeps to 180 of them. Alpaca's archived API reference (`alpacahq/alpaca-docs` at `2080c5e0efbbd812c48eef9209a7a9962de67d2a`, `content/api-references/trading-api/_index.md`) says per API key instead; the current docs give no figure | upstream |
 | NautilusTrader's own order rate limits (read, not set here) | 2.0.0rc9, commit `da6b57aefdd62b44f675e434ffcfefca7f4025dd` | https://github.com/nautechsystems/nautilus_trader/blob/da6b57aefdd62b44f675e434ffcfefca7f4025dd/crates/live/src/node/config.rs ; https://github.com/nautechsystems/nautilus_trader/blob/da6b57aefdd62b44f675e434ffcfefca7f4025dd/crates/risk/src/engine/mod.rs ; https://github.com/nautechsystems/nautilus_trader/blob/da6b57aefdd62b44f675e434ffcfefca7f4025dd/crates/trading/src/strategy/mod.rs | 2026-11-12 | why the budget is a component of its own: the risk engine throttles only submits and modifies (100 a second each by default, rolling window) and denies the excess instead of queueing it, while a strategy's cancels and queries go straight to execution without a throttle | upstream |
@@ -172,17 +172,21 @@ Notes on the order budget, measured by the soak (`evidence/M2-order-budget-*-soa
 - **It holds the request past the budget; it never refuses it for being over the budget.** A
   request waits in the pacer's queue until the bucket has a token, most urgent kind first, and
   neither the queue nor the wait has a limit. An entry also waits until the bucket holds more
-  tokens than its protection reserve. A queued request leaves the queue unsent in three ways:
+  tokens than its protection reserve. A queued request leaves the queue unsent in four ways:
   its caller's admission check turns false (the caller withdrew it; in the soak, an entry not
   sent within 30 s); it is an entry whose reserve would reach the burst (`refuse(reason)` is
-  called, and `request()` raises `PacerRefused` if that is already so when it is made); or it is
+  called, and `request()` raises `PacerRefused` if that is already so when it is made); it is
   an entry whose reserve cannot be worked out (reserve rows missing, or a position count that is
   not a whole number), which is dropped silently, so a caller checks reserve authority in its own
-  admission, as Sextant's Alpaca gateway does. A fourth way is in the send itself: the pacer
+  admission, as Sextant's Alpaca gateway does; or, fourth, in the send itself: the pacer
   spends the token and takes the request off the queue before it calls `send`, so a `send` that
-  never calls its wire hook, or whose hook raises (admission false by then, or called after
-  `send` returned), sends nothing; the hook's `ValueError` comes out of whichever `request()` or
-  `drain()` call started that drain. This is the owner's design (Sextant ADR-0009, R6),
+  returns or raises without calling its wire hook, or whose hook raises `ValueError` because
+  admission is false by then, sends nothing. An exception raised inside `send` (that
+  `ValueError` among them) comes out of whichever `request()` or `drain()` call started that
+  drain, and that call may have been made for another request, which may already be sent or
+  still be queued: a raise from `request()` is not always about the request just made. A hook
+  kept and called after `send` returned raises `ValueError` at that later call, not out of
+  `request()` or `drain()`. This is the owner's design (Sextant ADR-0009, R6),
   kept as it is because the Alpaca adapter of M3 relies on it. Whether "refused" may mean "held
   until the window has room, or withdrawn by its caller" is the owner's to confirm.
 - **The cap is 179, not 180.** The refill interval rounds up (370,370,371 ns for 162 refills a
@@ -198,7 +202,11 @@ Notes on the order budget, measured by the soak (`evidence/M2-order-budget-*-soa
   a full burst and no memory of the last 60 s; `to_state()` and `restore()` carry only the wire
   counters, not the tokens or a 429 pause. Sextant's Alpaca adapter builds a new pacer each time
   the node connects, so a start within 60 s of the previous run's last request can add up to one
-  burst (18) to that window. The M3 lane has to start a pacer empty, or wait out the window.
+  burst (18) to that window. Each start adds a burst: with requests always waiting, one pacer
+  sends 179 in its first 60 s, a restart at 30 s makes that 196 (a burst and 80 refills, twice),
+  and restarts at 20 s and 40 s make it 213 (a burst and 53 refills, three times), past
+  Alpaca's 200. These counts come from running the pacer alone with the fixture rows; the soak
+  does not restart it. The M3 lane has to start a pacer empty, or wait out the window.
 
 ## Notes on choices
 
