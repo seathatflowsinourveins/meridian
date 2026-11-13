@@ -5,7 +5,8 @@ client, or any other way to add an execution client, appears in the lane's code,
 the lane builds has anything but the sandbox for execution.
 
 It also runs, offline, on a fake data feed: the strategy's orders reach the simulated venue
-and only it, nothing is left open at stop, and only the lane's own lines reach the terminal.
+and only it, nothing is left open at stop, only the lane's own lines reach the terminal, and a
+Ctrl-C shortly before the stop fails the run.
 The engine supports one node per process and another test builds a real IBKR node, so the real
 sandbox node runs in a subprocess here: started only once the structure checks pass, and in an
 empty network namespace where the machine allows one.
@@ -19,6 +20,7 @@ import subprocess
 import sys
 import textwrap
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -70,7 +72,7 @@ DYNAMIC_BUILTINS = {"eval", "exec", "compile", "__import__"}
 FORBIDDEN_MODULES = {"importlib", "ibapi", "ib_async", "ib_insync"}
 # What the lane may use from the IBKR lane's gate module, which imports no engine, and the
 # only meridian modules it may import.
-FROM_IBKR_PAPER = {"gate", "scrubbed_json", "RECORD_SCHEMA", "GATEWAY_HINT"}
+FROM_IBKR_PAPER = {"gate", "scrubbed_json", "bind_note", "RECORD_SCHEMA", "GATEWAY_HINT"}
 MERIDIAN_MODULES = {"boundary", "ib_probe", "ibkr_paper", "sandbox_lane", "sandbox_node"}
 IB_VARIABLES = ("IB_V2_", "IB_PYO3_")
 FAKE = "DUFAKE0001"
@@ -283,18 +285,23 @@ def test_the_structure_check_catches_a_data_client_that_reconnects(monkeypatch):
 
 RUNNER = textwrap.dedent(
     """
-    import json, sys
+    import json, os, signal, sys, threading
     from pathlib import Path
-    tmp, repo = Path(sys.argv[1]), Path(sys.argv[2])
+    tmp, repo, ctrl_c_after = Path(sys.argv[1]), Path(sys.argv[2]), float(sys.argv[3])
     sys.path[:0] = [str(repo), str(repo / "tests")]
     from meridian import boundary, sandbox_lane, sandbox_node
     from fake_market_data import fake_data_client
     boundary.REPO_ROOT = tmp
     record = sandbox_lane.SandboxRecord(4002)
+    if ctrl_c_after:  # a Ctrl-C at the keyboard is a SIGINT to the process
+        ctrl_c = threading.Timer(ctrl_c_after, os.kill, (os.getpid(), signal.SIGINT))
+        ctrl_c.daemon = True
+        ctrl_c.start()
     sandbox_node.run(fake_data_client(sandbox_node.DATA_CLIENT_NAME), record, seconds=6)
     record.paper_checks_after_run(True)
     passed, path = record.write([], root=tmp)
-    print(json.dumps({"passed": passed, "path": str(path), "data": record.data}))
+    out = {"passed": passed, "path": str(path), "data": record.data, "local": record.local}
+    print(json.dumps(out))
     """
 )
 
@@ -308,15 +315,18 @@ def network_fence() -> list[str]:
     return ["unshare", "-rn"] if probe.returncode == 0 else []
 
 
-@pytest.fixture(scope="module")
-def offline_run(tmp_path_factory):
+def run_offline(tmp: Path, ctrl_c_after: float = 0) -> tuple[Any, dict]:
+    """The lane's node on the fake feed for 6 seconds, in a process of its own; with
+    ``ctrl_c_after``, interrupted that many seconds in."""
     # Never start a node whose structure is wrong: an IB execution client in it could connect
     # to a Gateway on this machine before the structure test had said anything.
     if problems := structure_problems():
         pytest.fail(f"not started, the lane's node is not sandbox-only: {problems}")
-    tmp = tmp_path_factory.mktemp("sandbox")
     proc = subprocess.run(
-        [*network_fence(), sys.executable, "-c", RUNNER, str(tmp), str(REPO_ROOT)],
+        [
+            *network_fence(),
+            *(sys.executable, "-c", RUNNER, str(tmp), str(REPO_ROOT), str(ctrl_c_after)),
+        ],
         capture_output=True,
         text=True,
         timeout=180,
@@ -324,7 +334,13 @@ def offline_run(tmp_path_factory):
         check=False,
     )
     assert proc.returncode == 0, proc.stderr[-3000:]
-    return proc, json.loads(proc.stdout.strip().splitlines()[-1]), tmp
+    return proc, json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+@pytest.fixture(scope="module")
+def offline_run(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("sandbox")
+    return *run_offline(tmp), tmp
 
 
 def test_offline_the_strategys_orders_reach_the_sandbox_and_only_it(offline_run):
@@ -365,47 +381,124 @@ def test_offline_only_the_lanes_lines_reach_the_terminal(offline_run):
     assert "Registered ExecutionClient-SANDBOX" in text
 
 
+def test_offline_a_ctrl_c_shortly_before_the_stop_fails_the_run(tmp_path):
+    # About 1.5 seconds before the lane's timer. The node takes 3 seconds to stop, so the timer
+    # still fires while it does: only the time the node stopped the lane's actor shows that the
+    # stop was early.
+    proc, out = run_offline(tmp_path, ctrl_c_after=4.5)
+    assert not out["passed"] and Path(out["path"]).parent == tmp_path / "runs"
+    assert not (tmp_path / "evidence").exists()
+    assert out["data"]["engine_error"] is True
+    assert "the node stopped with an error" in out["data"]["problems"]
+    assert out["local"]["engine_error"].startswith("interrupted")
+    # Here too only the lane's lines reach the terminal: its first line and the error line.
+    assert len(proc.stdout.strip().splitlines()) == 2
+    (line,) = proc.stderr.strip().splitlines()
+    assert line.startswith("The node stopped with an error (interrupted); details in runs/")
+
+
 # --- the engine side, without an engine ---------------------------------------------------
 
 
 class TalkativeNode:
-    """Writes the account the way the engine can (to file descriptors 1 and 2, and through
-    Python), and stops when its handle is told to, or at once if ``early``."""
+    """Stands in for the engine's node. It writes the account the way the engine can (to file
+    descriptors 1 and 2, and through Python), and whatever else it is given to say. It stops
+    when its handle is told to, or at once if ``early``, and then stops the lane's actor,
+    unless told not to.
 
-    def __init__(self, early: bool) -> None:
-        self.early, self.stopped = early, threading.Event()
+    The engine's logger keeps writing until the node is dropped, so this node writes its last
+    words when it is dropped. Its handle and the actor hold it, and it holds the actor (a
+    cycle), so it is dropped only when the lane has let go of all of them and collected."""
+
+    environment = SimpleNamespace(name="SANDBOX")
+    cache = SimpleNamespace(
+        instrument=lambda iid: None, orders=list, orders_open=list, positions_open=list
+    )
+
+    def __init__(self, early: bool, says: str, stops_actor: bool, last_words: str) -> None:
+        self.early, self.says, self.stops_actor = early, says, stops_actor
+        self.last_words, self.stopped = last_words, threading.Event()
+        self.counter = SimpleNamespace(started=True, quotes=0, stopped_at=None, node=self)
 
     def handle(self):
-        return SimpleNamespace(stop=self.stopped.set)
+        return SimpleNamespace(stop=self.stop)
+
+    def stop(self) -> None:
+        self.stopped.set()
+        time.sleep(0.2)  # the lane's timer thread is still in here when run() returns
 
     def run(self) -> None:
         os.write(1, f"AccountState(account_id=IB-{FAKE})\n".encode())
         os.write(2, f"native stderr {FAKE}\n".encode())
         print(f"python stdout {FAKE}")
         print(f"python stderr {FAKE}", file=sys.stderr)
+        print(self.says)
         if not self.early:
             assert self.stopped.wait(10), "the lane's timer never stopped the node"
+        if self.stops_actor:
+            self.counter.stopped_at = time.monotonic()
+
+    def __del__(self) -> None:
+        os.write(1, f"{self.last_words} {FAKE}\n".encode())
 
 
-@pytest.mark.parametrize("early", [False, True], ids=["stopped-by-the-timer", "stopped-early"])
-def test_the_engine_output_goes_to_the_log_and_an_early_stop_fails(
-    tmp_path, monkeypatch, capfd, early
-):
+@pytest.fixture
+def talkative(tmp_path, monkeypatch):
+    """sandbox_node.run() on a TalkativeNode instead of the engine, and that node's last
+    words (its own: a node another test left behind would say something else)."""
     from meridian import sandbox_node
 
     monkeypatch.setattr(boundary, "REPO_ROOT", tmp_path)
-    monkeypatch.setattr(sandbox_node, "build", lambda data_client: (TalkativeNode(early), None))
-    record = sandbox_lane.SandboxRecord(4002)
-    sandbox_node.run(("IB", None, None), record, seconds=1)
+    last_words = f"last words of the node in {tmp_path.name}"
+
+    def run(early: bool, says: str = "", stops_actor: bool = True) -> sandbox_lane.SandboxRecord:
+        def build(data_client):
+            node = TalkativeNode(early, says, stops_actor, last_words)
+            return node, node.counter
+
+        monkeypatch.setattr(sandbox_node, "build", build)
+        record = sandbox_lane.SandboxRecord(4002)
+        sandbox_node.run(("IB", None, None), record, seconds=1)
+        return record
+
+    return SimpleNamespace(run=run, last_words=last_words)
+
+
+@pytest.mark.parametrize(
+    ("early", "stops_actor"),
+    [(False, True), (True, True), (False, False)],
+    ids=["stopped-by-the-timer", "stopped-early", "actor-never-stopped"],
+)
+def test_the_engine_output_goes_to_the_log_and_an_early_stop_fails(
+    tmp_path, talkative, capfd, early, stops_actor
+):
+    record = talkative.run(early, stops_actor=stops_actor)
     out, err = capfd.readouterr()
     assert FAKE not in out + err  # nothing the engine wrote reaches the terminal
     (log,) = (tmp_path / "runs").glob("*-engine.log")
     text = log.read_text(encoding="utf-8")
     for piece in ("AccountState", "native stderr", "python stdout", "python stderr"):
         assert piece in text
-    assert record.data["engine_error"] is early
-    assert ("stopped before its time" in record.local.get("engine_error", "")) is early
+    # The node was dropped while its output still went to the log, not after the terminal
+    # was put back.
+    assert talkative.last_words in text
+    fails = early or not stops_actor
+    assert record.data["engine_error"] is fails
+    assert ("stopped before its time" in record.local.get("engine_error", "")) is fails
     assert FAKE not in json.dumps(record.data)
+
+
+def test_the_registered_clients_in_the_record_are_read_from_the_engines_log(talkative):
+    record = talkative.run(
+        early=True,
+        says="Registered ExecutionClient-SANDBOX\nRegistered DataClient-IB\n"
+        "Registered ExecutionClient-IB",
+    )
+    assert record.data["node"]["registered_execution_clients"] == ["SANDBOX", "IB"]
+    assert record.data["node"]["registered_data_clients"] == ["IB"]
+    assert (
+        "the engine did not register the sandbox, and only it, for execution" in record.problems()
+    )
 
 
 class StubOrder:
@@ -431,13 +524,15 @@ def test_capture_records_what_the_cache_holds():
         positions_open=lambda: [object()],
     )
     node: Any = SimpleNamespace(environment=SimpleNamespace(name="SANDBOX"), cache=cache)
-    counter: Any = SimpleNamespace(started=True, quotes=0)
+    counter: Any = SimpleNamespace(started=False, quotes=0)
     record = sandbox_lane.SandboxRecord(4002)
     sandbox_node.capture(node, counter, ("IB", None, None), record)
     assert [(o["execution_client"], o["account_id"]) for o in record.data["orders"]] == [
         ("IB", "IB-X"),
         ("SANDBOX", None),
     ]
+    assert record.data["trader_started"] is False
+    assert record.data["at_stop"] == {"open_orders": 1, "open_positions": 1}
     registered = sandbox_node.registered_clients(
         "Registered ExecutionClient-SANDBOX\nRegistered DataClient-IB\n"
         "Registered ExecutionClient-IB\n"
@@ -445,6 +540,7 @@ def test_capture_records_what_the_cache_holds():
     assert registered == (["SANDBOX", "IB"], ["IB"])
     record.data["node"]["registered_execution_clients"] = registered[0]
     found = record.problems()
+    assert any(problem.startswith("the trader never started") for problem in found)
     for expected in (
         "the engine did not register the sandbox, and only it, for execution",
         "the instrument never arrived from IB",
@@ -460,16 +556,17 @@ def test_capture_records_what_the_cache_holds():
 # --- the gate before and after a run ------------------------------------------------------
 
 
-def fake_bounds(**changes: Any) -> Any:
-    """Bounds as the gate returns them. A changed field (a restarted Gateway, a contract)
-    makes them unequal, as it makes the real ones unequal."""
-    fields = {
+def fake_bounds(**changes: Any) -> boundary.IbkrBoundary:
+    """Bounds as the gate returns them, in the gate's own type. A changed field (a restarted
+    Gateway, a contract) makes them unequal."""
+    fields: dict[str, Any] = {
         "host": "127.0.0.1",
         "port": 4012,  # not 4002, so a test can see where the data client is sent
         "paper_accounts_sha256": None,
         "gateway_identity": frozenset({"pid 100", "listen 127.0.0.1:4012"}),
+        "gateway_bind": "all interfaces",  # the Gateway's normal bind
     }
-    return SimpleNamespace(**(fields | changes))
+    return boundary.IbkrBoundary(**(fields | changes))
 
 
 CHANGES = {
@@ -519,6 +616,24 @@ def test_the_lane_goes_on_only_when_the_owner_types_the_word(monkeypatch, gated,
     assert gated.runs == ([(gated.bounds, FAKE)] if goes_on else [])
 
 
+@pytest.mark.parametrize(
+    ("bind", "asks"),
+    [("all interfaces", True), ("loopback", False)],
+    ids=["every-interface", "loopback-only"],
+)
+def test_before_the_prompt_the_lane_says_how_the_port_is_bound(
+    monkeypatch, gated, capsys, bind, asks
+):
+    gated.answers[0] = (fake_bounds(gateway_bind=bind), FAKE)
+    monkeypatch.setattr(sandbox_lane, "_at_terminal", lambda: False)  # it stops at the prompt
+    assert sandbox_lane.main(["run"]) == 2
+    out = capsys.readouterr().out
+    assert f"bound to {bind}" in out
+    # The lane cannot read the Gateway's localhost-only box: it asks the owner to check it,
+    # unless the port is bound to loopback only.
+    assert ('"Allow connections from localhost only"' in out) is asks
+
+
 @pytest.mark.parametrize("change", sorted(CHANGES))
 def test_a_gateway_change_during_the_prompt_refuses(monkeypatch, gated, change):
     def confirm():
@@ -549,7 +664,13 @@ def test_a_clean_run_goes_to_the_gated_endpoint_and_writes_evidence(lane_run):
     bounds = fake_bounds()
     assert sandbox_lane._run_node(bounds, FAKE) == 0
     assert lane_run.sent == [(bounds.host, bounds.port)]
-    assert len(list((lane_run.tmp / "evidence").glob("M2-sandbox-*-run.json"))) == 1
+    (evidence,) = (lane_run.tmp / "evidence").glob("M2-sandbox-*-run.json")
+    # How the port was bound is in the record, as in the IBKR lane's; no address is.
+    assert json.loads(evidence.read_text(encoding="utf-8"))["gateway"] == {
+        "port": bounds.port,
+        "bind": "all interfaces",
+        "use": "market data only",
+    }
 
 
 @pytest.mark.parametrize("change", sorted(CHANGES))
@@ -578,12 +699,13 @@ def test_a_probe_failure_after_the_run_fails_it(monkeypatch, lane_run):
     assert not (lane_run.tmp / "evidence").exists()
 
 
-def test_the_record_is_scrubbed_of_the_gated_account(monkeypatch, lane_run):
+@pytest.mark.parametrize("echoed", [FAKE, boundary.account_hash(FAKE)], ids=["account", "hash"])
+def test_the_record_is_scrubbed_of_the_gated_account(monkeypatch, lane_run, echoed):
     from meridian import sandbox_node
 
     def leaky(data_client, record):
         fill(record)
-        record.data["orders"][0]["client_order_id"] = f"O-{FAKE}"  # the engine echoed it
+        record.data["orders"][0]["client_order_id"] = f"O-{echoed}"  # the engine echoed it
 
     monkeypatch.setattr(sandbox_node, "run", leaky)
     with pytest.raises(RuntimeError):

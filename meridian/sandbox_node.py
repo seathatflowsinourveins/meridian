@@ -24,10 +24,10 @@ Own design, and the changes to that example:
   - the risk engine is not bypassed (upstream's example bypasses it), and the node has
     explicit connection, reconciliation, portfolio and stop timeouts (reconciliation stays
     off, as in the example);
-  - the lane stops the node from its own timer, so a stop before the minute is up (a Ctrl-C)
-    fails the run;
-  - an actor counts the quotes it sees; the run record is read from the cache at the end, and
-    the execution clients the engine registered are read from its log.
+  - the lane stops the node from its own timer, and an actor notes when the node stopped it,
+    so a stop before the minute is up (a Ctrl-C) fails the run;
+  - the same actor counts the quotes it sees; the run record is read from the cache at the end,
+    and the execution clients the engine registered are read from its log.
 
 ``tests/test_sandbox_lane.py`` fails if an execution client other than the sandbox is ever
 added here.
@@ -36,10 +36,12 @@ added here.
 from __future__ import annotations
 
 import contextlib
+import gc
 import os
 import re
 import sys
 import threading
+import time
 import traceback
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -165,12 +167,14 @@ def exec_tester_config() -> ExecTesterConfig:
 
 
 class QuoteCounter(DataActor):
-    """Counts the quotes the node receives for the instrument, and notes that it started."""
+    """Counts the quotes the node receives for the instrument, and notes that it started and
+    when the node stopped it (on the clock of ``time.monotonic``)."""
 
     def __init__(self) -> None:
         super().__init__()
         self.started = False
         self.quotes = 0
+        self.stopped_at: float | None = None
 
     def on_start(self) -> None:
         self.started = True
@@ -178,6 +182,10 @@ class QuoteCounter(DataActor):
 
     def on_quote(self, quote: Any) -> None:
         self.quotes += 1
+
+    def on_stop(self) -> None:
+        if self.stopped_at is None:  # the first stop is the one that ended the run
+            self.stopped_at = time.monotonic()
 
 
 def build(data_client: DataClient) -> tuple[Any, QuoteCounter]:
@@ -318,22 +326,20 @@ def run(data_client: DataClient, record: SandboxRecord, seconds: int = RUN_SECON
     print(f"Engine output goes to {shown} (it can show the account id; it stays on this machine).")
     failure = None
     with _output_to(log):
-        node = counter = timer = None
-        on_time = threading.Event()
+        node = counter = timer = handle = None
         try:
             node, counter = build(data_client)
             handle = node.handle()
-
-            def stop() -> None:
-                on_time.set()
-                handle.stop()
-
             # The lane's own timer, cancelled below: nothing outlives the run to signal later.
-            timer = threading.Timer(seconds, stop)
+            timer = threading.Timer(seconds, handle.stop)
             timer.daemon = True
+            due = time.monotonic() + seconds
             timer.start()
             node.run()  # returns once the node has stopped, by this timer or by anything else
-            if not on_time.is_set():
+            # The node takes a few seconds to stop, and the timer can fire in them. So what
+            # counts is when the node stopped the lane's actor: before the time was up (a
+            # Ctrl-C, even in the last seconds), or never, fails the run.
+            if counter.stopped_at is None or counter.stopped_at < due:
                 failure = "interrupted: the node stopped before its time"
         except KeyboardInterrupt:
             failure = "interrupted"
@@ -343,12 +349,19 @@ def run(data_client: DataClient, record: SandboxRecord, seconds: int = RUN_SECON
         finally:
             if timer is not None:
                 timer.cancel()
+                if timer.is_alive():  # until its thread has ended it holds the node's handle
+                    timer.join(5)
         if node is not None and counter is not None:
             try:
                 capture(node, counter, data_client, record)
             except Exception as e:
                 failure = failure or f"{type(e).__name__}: {e}"
                 traceback.print_exc()
+        # The engine's logger writes from a thread of its own until the node is dropped, and
+        # the node would otherwise live until this function returns. Drop it, and all that
+        # holds it, here, while stdout and stderr still go to the log.
+        node = counter = timer = handle = None
+        gc.collect()
     if record.data["node"] is not None:  # what the engine itself says it registered
         execution, data = registered_clients(log.read_text(encoding="utf-8", errors="replace"))
         record.data["node"]["registered_execution_clients"] = execution

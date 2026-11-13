@@ -9,6 +9,8 @@ The IB Gateway, logged in to Paper Trading, supplies market data and nothing els
 events in a run:
   1. the IBKR lane's paper checks (``meridian.ibkr_paper.gate``): the Gateway is a Paper
      Trading login, listens on port 4002 only, and reports one account of the paper form;
+     the lane says how that port is bound, as the IBKR lane does, and unless it is loopback
+     only asks the owner to check the Gateway's own localhost-only box;
   2. a person at a terminal types the confirmation word, and every check runs again;
   3. the node is built with one data client (IB) and one execution client (the sandbox) and
      runs for a minute; the engine's own output goes to a local log in ``runs/``;
@@ -66,7 +68,9 @@ def owner_confirms() -> bool:
 class SandboxRecord:
     """What happened in one run, as normalised fields only (never raw broker text)."""
 
-    def __init__(self, gateway_port: int, allowlist_present: bool = False) -> None:
+    def __init__(
+        self, gateway_port: int, allowlist_present: bool = False, gateway_bind: str = ""
+    ) -> None:
         self.data: dict[str, Any] = {
             "schema": RECORD_SCHEMA,
             "milestone": "M2",
@@ -74,7 +78,9 @@ class SandboxRecord:
             "mode": "run",
             "run_started_utc": _utc_now(),
             "engine": {},
-            "gateway": {"port": gateway_port, "use": "market data only"},
+            # How the Gateway's port is bound ("all interfaces" is its normal bind), never the
+            # address itself: the same field as in the IBKR lane's record.
+            "gateway": {"port": gateway_port, "bind": gateway_bind, "use": "market data only"},
             "boundary": {
                 "paper_checks_passed_before_run": True,
                 "paper_checks_passed_after_run": None,
@@ -164,7 +170,9 @@ class SandboxRecord:
 def _run_node(bounds: boundary.IbkrBoundary, account: str) -> int:
     from meridian import sandbox_node  # the engine is loaded only after the gate has passed
 
-    record = SandboxRecord(bounds.port, bounds.paper_accounts_sha256 is not None)
+    record = SandboxRecord(
+        bounds.port, bounds.paper_accounts_sha256 is not None, bounds.gateway_bind
+    )
     sandbox_node.run(sandbox_node.ib_data_client(bounds.host, bounds.port), record)
 
     # Every check again now that the run is over: still a paper login, the same account,
@@ -205,6 +213,7 @@ def main(argv: list[str] | None = None) -> int:
         "Paper checks passed: the Gateway's jts.ini says Paper Trading, the Gateway listens "
         f"only on port {bounds.port}, and it reports one account of the paper form."
     )
+    print(ibkr_paper.bind_note(bounds.gateway_bind))
     if not owner_confirms():
         print(
             "REFUSED TO START: the sandbox lane needs the owner at a terminal, typing "
