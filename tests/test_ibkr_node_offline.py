@@ -181,13 +181,14 @@ class FakePrice:
         return self.value
 
 
-@pytest.fixture
-def round_trip(clean_environ, monkeypatch):
-    """A fill-mode strategy outside any node: its orders are captured, not sent."""
+def offline_strategy(monkeypatch, mode: str) -> SimpleNamespace:
+    """The lane's strategy for ``mode`` outside any node. Orders are caught at the engine's own
+    ``submit_order``, below the lane's ``submit_ib_order``, so its refusal is what is tested."""
     from meridian import ibkr_node
 
-    record = ibkr_paper.RunRecord("fill", 4002)
-    strategy = ibkr_node.OneRoundTrip.create(record)
+    record = ibkr_paper.RunRecord(mode, 4002)
+    cls = ibkr_node.OneRoundTrip if mode == "fill" else ibkr_node.OneDayLimit
+    strategy = cls.create(record)
     strategy.instrument = SimpleNamespace(make_price=lambda value: round(value, 2))
     sent: list = []
 
@@ -202,8 +203,106 @@ def round_trip(clean_environ, monkeypatch):
             price=price,
         )
 
-    monkeypatch.setattr(ibkr_node.OneRoundTrip, "limit_order", limit_order)
-    monkeypatch.setattr(ibkr_node.OneRoundTrip, "submit_ib_order", lambda self, o: sent.append(o))
+    monkeypatch.setattr(cls, "limit_order", limit_order)
+    monkeypatch.setattr(cls, "submit_order", lambda self, order, client_id=None: sent.append(order))
+
+    def quote(bid: float, ask: float):
+        strategy.on_quote(
+            SimpleNamespace(
+                instrument_id=strategy.instrument_id,
+                bid_price=FakePrice(bid),
+                ask_price=FakePrice(ask),
+            )
+        )
+
+    return SimpleNamespace(strategy=strategy, record=record, sent=sent, quote=quote)
+
+
+def test_restart_mode_sends_nothing_even_when_a_quote_arrives(clean_environ, monkeypatch):
+    lane = offline_strategy(monkeypatch, "restart")
+    lane.quote(199.0, 200.0)  # restart mode never subscribes; this stands in for one that did
+    assert lane.sent == []
+    assert lane.record.data["orders_refused"] == 0  # the quote was ignored, not refused
+    lane.strategy._bid = FakePrice(199.0)
+    lane.strategy.submit_example_orders()  # even a direct call reaches no venue
+    assert lane.sent == []
+    assert lane.record.data["orders_refused"] == 1  # and the run fails, saying why
+    assert any("refused to send 1 order" in problem for problem in lane.record.problems())
+
+
+@pytest.mark.parametrize(("mode", "allowed"), [("order", 1), ("fill", 2), ("restart", 0)])
+def test_each_mode_sends_at_most_its_own_number_of_orders(
+    clean_environ, monkeypatch, mode, allowed
+):
+    lane = offline_strategy(monkeypatch, mode)
+    lane.strategy._bid = FakePrice(199.0)
+    if mode == "fill":
+        lane.strategy._ask = FakePrice(200.0)
+    for _ in range(allowed + 2):
+        lane.strategy.submit_example_orders()
+    assert len(lane.sent) == allowed
+    assert lane.record.data["orders_refused"] == 2  # the extra ones were refused
+
+
+@pytest.mark.parametrize("mode", ["order", "fill"])
+@pytest.mark.parametrize("held", ["instrument_open_orders", "instrument_open_positions"])
+def test_an_open_order_or_position_at_start_holds_every_order(
+    clean_environ, monkeypatch, mode, held
+):
+    from meridian import ibkr_node
+
+    lane = offline_strategy(monkeypatch, mode)
+    counts = dict.fromkeys(
+        (
+            "instrument_open_orders",
+            "instrument_open_positions",
+            "account_open_orders",
+            "account_open_positions",
+        ),
+        0,
+    )
+    counts[held] = 1
+    monkeypatch.setattr(type(lane.strategy), "_open_counts", lambda self: counts)
+    started: list = []
+    monkeypatch.setattr(ibkr_node.IbV2OrderStrategy, "on_start", lambda self: started.append(1))
+    lane.strategy.on_start()
+    assert started == []  # upstream's start never ran: no instrument, no subscription
+    # So in a run no quote arrives and no order could even be built. This quote stands in for
+    # one that arrives anyway, with the test's instrument set: the guard is the layer tested.
+    lane.quote(199.0, 200.0)
+    assert lane.sent == []
+    assert lane.record.data["orders_refused"] == 1
+
+
+def test_a_mode_without_an_order_budget_sends_nothing(clean_environ, monkeypatch):
+    lane = offline_strategy(monkeypatch, "order")
+    lane.record.data["mode"] = "some later mode"
+    lane.strategy._bid = FakePrice(199.0)
+    lane.strategy.submit_example_orders()
+    assert lane.sent == []
+    assert lane.record.data["orders_refused"] == 1
+
+
+def test_every_mode_has_its_own_order_budget():
+    from meridian import ibkr_node
+
+    assert set(ibkr_node.MAX_ORDERS) == set(ibkr_paper.MODES)
+
+
+def test_order_mode_sends_its_one_order_on_the_first_quote(clean_environ, monkeypatch):
+    lane = offline_strategy(monkeypatch, "order")
+    lane.quote(199.0, 200.0)
+    lane.quote(198.0, 199.0)
+    (order,) = lane.sent
+    assert order.price == 195.02  # 2% under the bid, so it rests
+    assert lane.record.data["orders_refused"] == 0
+
+
+@pytest.fixture
+def round_trip(clean_environ, monkeypatch):
+    """A fill-mode strategy outside any node: its orders are caught, not sent."""
+    lane = offline_strategy(monkeypatch, "fill")
+    strategy, record, sent = lane.strategy, lane.record, lane.sent
 
     def quote(bid: float, ask: float):
         strategy.on_quote(
@@ -256,6 +355,7 @@ def test_the_buys_fill_sends_one_sell_of_the_filled_quantity(round_trip):
     assert sell.side == OrderSide.SELL and str(sell.quantity) == "1"
     assert sell.price == 195.02  # 2% under the lower of the bid (199) and the fill (200.5)
     assert round_trip.record.data["close_order"]["side"] == "SELL"
+    assert round_trip.record.data["orders_refused"] == 0  # the repeat was ignored, not refused
 
 
 def test_the_sell_prices_from_the_fill_when_the_delayed_bid_is_stale(round_trip):
@@ -263,6 +363,17 @@ def test_the_sell_prices_from_the_fill_when_the_delayed_bid_is_stale(round_trip)
     (buy,) = round_trip.sent
     round_trip.fill(buy.client_order_id, 190.0)  # the live price fell below the delayed bid
     assert round_trip.sent[1].price == 186.2  # 2% under 190, not under 199
+
+
+def test_the_closing_sell_goes_through_the_same_guard(round_trip, monkeypatch):
+    from meridian import ibkr_node
+
+    monkeypatch.setitem(ibkr_node.MAX_ORDERS, "fill", 1)  # room for the BUY only
+    round_trip.quote(199.0, 200.0)
+    (buy,) = round_trip.sent
+    round_trip.fill(buy.client_order_id, 200.5)
+    assert round_trip.sent == [buy]  # the SELL was refused, not sent around the guard
+    assert round_trip.record.data["orders_refused"] == 1
 
 
 class TalkativeNode:

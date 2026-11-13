@@ -110,6 +110,7 @@ ORDER_FAILURES = {
     "filled": filled,
     "filled, by status only": lambda r: r.data["at_stop"].update(order_status="FILLED"),
     "engine error": lambda r: r.engine_error("RuntimeError: disconnect timeout"),
+    "order refused": lambda r: r.order_refused("order mode sends at most 1 order(s)"),
     "paper checks failed after the run": lambda r: r.paper_checks_after_run(False),
     "no check after the run": lambda r: r.data["boundary"].update(
         paper_checks_passed_after_run=None
@@ -135,6 +136,16 @@ def test_a_fill_is_named_as_the_problem(tmp_path):
     filled(record)
     record.write(FORBIDDEN, root=tmp_path)
     assert any("filled" in problem for problem in record.data["problems"])
+
+
+def test_a_refused_order_is_named_as_the_problem_and_its_reason_kept_locally(tmp_path):
+    record = order_run()
+    record.order_refused("order mode sends at most 1 order(s)")
+    passed, path = record.write(FORBIDDEN, root=tmp_path)
+    assert not passed
+    assert any("refused to send 1 order" in problem for problem in record.data["problems"])
+    assert "sends at most" not in json.dumps(record.data)
+    assert "sends at most" in path.read_text(encoding="utf-8")  # the local record in runs/
 
 
 def test_an_engine_error_keeps_its_text_out_of_evidence_data():

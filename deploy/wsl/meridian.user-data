@@ -101,6 +101,15 @@ runcmd:
     printf '{\n  "disableClaudeAiConnectors": true\n}\n' > /home/apoth/.claude/settings.json
     chown apoth:apoth /home/apoth/.claude/settings.json
     chmod 0644 /home/apoth/.claude/settings.json
+  # Ubuntu Pro for WSL's bridge (wsl-pro.service, in the image) looks for the Ubuntu Pro agent
+  # on Windows, which is not installed here. Left on, it retries for about ten minutes, exits,
+  # and is started again 20 minutes later, for as long as the distro runs. Switched off; if that
+  # agent is ever installed, `systemctl enable --now wsl-pro.service` brings it back. An image
+  # without the unit is already in that state, so only a unit that is there is switched off.
+  - |
+    if systemctl cat wsl-pro.service >/dev/null 2>&1; then
+      systemctl disable --now wsl-pro.service
+    fi
   # Ubuntu Insights (Ubuntu's opt-in telemetry): "no", recorded the way Ubuntu's own
   # /usr/lib/wsl/ubuntu-insights.sh records it, so a first shell does not ask (its default is yes).
   # Its two user timers are also switched off for every user (the image enables them by preset).

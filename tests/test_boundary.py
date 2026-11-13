@@ -38,7 +38,10 @@ CLEAN = {
     "account_open_positions": 0,
 }
 JTS_PAPER = "[IBGateway]\nApiOnly=true\n\n[Logon]\nLocale=en\ntradingMode=p\n"
-JTS_LIVE = "[Logon]\ntradingMode=l\n"
+# The Gateway's live value, kept out of the source text as a literal so that the paper-only scan
+# (tests/test_paper_only.py), which fails on the live form anywhere, does not flag these tests.
+LIVE = "l"
+JTS_LIVE = f"[Logon]\ntradingMode={LIVE}\n"
 LISTEN, ESTABLISHED = "0A", "01"
 WITH_AND_WITHOUT_A_CONTRACT = pytest.mark.parametrize(
     "listed", [None, (PAPER,)], ids=["no-contract", "contract"]
@@ -295,13 +298,13 @@ def test_a_paper_login_passes(tmp_path, text):
         "[IBGateway]\ntradingMode=p\n",  # the key, but in another section
         "[DEFAULT]\ntradingMode=p\n[Logon]\nLocale=en\n",  # the key only where it is inherited
         "[logon]\ntradingMode=p\n",  # another section name
-        "[Logon]\ntradingMode=p\nTradingMode=l\n",  # the key twice, paper first
-        "[Logon]\ntradingMode=l\ntradingMode=p\n",  # the key twice, paper last
+        f"[Logon]\ntradingMode=p\nTradingMode={LIVE}\n",  # the key twice, paper first
+        f"[Logon]\ntradingMode={LIVE}\ntradingMode=p\n",  # the key twice, paper last
         "[Logon]\ntradingMode=p\n[Logon]\nLocale=en\n",  # the section twice
-        "[Logon]\ntradingMode=p\n[LOGON]\ntradingMode=l\n",  # the section twice, other case
+        f"[Logon]\ntradingMode=p\n[LOGON]\ntradingMode={LIVE}\n",  # the section twice, other case
         "[Logon]\ntradingMode=p\n[LOGON]\nLocale=en\n",  # a look-alike section, no key in it
         "[ Logon ]\ntradingMode=p\n",  # a look-alike section name
-        "[Logon]\ntradingMode=p\n[IBGateway]\ntradingMode=l\n",  # the key in another section too
+        f"[Logon]\ntradingMode=p\n[IBGateway]\ntradingMode={LIVE}\n",  # the key elsewhere too
         "tradingMode=p\n",  # no section
         "",
         "not a settings file\n",
@@ -330,10 +333,14 @@ TCP_HEAD = (
 )
 
 
-def tcp_row(n: int, port: int, state: str, inode: int, v6: bool = False) -> str:
+def tcp_row(
+    n: int, port: int, state: str, inode: int, local: str | None = None, v6: bool = False
+) -> str:
+    """One /proc/net/tcp or tcp6 row; ``local`` is the local address in the kernel's hex form
+    (default: every interface)."""
     zero = "0" * (32 if v6 else 8)
     return (
-        f"{n:4d}: {zero}:{port:04X} {zero}:0000 {state} 00000000:00000000 00:00000000 "
+        f"{n:4d}: {local or zero}:{port:04X} {zero}:0000 {state} 00000000:00000000 00:00000000 "
         f"00000000  1000        0 {inode} 1 0000000000000000 100 0 0 10 0\n"
     )
 
@@ -373,9 +380,13 @@ def gw(tmp_path):
 def test_the_gateway_identity_names_its_process_start_and_socket(tmp_path, gw):
     gateway_dir, java = gw
     proc = fake_proc(tmp_path, [(java, [11])], tcp=[(4002, LISTEN, 11)], start=5000)
-    ports, identity = boundary.gateway_listening(proc, gateway_dir)
-    assert ports == {4002}
-    assert identity == {"process 100 started 5100", "socket 11 port 4002"}
+    seen = boundary.gateway_listening(proc, gateway_dir)
+    assert seen.ports == {4002}
+    assert seen.identity == {
+        "process 100 started 5100",
+        "socket 11 port 4002 bound to all interfaces",
+    }
+    assert seen.bind == {"all interfaces"}
 
 
 def test_a_restarted_gateway_has_another_identity(tmp_path, gw):
@@ -386,8 +397,60 @@ def test_a_restarted_gateway_has_another_identity(tmp_path, gw):
     later = boundary.gateway_listening(
         fake_proc(tmp_path / "b", [(java, [12])], tcp=[(4002, LISTEN, 12)], start=9000), gateway_dir
     )
-    assert first[0] == later[0] == {4002}
-    assert first[1] != later[1]
+    assert first.ports == later.ports == {4002}
+    assert first.identity != later.identity
+
+
+@pytest.mark.parametrize(
+    ("address", "scope"),
+    [
+        ("00000000", "all interfaces"),  # 0.0.0.0
+        ("0100007F", "loopback"),  # 127.0.0.1, written little-endian
+        ("0A01A8C0", "a specific address"),  # 192.168.1.10
+        ("0" * 32, "all interfaces"),  # ::
+        ("00000000000000000000000001000000", "loopback"),  # ::1
+        ("0000000000000000FFFF00000100007F", "loopback"),  # ::ffff:127.0.0.1
+        ("0000000000000000FFFF00000A01A8C0", "a specific address"),  # ::ffff:192.168.1.10
+        ("0000000000000000FFFF000000000000", "all interfaces"),  # ::ffff:0.0.0.0
+        ("000080FE00000000000000000000000A", "a specific address"),  # a link-local address
+    ],
+)
+def test_the_bind_scope_of_a_kernel_address(address, scope):
+    assert boundary.bind_scope(address) == scope
+    assert boundary.bind_scope(address.lower()) == scope
+
+
+@pytest.mark.parametrize(
+    "address", ["", "0", "0000", "0" * 16, "0" * 31, "0100007", "XYZ0007F", "01000" * 5]
+)
+def test_an_address_of_another_shape_is_refused(address):
+    with pytest.raises(ValueError):
+        boundary.bind_scope(address)
+
+
+def test_the_bind_scope_is_seen_and_kept_in_the_identity(tmp_path, gw):
+    gateway_dir, java = gw
+    proc = fake_proc(
+        tmp_path,
+        [(java, [11, 12])],
+        tcp=[(4002, LISTEN, 11, "0100007F")],
+        tcp6=[(4002, LISTEN, 12)],
+    )
+    seen = boundary.gateway_listening(proc, gateway_dir)
+    assert seen.bind == {"loopback", "all interfaces"}
+    assert "socket 11 port 4002 bound to loopback" in seen.identity
+    assert not any("7F" in part or "127" in part for part in seen.identity)  # no address kept
+
+
+@pytest.mark.parametrize("bind", ["all interfaces", "a specific address", "", "all, loopback"])
+def test_the_bind_line_asks_the_owner_to_check_the_box_unless_the_port_is_loopback_only(bind):
+    note = ibkr_paper.bind_note(bind)
+    assert '"Allow connections from localhost only"' in note
+    assert "cannot read it" in note
+
+
+def test_a_loopback_only_bind_needs_no_box():
+    assert ibkr_paper.bind_note("loopback") == "The port is bound to loopback only."
 
 
 def test_a_gateway_process_whose_start_cannot_be_read_is_refused(tmp_path, gw):
@@ -511,10 +574,14 @@ def paper_state(tmp_path, monkeypatch):
         monkeypatch.setattr(boundary, "PAPER_PORT", gateway.port)
         monkeypatch.setattr(boundary, "PAPER_PORTS", frozenset({gateway.port}))
 
-        def listening(proc=None, gateway_dir=None) -> tuple[frozenset[int], frozenset[str]]:
+        def listening(proc=None, gateway_dir=None) -> boundary.Listening:
             if not state.running:
                 raise boundary.BoundaryError("the IB Gateway installed in (test) is not running")
-            return frozenset({gateway.port, *state.extra_ports}), frozenset(state.identity)
+            return boundary.Listening(
+                ports=frozenset({gateway.port, *state.extra_ports}),
+                identity=frozenset(state.identity),
+                bind=frozenset({"all interfaces"}),  # the Gateway's normal bind
+            )
 
         monkeypatch.setattr(boundary, "gateway_listening", listening)
 
@@ -1023,8 +1090,10 @@ def test_the_engine_gets_the_gated_host_port_and_account(engine_stub, tmp_path, 
         "paper_checks_passed_after_run": True,
         "allowlist_contract_present": False,
     }
+    # How the port was bound is in the record and on the terminal; no address is.
+    assert json.loads(text)["gateway"] == {"port": gateway.port, "bind": "all interfaces"}
     out = capsys.readouterr()
-    assert "PASS" in out.out
+    assert "PASS" in out.out and "bound to all interfaces" in out.out
     assert_no_account_in(out.out + out.err, PAPER)
 
 

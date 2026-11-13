@@ -116,7 +116,13 @@ def scrubbed_json(data: dict[str, Any], forbidden: list[str]) -> str:
 class RunRecord:
     """What happened in one run, as normalised fields only (never raw broker text)."""
 
-    def __init__(self, mode: str, gateway_port: int, allowlist_present: bool = False) -> None:
+    def __init__(
+        self,
+        mode: str,
+        gateway_port: int,
+        allowlist_present: bool = False,
+        gateway_bind: str = "",
+    ) -> None:
         self.data: dict[str, Any] = {
             "schema": RECORD_SCHEMA,
             "milestone": "M1",
@@ -124,7 +130,9 @@ class RunRecord:
             "mode": mode,
             "run_started_utc": _utc_now(),
             "engine": {},
-            "gateway": {"port": gateway_port},
+            # How the Gateway's port is bound ("all interfaces" is its normal bind), never the
+            # address itself.
+            "gateway": {"port": gateway_port, "bind": gateway_bind},
             # Observed, not assumed: every paper check before the run and again after it.
             "boundary": {
                 "paper_checks_passed_before_run": True,
@@ -133,6 +141,8 @@ class RunRecord:
             },
             "startup_reconciliation": {"requested": True, "trader_started": False},
             "engine_error": False,
+            # Orders the lane's own guard refused to send; the reasons are kept locally.
+            "orders_refused": 0,
             "order": None,
             "events": [],
             "at_stop": None,
@@ -179,6 +189,11 @@ class RunRecord:
         self.data["engine_error"] = True
         self.local["engine_error"] = text
 
+    def order_refused(self, reason: str) -> None:
+        """The lane's guard refused to send an order. Any refusal fails the run."""
+        self.data["orders_refused"] += 1
+        self.local.setdefault("orders_refused", []).append(reason)
+
     def paper_checks_after_run(self, passed: bool) -> None:
         self.data["boundary"]["paper_checks_passed_after_run"] = passed
 
@@ -189,6 +204,11 @@ class RunRecord:
             found.append("after the run the paper checks did not pass again for the same account")
         if d["engine_error"]:
             found.append("the node stopped with an error")
+        if d["orders_refused"]:
+            found.append(
+                f"the lane refused to send {d['orders_refused']} order(s) "
+                "(the reasons are in the local record under runs/)"
+            )
 
         start = d["startup_reconciliation"]
         if not start["trader_started"]:
@@ -345,7 +365,9 @@ class RunRecord:
 def _run_node(mode: str, bounds: boundary.IbkrBoundary, account: str) -> int:
     from meridian import ibkr_node  # the engine is loaded only after the gate has passed
 
-    record = RunRecord(mode, bounds.port, bounds.paper_accounts_sha256 is not None)
+    record = RunRecord(
+        mode, bounds.port, bounds.paper_accounts_sha256 is not None, bounds.gateway_bind
+    )
     ibkr_node.run(mode, bounds.host, bounds.port, account, record)
 
     # Every check again now that the run is over: still a paper login, the same account,
@@ -366,6 +388,18 @@ def _run_node(mode: str, bounds: boundary.IbkrBoundary, account: str) -> int:
         print(f"  - {problem}", file=sys.stderr)
     print(f"Full local record (not for commit): {shown}", file=sys.stderr)
     return 1
+
+
+def bind_note(bind: str) -> str:
+    """The line printed about how the Gateway's port is bound. The lane cannot read the
+    Gateway's localhost-only box, so for any bind but loopback it asks the owner to check it."""
+    if bind == "loopback":
+        return "The port is bound to loopback only."
+    return (
+        f"The port is bound to {bind or 'an unknown scope'}. Only the Gateway's own \"Allow "
+        'connections from localhost only" box keeps other hosts out, and the lane cannot read '
+        "it: check that it is ticked in the Gateway window."
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -390,6 +424,7 @@ def main(argv: list[str] | None = None) -> int:
         "Paper checks passed: the Gateway's jts.ini says Paper Trading, the Gateway listens "
         f"only on port {bounds.port}, and it reports one account of the paper form{allowlisted}."
     )
+    print(bind_note(bounds.gateway_bind))
     try:
         contract = boundary.CONTRACT_PATH.relative_to(boundary.REPO_ROOT)
     except ValueError:  # a contract path outside the repository (tests use one)

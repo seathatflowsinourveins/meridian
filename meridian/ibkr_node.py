@@ -12,8 +12,11 @@ Own design, and the only additions to that example:
   - the order: one DAY LIMIT BUY priced under the bid, so it rests. Upstream's base
     strategy then cancels it on acceptance (its default), which gives a terminal state
     without taking a position;
+  - in fill mode, one BUY priced to fill and, on its fill, one SELL of the filled quantity;
   - a refusal to submit when the account already has an open order or position in this
     instrument;
+  - a cap on what each mode may send (``MAX_ORDERS``), applied in an override of upstream's
+    ``submit_ib_order``, which every order goes through; and restart mode ignoring quotes;
   - the calls that feed the run record.
 
 Order mode places exactly one order. Upstream's close-on-stop is switched off, so if that
@@ -68,6 +71,10 @@ CROSS_BAND = 0.02
 DATA_CLIENT_ID = 1511
 EXEC_CLIENT_ID = 1512
 AUTO_STOP_SECONDS = {"order": 60, "restart": 25, "fill": 90}
+# The most orders a run of each mode may send; a mode not named here sends none. Enforced in
+# ``OneDayLimit.submit_ib_order``, which every order of these strategies goes through. The one
+# upstream path that would not, close-on-stop, is switched off in every mode (``build``).
+MAX_ORDERS = {"order": 1, "fill": 2, "restart": 0}
 
 
 def marketable_limit(side: str, bid: float, ask: float = 0.0, band: float = CROSS_BAND) -> float:
@@ -86,7 +93,12 @@ def marketable_limit(side: str, bid: float, ask: float = 0.0, band: float = CROS
 
 
 class OneDayLimit(IbV2OrderStrategy):
-    """One DAY LIMIT BUY. In restart mode upstream's base strategy submits nothing."""
+    """One DAY LIMIT BUY in order mode; nothing at all in restart mode.
+
+    Upstream's base strategy sends nothing in restart mode only because it never subscribes to
+    quotes there: its ``on_quote`` submits without looking at the mode. So this class refuses
+    at the point of sending as well (``submit_ib_order``), by mode and by count, and ignores
+    quotes in restart mode."""
 
     strategy_id_value = "MERIDIAN-M1"
     instrument_id_value = INSTRUMENT_ID
@@ -98,6 +110,23 @@ class OneDayLimit(IbV2OrderStrategy):
         super().__init__()
         self._bid: Price | None = None
         self._order_id: Any = None
+        self._sent = 0
+        self._hold: str | None = None  # a reason this run must send nothing more
+
+    def _mode(self) -> str:
+        return str(self._record.data["mode"])
+
+    def submit_ib_order(self, order: object) -> None:
+        """The only way this lane sends an order. Refuses what the run's mode does not allow."""
+        mode = self._mode()
+        allowed = MAX_ORDERS.get(mode, 0)
+        if self._hold is not None or self._sent >= allowed:
+            why = self._hold or f"{mode} mode sends at most {allowed} order(s)"
+            self._record.order_refused(why)
+            print(f"{self.strategy_id}: an order was refused before it was sent: {why}", flush=True)
+            return
+        self._sent += 1
+        super().submit_ib_order(order)
 
     @classmethod
     def create(cls, record: RunRecord) -> OneDayLimit:
@@ -121,6 +150,7 @@ class OneDayLimit(IbV2OrderStrategy):
         counts = self._open_counts()
         self._record.trader_started(**counts)
         if counts["instrument_open_orders"] or counts["instrument_open_positions"]:
+            self._hold = "the account had an open order or position in the instrument at start"
             print(
                 f"{self.strategy_id}: the account already has an open order or position in "
                 f"{self.instrument_id}; nothing will be submitted.",
@@ -130,6 +160,8 @@ class OneDayLimit(IbV2OrderStrategy):
         super().on_start()
 
     def on_quote(self, quote: Any) -> None:
+        if self._mode() not in ("order", "fill"):
+            return  # restart mode acts on no quote, even if one arrives
         if quote.instrument_id != self.instrument_id:
             return
         if not quote.bid_price.is_positive():

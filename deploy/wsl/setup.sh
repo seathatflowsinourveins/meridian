@@ -75,6 +75,14 @@ cmd_check() {
       || fail "${timer} is enabled"
   done
   ok "Ubuntu Insights declined, its timers off"
+  case "$(systemctl is-enabled wsl-pro.service 2>/dev/null)" in
+    enabled*) fail "wsl-pro.service is enabled (it looks for an Ubuntu Pro agent on Windows that is not installed)" ;;
+  esac
+  case "$(systemctl is-active wsl-pro.service 2>/dev/null)" in
+    inactive | failed) ;;
+    *) fail "wsl-pro.service is running or waiting to restart" ;;
+  esac
+  ok "wsl-pro.service off"
 }
 
 cmd_uv() {
