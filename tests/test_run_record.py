@@ -177,6 +177,232 @@ def test_a_restart_that_ends_with_the_instrument_open_fails(tmp_path, at_stop):
     assert not passed
 
 
+# --- fill: one BUY that fills, one SELL that closes it -------------------------------------------
+
+BUY_ID = "IBV2-00000000-BUY"
+SELL_ID = "IBV2-00000000-SELL"
+
+
+def built(client_order_id: str, side: str, **changes: str) -> dict[str, str]:
+    fields = {
+        "client_order_id": client_order_id,
+        "instrument_id": "AAPL.XNAS",
+        "side": side,
+        "type": "LIMIT",
+        "time_in_force": "DAY",
+        "quantity": "1",
+        "price": "204.00" if side == "BUY" else "196.00",
+    }
+    fields.update(changes)
+    return fields
+
+
+def fill_run() -> ibkr_paper.RunRecord:
+    record = ibkr_paper.RunRecord("fill", 4002)
+    record.trader_started(**counts())
+    record.order_built(**built(BUY_ID, "BUY"))
+    for kind in ("OrderSubmitted", "OrderAccepted", "OrderFilled"):
+        record.event(kind, T0, client_order_id=BUY_ID)
+    record.close_order_built(**built(SELL_ID, "SELL"))
+    for kind in ("OrderSubmitted", "OrderAccepted", "OrderFilled"):
+        record.event(kind, T0, client_order_id=SELL_ID)
+    record.at_stop(
+        **counts(),
+        order_status="FILLED",
+        filled_qty="1",
+        close_order_status="FILLED",
+        close_filled_qty="1",
+    )
+    record.paper_checks_after_run(True)
+    return record
+
+
+def test_a_clean_round_trip_passes_and_is_written_to_evidence(tmp_path):
+    passed, path = fill_run().write(FORBIDDEN, root=tmp_path)
+    assert passed
+    written = json.loads(path.read_text(encoding="utf-8"))
+    assert written["mode"] == "fill" and written["result"] == "pass"
+    assert (written["order"]["side"], written["close_order"]["side"]) == ("BUY", "SELL")
+
+
+def drop_events(record: ibkr_paper.RunRecord, kind: str, client_order_id: str) -> None:
+    record.data["events"] = [
+        e
+        for e in record.data["events"]
+        if not (e["type"] == kind and e["client_order_id"] == client_order_id)
+    ]
+
+
+def not_opened(record: ibkr_paper.RunRecord) -> None:
+    """The BUY never filled and was cancelled; no SELL was ever built."""
+    drop_events(record, "OrderFilled", BUY_ID)
+    record.data["close_order"] = None
+    for kind in ("OrderSubmitted", "OrderAccepted", "OrderFilled"):
+        drop_events(record, kind, SELL_ID)
+    record.data["at_stop"].update(order_status="CANCELED", filled_qty="0")
+    del record.data["at_stop"]["close_order_status"]
+    del record.data["at_stop"]["close_filled_qty"]
+
+
+FILL_FAILURES = {
+    "opening order never filled": (not_opened, "the opening order did not fill"),
+    "no closing order": (
+        lambda r: r.data.update(close_order=None),
+        "has to be closed by hand",
+    ),
+    "closing fill not recorded": (
+        lambda r: drop_events(r, "OrderFilled", SELL_ID),
+        "closing order's fill was not recorded",
+    ),
+    "a fill of another order is not the closing fill": (
+        lambda r: [
+            drop_events(r, "OrderFilled", SELL_ID),
+            r.event("OrderFilled", T0, client_order_id="X"),
+        ],
+        "closing order's fill was not recorded",
+    ),
+    "opening order not a LIMIT": (
+        lambda r: r.data["order"].update(type="MARKET"),
+        "not a DAY LIMIT BUY",
+    ),
+    "opening order a SELL": (lambda r: r.data["order"].update(side="SELL"), "not a DAY LIMIT BUY"),
+    "closing order a BUY": (
+        lambda r: r.data["close_order"].update(side="BUY"),
+        "not a DAY LIMIT SELL",
+    ),
+    "closing order not DAY": (
+        lambda r: r.data["close_order"].update(time_in_force="GTC"),
+        "not a DAY LIMIT SELL",
+    ),
+    "closing quantity differs": (
+        lambda r: r.data["close_order"].update(quantity="2"),
+        "quantity",
+    ),
+    "not flat at stop": (
+        lambda r: r.data["at_stop"].update(instrument_open_positions=1),
+        "not flat",
+    ),
+    "opening order still working at stop": (
+        lambda r: [not_opened(r), r.data["at_stop"].update(order_status="ACCEPTED")],
+        "still working when the run stopped",
+    ),
+    "a fill seen only at stop": (
+        lambda r: drop_events(r, "OrderFilled", BUY_ID),
+        "fill was not recorded",
+    ),
+    "closing order still working at stop": (
+        lambda r: [
+            drop_events(r, "OrderFilled", SELL_ID),
+            r.data["at_stop"].update(close_order_status="ACCEPTED"),
+        ],
+        "still working when the run stopped",
+    ),
+    "closing order cancelled before stop": (
+        lambda r: [
+            drop_events(r, "OrderFilled", SELL_ID),
+            r.data["at_stop"].update(close_order_status="CANCELED"),
+        ],
+        "has to be closed by hand",
+    ),
+    "closing order never accepted": (
+        lambda r: drop_events(r, "OrderAccepted", SELL_ID),
+        "never accepted the closing order",
+    ),
+    "opening order not DAY": (
+        lambda r: r.data["order"].update(time_in_force="GTC"),
+        "not a DAY LIMIT BUY",
+    ),
+    "closing order not a LIMIT": (
+        lambda r: r.data["close_order"].update(type="MARKET"),
+        "not a DAY LIMIT SELL",
+    ),
+    "opening order not FILLED at stop": (
+        lambda r: r.data["at_stop"].update(order_status="PARTIALLY_FILLED"),
+        "did not end FILLED",
+    ),
+    "no state at stop": (lambda r: r.data.update(at_stop=None), "no state was captured"),
+    "an order in flight at stop": (
+        lambda r: r.data["at_stop"].update(instrument_inflight_orders=1),
+        "in flight",
+    ),
+    "closing order left open": (
+        lambda r: r.data["at_stop"].update(close_order_status="CANCELED"),
+        "did not end FILLED",
+    ),
+    "opening order never accepted": (
+        lambda r: drop_events(r, "OrderAccepted", BUY_ID),
+        "never accepted",
+    ),
+    "paper checks failed after the run": (
+        lambda r: r.paper_checks_after_run(False),
+        "paper checks",
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(FILL_FAILURES))
+def test_a_round_trip_that_misses_a_condition_fails_and_writes_no_evidence(tmp_path, name):
+    change, expected = FILL_FAILURES[name]
+    record = fill_run()
+    change(record)
+    passed, path = record.write(FORBIDDEN, root=tmp_path)
+    assert not passed
+    assert not (tmp_path / "evidence").exists()
+    assert any(expected in problem for problem in record.data["problems"]), record.data["problems"]
+
+
+@pytest.mark.parametrize(
+    "signal",
+    [
+        {"order_status": "FILLED"},
+        {"filled_qty": "1"},
+        {"instrument_open_positions": 1},
+    ],
+    ids=["status", "filled-qty", "position"],
+)
+def test_a_fill_seen_only_in_the_stop_state_counts_as_an_open_share(tmp_path, signal):
+    # The BUY filled, but its fill was never handled: no fill event, no closing order.
+    record = fill_run()
+    not_opened(record)
+    record.data["at_stop"].update(order_status="ACCEPTED")  # no other sign of a fill...
+    record.data["at_stop"].update(signal)  # ...except this one
+    record.write(FORBIDDEN, root=tmp_path)
+    problems = record.data["problems"]
+    assert any("no closing order was submitted" in p and "closed by hand" in p for p in problems)
+
+
+def test_a_cancelled_opening_order_says_nothing_is_open(tmp_path):
+    record = fill_run()
+    not_opened(record)
+    record.write(FORBIDDEN, root=tmp_path)
+    assert "the opening order did not fill" in record.data["problems"]
+    assert not any("closed by hand" in p or "still working" in p for p in record.data["problems"])
+
+
+def test_a_round_trip_with_no_state_at_stop_still_writes_its_local_record(tmp_path):
+    record = fill_run()
+    record.data["at_stop"] = None
+    passed, path = record.write(FORBIDDEN, root=tmp_path)
+    assert not passed and path.parent == tmp_path / "runs"
+
+
+def test_position_events_without_an_order_id_do_not_break_the_fill_rules(tmp_path):
+    record = fill_run()
+    record.event("PositionOpened", T0)  # recorded without a client order id
+    record.event("PositionClosed", T0)
+    passed, _ = record.write(FORBIDDEN, root=tmp_path)
+    assert passed
+
+
+def test_only_a_fill_run_has_a_closing_order():
+    assert "close_order" in ibkr_paper.RunRecord("fill", 4002).data
+    for mode in ("order", "restart"):
+        record = ibkr_paper.RunRecord(mode, 4002)
+        assert "close_order" not in record.data
+        with pytest.raises(RuntimeError):
+            record.close_order_built(**built(SELL_ID, "SELL"))
+
+
 def test_a_restart_where_the_trader_never_started_fails(tmp_path):
     record = ibkr_paper.RunRecord("restart", 4002)
     record.paper_checks_after_run(True)

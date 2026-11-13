@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -540,13 +541,15 @@ def lane(tmp_path, monkeypatch, paper_state):
         return 0
 
     monkeypatch.setattr(ibkr_paper, "_run_node", fake_run_node)
+    # Fill mode checks the clock; these tests run as if in regular hours unless they say not.
+    monkeypatch.setattr(ibkr_paper, "in_regular_hours", lambda now=None: True)
 
     def start(gateway: FakeGateway, mode: str = "order", confirm: bool = True, listed=None) -> int:
         paper_state.use(gateway)
         if listed is not None:
             allowlist(tmp_path, monkeypatch, gateway, listed)
         if confirm:  # stand in for the owner typing the word; the tests below leave it real
-            monkeypatch.setattr(ibkr_paper, "owner_confirms", lambda: True)
+            monkeypatch.setattr(ibkr_paper, "owner_confirms", lambda mode="order": True)
         return ibkr_paper.main([mode])
 
     return start, reached
@@ -808,43 +811,53 @@ def test_contract_command_refuses_when_no_gateway_is_listening(contract_cmd, cap
     assert asked == []
 
 
-# --- order mode needs the owner at a terminal ------------------------------------------------
+# --- order and fill mode need the owner at a terminal -----------------------------------------
+
+CONFIRMED = pytest.mark.parametrize("mode", ["order", "fill"])
 
 
-def test_order_mode_refuses_without_a_terminal(lane, capsys):
+@CONFIRMED
+def test_a_placing_mode_refuses_without_a_terminal(lane, capsys, mode):
     start, reached = lane
     with FakeGateway(PAPER) as gateway:
         # The real check runs: under pytest neither stdin nor stdout is a terminal.
-        assert start(gateway, "order", confirm=False) == 2
+        assert start(gateway, mode, confirm=False) == 2
     assert reached == []
     out = capsys.readouterr()
     assert "needs the owner at a terminal" in out.err
     assert_no_account_in(out.out + out.err, PAPER)
 
 
+@CONFIRMED
 @pytest.mark.parametrize(("typed", "exit_code"), [("yes", 2), ("paper", 2), ("", 2), ("PAPER", 0)])
-def test_order_mode_goes_on_only_when_the_owner_types_the_word(lane, monkeypatch, typed, exit_code):
+def test_a_placing_mode_goes_on_only_when_the_owner_types_the_word(
+    lane, monkeypatch, typed, exit_code, mode
+):
     start, reached = lane
+    prompts: list[str] = []
     monkeypatch.setattr(ibkr_paper, "_at_terminal", lambda: True)
-    monkeypatch.setattr("builtins.input", lambda prompt="": typed)
+    monkeypatch.setattr("builtins.input", lambda prompt="": prompts.append(prompt) or typed)
     with FakeGateway(PAPER) as gateway:
-        assert start(gateway, "order", confirm=False) == exit_code
+        assert start(gateway, mode, confirm=False) == exit_code
     assert reached == ([PAPER] if exit_code == 0 else [])
+    (prompt,) = prompts  # the owner is told what this mode places
+    assert ("SELL" in prompt) == (mode == "fill") and "PAPER account" in prompt
 
 
 def confirm_after(change):
     """An owner_confirms stand-in: something changes while the prompt waits, then PAPER."""
 
-    def confirms() -> bool:
+    def confirms(mode: str = "order") -> bool:
         change()
         return True
 
     return confirms
 
 
+@CONFIRMED
 @pytest.mark.parametrize("change", ["live", "extra-port", "restarted", "other-account"])
-def test_order_mode_checks_everything_again_after_the_confirmation(
-    lane, paper_state, monkeypatch, capsys, change
+def test_a_placing_mode_checks_everything_again_after_the_confirmation(
+    lane, paper_state, monkeypatch, capsys, change, mode
 ):
     start, reached = lane
     later = NOT_LISTED if change == "other-account" else None
@@ -858,18 +871,79 @@ def test_order_mode_checks_everything_again_after_the_confirmation(
             "other-account": lambda: None,  # the Gateway reports another account the 2nd time
         }
         monkeypatch.setattr(ibkr_paper, "owner_confirms", confirm_after(changes[change]))
-        assert start(gateway, "order", confirm=False) == 2
+        assert start(gateway, mode, confirm=False) == 2
     assert reached == []  # the engine side was never entered
     assert "REFUSED TO START" in capsys.readouterr().err
 
 
-def test_order_mode_goes_on_when_nothing_changed_during_the_confirmation(lane, monkeypatch):
+@CONFIRMED
+def test_a_placing_mode_goes_on_when_nothing_changed_during_the_confirmation(
+    lane, monkeypatch, mode
+):
     start, reached = lane
     monkeypatch.setattr(ibkr_paper, "owner_confirms", confirm_after(lambda: None))
     with FakeGateway(PAPER) as gateway:
-        assert start(gateway, "order", confirm=False) == 0
+        assert start(gateway, mode, confirm=False) == 0
         assert gateway.sessions == 2  # asked before the prompt and again after it
     assert reached == [PAPER]
+
+
+# --- fill mode runs only in regular hours ------------------------------------------------------
+
+
+def test_fill_mode_refuses_outside_regular_hours_before_asking_the_gateway(
+    lane, monkeypatch, capsys
+):
+    start, reached = lane
+    monkeypatch.setattr(ibkr_paper, "in_regular_hours", lambda now=None: False)
+    monkeypatch.setattr(ibkr_paper, "owner_confirms", lambda mode="order": pytest.fail("asked"))
+    with FakeGateway(PAPER) as gateway:
+        assert start(gateway, "fill", confirm=False) == 2
+        assert gateway.sessions == 0
+    assert reached == []
+    assert "regular US market hours" in capsys.readouterr().err
+
+
+def test_fill_mode_refuses_when_the_session_ends_while_the_prompt_waits(lane, monkeypatch, capsys):
+    start, reached = lane
+    confirmed: list[bool] = []
+    # In hours until the owner has answered the prompt, out of hours after it.
+    monkeypatch.setattr(ibkr_paper, "in_regular_hours", lambda now=None: not confirmed)
+    monkeypatch.setattr(
+        ibkr_paper, "owner_confirms", lambda mode="order": confirmed.append(True) or True
+    )
+    with FakeGateway(PAPER) as gateway:
+        assert start(gateway, "fill", confirm=False) == 2
+    assert reached == [] and confirmed == [True]
+    assert "after the confirmation" in capsys.readouterr().err
+
+
+def test_order_and_restart_mode_do_not_look_at_the_clock(lane, monkeypatch):
+    start, reached = lane
+    monkeypatch.setattr(ibkr_paper, "in_regular_hours", lambda now=None: pytest.fail("clock"))
+    with FakeGateway(PAPER) as gateway:
+        assert start(gateway, "order") == 0
+    with FakeGateway(PAPER) as gateway:
+        assert start(gateway, "restart") == 0
+    assert reached == [PAPER, PAPER]
+
+
+@pytest.mark.parametrize(
+    ("utc", "inside"),
+    [
+        ("2026-11-13T14:30:00", True),  # Friday 09:30 New York (EST, UTC-5)
+        ("2026-11-13T14:29:59", False),  # a second before the open
+        ("2026-11-13T20:54:59", True),  # 15:54:59
+        ("2026-11-13T20:55:00", False),  # 15:55, the end of the window
+        ("2026-11-14T15:00:00", False),  # Saturday
+        ("2026-11-16T03:00:00", False),  # Sunday night in New York
+        ("2026-07-13T13:30:00", True),  # Monday 09:30 in summer time (EDT, UTC-4)
+        ("2026-07-13T13:29:00", False),
+    ],
+)
+def test_regular_hours_are_new_york_weekday_hours(utc, inside):
+    now = datetime.fromisoformat(utc).replace(tzinfo=UTC)
+    assert ibkr_paper.in_regular_hours(now) is inside
 
 
 @pytest.mark.parametrize("listed", [None, (PAPER,)], ids=["no-contract", "contract"])
@@ -886,7 +960,9 @@ def test_every_start_says_whether_an_allowlist_is_used(lane, capsys, listed):
 
 def test_restart_mode_needs_no_confirmation(lane, monkeypatch, capsys):
     start, reached = lane
-    monkeypatch.setattr(ibkr_paper, "owner_confirms", lambda: pytest.fail("asked in restart"))
+    monkeypatch.setattr(
+        ibkr_paper, "owner_confirms", lambda mode="order": pytest.fail("asked in restart")
+    )
     with FakeGateway(PAPER) as gateway:
         assert start(gateway, "restart", confirm=False) == 0
     assert reached == [PAPER]

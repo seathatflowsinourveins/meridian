@@ -59,7 +59,7 @@ or the lockfile, not from memory. Transitive Python packages are pinned with has
 | `meridian/boundary.py` | this repo | n/a | 2026-11-12 | fail-closed paper checks: jts.ini `tradingMode=p`, the Gateway listening on port 4002 only, exactly one account of the paper form, and the owner's optional allowlist in `risk/boundary.contract.json` on top; plus the owner's `contract` command, which prints a contract for the reported account after the owner types PAPER | own design |
 | `meridian/ib_probe.py` | this repo | n/a | 2026-11-12 | asks the Gateway which accounts it manages; sends only the version handshake and `START_API` | own design |
 | `meridian/ibkr_paper.py` | this repo | n/a | 2026-11-12 | the gate before the engine and again after the run, the owner's typed confirmation, and the scrubbed run record | own design |
-| `meridian/ibkr_node.py` | this repo; it subclasses and calls the two upstream files above | n/a | 2026-11-12 | one DAY LIMIT order through upstream's base strategy, and the calls that feed the run record | own design |
+| `meridian/ibkr_node.py` | this repo; it subclasses and calls the two upstream files above | n/a | 2026-11-12 | order mode: one DAY LIMIT order through upstream's base strategy; fill mode: one BUY and its one closing SELL, both DAY LIMIT priced past the quote; and the calls that feed the run record | own design |
 
 ## Notes on choices
 
@@ -84,9 +84,18 @@ or the lockfile, not from memory. Transitive Python packages are pinned with has
   acceptance, so its order reaches a terminal state only at stop, and it submits again if the
   order is rejected or cancelled during the run. `IbV2OrderStrategy` submits once and cancels
   on acceptance, which is what M1 needs.
-- **A fill is a failure in this lane.** The adapter refuses reduce-only orders, so upstream's
-  close-on-stop cannot close a position, and a plain market close would be a second order that
-  M1 does not define. The lane switches close-on-stop off and reports a fill as a failed run.
+- **A fill is a failure in order mode.** The adapter refuses reduce-only orders, so upstream's
+  close-on-stop cannot close a position. The lane switches close-on-stop off and reports a fill
+  in order mode as a failed run.
+- **Fill mode closes the way upstream's `SpreadOrderStrategy` does.** That example, in the same
+  vendored file, answers a fill with one opposite order of the filled quantity
+  (`event.last_qty`). Fill mode does the same, with DAY LIMIT orders priced 2% past the quote
+  instead of market orders, so neither order can fill at an unbounded price, and it places at
+  most these two orders. The quote is delayed data: the BUY is priced from it (crossed quotes
+  are skipped), the SELL from the lower of the delayed bid and the BUY's live fill price. A move
+  of more than 2% can still leave an order working at stop; the run then fails and says so
+  rather than chase the price. The engine's `cache.orders_inflight` (read in the installed
+  2.0.0rc9 stubs) is counted at stop as well as open orders.
 - **The account check runs twice.** The adapter opens its own connections after the check, so
   the lane asks the Gateway again after the run and writes no evidence if the answer changed.
   It does not hold a connection open during the run.
@@ -99,7 +108,10 @@ or the lockfile, not from memory. Transitive Python packages are pinned with has
   installed from an earlier version of `deploy/wsl/meridian.user-data`. Each later change to the
   definition was applied to it by hand on 2026-11-12: New York time, the machine-wide connector
   setting, the Gateway libraries, Ubuntu Insights consent and timers, the `paper` user's home
-  entry, and undoing the uv installer's shell edits (backed up under `~/.cache/meridian/`). It has
-  not been rebuilt from the definition since. `package_upgrade` has not been applied to it: 133
-  package upgrades are pending until the Gateway session can be interrupted, and Ubuntu's
-  unattended security upgrades stay on as the image ships them.
+  entry, and undoing the uv installer's shell edits (backed up under `~/.cache/meridian/`). The
+  definition itself was proven from scratch the same evening: a throwaway distro installed from
+  commit `5d51c9c` finished cloud-init without errors, passed every line of `setup.sh check`,
+  came up with systemd `running` and only 5 upgrades left, and was then unregistered.
+  `package_upgrade` has not been applied to the running instance: 133 package upgrades wait
+  until the Gateway session can be interrupted, and Ubuntu's unattended security upgrades stay
+  on as the image ships them.
