@@ -579,9 +579,10 @@ agy_settings() {
 check_agy() {
   version_ge "$(agy_version)" "${AGY_VERSION}" \
     || fail "Antigravity CLI is older than ${AGY_VERSION} or missing (run: deploy/wsl/setup.sh agy)"
-  # No MCP server and no plugin: nothing here may give an agent a broker or an order tool.
-  # agy has no machine-wide setting for that, so its user config and every worktree of the
-  # repo are checked. (~/.gemini/config/hooks.json is Orca's status hook once Orca has started
+  # No MCP server, and no plugin or hook beyond what agy ships (its built-in `swarm` plugin, which
+  # agy enables on its first start, and 14 built-in skills, none naming an MCP server): nothing
+  # here may give an agent a broker or an order tool. agy has no machine-wide setting for that,
+  # so its user config and every worktree of the repo are checked. (~/.gemini/config/hooks.json is Orca's status hook once Orca has started
   # an agy session.) agy writes an empty ~/.gemini/config/mcp_config.json on its first full
   # start: that file may exist, but only empty or naming no server (jq refuses comments, so a
   # commented file fails as well).
@@ -599,7 +600,7 @@ check_agy() {
   jq -e --arg model "${AGY_MODEL}" '.model == $model' "${HOME}/.gemini/antigravity-cli/settings.json" >/dev/null 2>&1 \
     || fail "agy's default model is not ${AGY_MODEL} (run: deploy/wsl/setup.sh agy)"
   # Its telemetry is an account setting kept by Google, with no local file to check (UPSTREAM.md).
-  ok "Antigravity CLI $(agy_version): ${AGY_MODEL}; no MCP server, plugin or workspace hook, in its config or the repo's worktrees"
+  ok "Antigravity CLI $(agy_version): ${AGY_MODEL}; no MCP server, and no plugin or hook beyond agy's built-in ones, in its config or the repo's worktrees"
 }
 
 dsh_version() { "${HOME}/.local/bin/dsh" --version 2>/dev/null </dev/null | head -n 1; }
