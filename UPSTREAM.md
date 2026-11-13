@@ -61,6 +61,14 @@ or the lockfile, not from memory. Transitive Python packages are pinned with has
 | `meridian/ibkr_paper.py` | this repo | n/a | 2026-11-12 | the gate before the engine and again after the run, the owner's typed confirmation, and the scrubbed run record | own design |
 | `meridian/ibkr_node.py` | this repo; it subclasses and calls the two upstream files above | n/a | 2026-11-12 | one DAY LIMIT order through upstream's base strategy, and the calls that feed the run record | own design |
 
+## Assessed and not adopted (evidence ADRs, plans 8.6 and 8.7)
+
+Nothing in this table is installed. Each row names the ADR that measured it.
+
+| Component | Version or commit | Licence | Source URL (read) | Date read | Decision | ADR |
+|---|---|---|---|---|---|---|
+| semble (semantic code search), with its embedding model `minishlab/potion-code-16M-v2` | 0.7.2, tag commit `bb746c9c79925760df8a3759fcca658734e2eaf6`, wheel sha256 `e0cb9c8ea303f38d7390e5f441fc9c05dbc1eeae6e2afa20e2ab8bef10942e2d`; model revision `e9d2a44ca6a05ac6685f3b23709ea57eb7352d5b` | MIT; model MIT | https://github.com/MinishLab/semble/tree/v0.7.2 ; https://pypi.org/pypi/semble/json ; https://huggingface.co/api/models/minishlab/potion-code-16M-v2 | 2026-11-12 | not adopted: on 30 fixed questions it answered 3 fewer than ripgrep plus pyright within the top 1, 3 and 5 results | [0001](docs/adr/0001-semble-code-search.md) |
+
 ## Notes on choices
 
 - **Node 24 rather than 26.** Both are LTS lines with a release on 2026-11-10. v24 is the older
