@@ -110,3 +110,6 @@ runcmd:
       su apoth -c 'ubuntu-insights consent "$0" -s=false >/dev/null' -- "${source}"
     done
     systemctl --global disable ubuntu-insights-collect.timer ubuntu-insights-upload.timer
+  # The owner's user services (the Orca server that `setup.sh orca` installs) run without a
+  # login session.
+  - loginctl enable-linger apoth

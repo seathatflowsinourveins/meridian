@@ -45,6 +45,8 @@ A paper-trading harness on NautilusTrader. One repo, one WSL2 distro (`meridian`
 | `meridian/ibkr_paper.py` | IBKR paper lane: gate, owner confirmation, run record |
 | `meridian/ibkr_node.py` | the engine side, built on upstream's example |
 | `upstream/` | upstream example files, unmodified |
+| `.agents/skills/` | skills every agent reads; each has a link in `.claude/skills/` for Claude Code |
+| `orca.yaml`, `.worktreeinclude` | Orca: the setup script and tabs of each new worktree; nothing ignored is copied |
 | `risk/boundary.contract.json` | optional: the owner's allowlist of paper accounts |
 | `evidence/` | scrubbed run records, one per attended run that passed |
 | `runs/` | local run output, ignored by git; may hold account ids |
@@ -55,6 +57,19 @@ A paper-trading harness on NautilusTrader. One repo, one WSL2 distro (`meridian`
 uv sync --locked
 uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest
 ```
+
+## Agents and worktrees
+
+- Four agent runtimes run in this distro, started through Orca, one git worktree per task.
+  Claude Code leads (`claude-fable-5-2`: planning, merging, hard problems); Claude workers run
+  `claude-opus-5-5`. Codex (`gpt-6-astra`, or `gpt-6.1-sol` for bulk work) and Antigravity are
+  workers and reviewers. DeepSeek Harness takes mechanical tasks only.
+- Work is reviewed by a different model family before it merges (`/codex:review` in Claude
+  Code). Findings are fixed in the pull request or closed with a reason.
+- Orca's `orca-cli` and `orchestration` skills are in `.agents/skills/`. On Linux the command is
+  `orca-ide`. The runtime is the `orca-serve` user service on 127.0.0.1:6790; if it is not
+  running, report that or run `systemctl --user start orca-serve`, never `orca-ide open`.
+- No agent, plugin, skill or MCP server gets an order tool or a broker connector.
 
 ## The IBKR paper lane (owner only)
 
@@ -93,6 +108,8 @@ mode every check runs again after PAPER is typed, and a change to the Gateway in
 
 - `uv.lock` is committed. New releases wait 7 days (`exclude-newer`); the engine is the one
   named exception and is pinned exactly.
+- The agent runtimes start from checksummed releases pinned in `deploy/wsl/setup.sh` and then
+  update themselves (the owner's choice); `setup.sh agents-check` verifies them.
 - NautilusTrader 2.0 is a release-candidate line with breaking changes between candidates.
   Read its release notes before moving the pin, and never answer an API question from memory:
   read the installed package or the tagged source.

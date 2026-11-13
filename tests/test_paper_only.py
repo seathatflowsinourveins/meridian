@@ -56,10 +56,38 @@ def git_files(*args: str) -> list[str]:
     return [os.fsdecode(name) for name in out.split(b"\0") if name]
 
 
+def is_link_to_listed_files(name: str, listed: set[str], root: Path = REPO_ROOT) -> bool:
+    """True for a symbolic link that only shows again what git already lists.
+
+    Such a link (``.claude/skills/<name>`` pointing at ``.agents/skills/<name>``) is not
+    scanned itself: the files behind it are scanned under their own names. It must be relative
+    and resolve inside the repository, to a listed file or to a directory holding listed files.
+    Any other link fails the scan, because it could show an agent text that git never lists.
+    """
+    path = root / name
+    if not path.is_symlink():
+        return False
+    assert not os.path.isabs(os.readlink(path)), f"{name} is an absolute symbolic link"
+    resolved = path.resolve()
+    assert resolved.is_relative_to(root), f"{name} links outside the repository"
+    target = resolved.relative_to(root).as_posix()
+    assert target in listed or any(n.startswith(f"{target}/") for n in listed), (
+        f"{name} links to {target}, which git does not list"
+    )
+    return True
+
+
 def files_to_scan() -> list[str]:
     deleted = set(git_files("--deleted"))
     listed = git_files("--cached", "--others", "--exclude-standard")
-    return [name for name in listed if name not in NOT_SCANNED and name not in deleted]
+    seen = set(listed)
+    return [
+        name
+        for name in listed
+        if name not in NOT_SCANNED
+        and name not in deleted
+        and not is_link_to_listed_files(name, seen)
+    ]
 
 
 def test_no_live_endpoint_port_mode_or_key_name_in_the_repo():
@@ -122,3 +150,30 @@ def test_the_scan_catches_live_markers(text):
 )
 def test_the_scan_leaves_paper_and_engine_names_alone(text):
     assert findings(text) == []
+
+
+LISTED = {"a/skill/SKILL.md", "b/link"}
+
+
+@pytest.fixture
+def tree(tmp_path):
+    root = (tmp_path / "repo").resolve()
+    (root / "a" / "skill").mkdir(parents=True)
+    (root / "a" / "skill" / "SKILL.md").write_text("text", encoding="utf-8")
+    (root / "a" / "unlisted").mkdir()
+    (root / "b").mkdir()
+    (tmp_path / "outside").mkdir()
+    return root
+
+
+def test_a_link_to_listed_files_is_left_to_its_target(tree):
+    (tree / "b" / "link").symlink_to("../a/skill")
+    assert is_link_to_listed_files("b/link", LISTED, tree)
+    assert not is_link_to_listed_files("a/skill/SKILL.md", LISTED, tree)
+
+
+@pytest.mark.parametrize("target", ["../../outside", "/etc", "../a/unlisted", "../a/missing", ".."])
+def test_any_other_link_fails_the_scan(tree, target):
+    (tree / "b" / "link").symlink_to(target)
+    with pytest.raises(AssertionError):
+        is_link_to_listed_files("b/link", LISTED, tree)

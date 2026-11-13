@@ -14,7 +14,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from test_paper_only import REPO_ROOT, git_files
+from test_paper_only import REPO_ROOT, git_files, is_link_to_listed_files
 
 # Nothing is skipped, this file included: its examples are built from parts.
 NOT_SCANNED: set[str] = set()
@@ -46,7 +46,15 @@ ALLOWLIST_LITERAL = re.compile(
 def tracked_files() -> list[str]:
     deleted = set(git_files("--deleted"))
     listed = git_files("--cached", "--others", "--exclude-standard")
-    return [name for name in listed if name not in NOT_SCANNED and name not in deleted]
+    seen = set(listed)
+    # A link to files git lists is left to its target, which is scanned under its own name.
+    return [
+        name
+        for name in listed
+        if name not in NOT_SCANNED
+        and name not in deleted
+        and not is_link_to_listed_files(name, seen)
+    ]
 
 
 def read_text(name: str, root: Path = REPO_ROOT) -> str:
