@@ -754,16 +754,21 @@ class AlpacaPaperExecutionClient(ExecutionClient):
             if exc.status_code == 404:
                 return None
             raise
-        check_one_writer(row, self.house_prefix)
-        if withheld_unloaded(row, self._is_loaded) or unmappable_history(row):
-            return None
-        self._settle(row, issued)
-        report = self._order_report(row)
-        if (
-            command.client_order_id is not None
-            and report.client_order_id != command.client_order_id
-        ):
-            raise ValueError("venue answered with another order")
+        try:
+            check_one_writer(row, self.house_prefix)
+            if withheld_unloaded(row, self._is_loaded) or unmappable_history(row):
+                return None
+            self._settle(row, issued)
+            report = self._order_report(row)
+            if (
+                command.client_order_id is not None
+                and report.client_order_id != command.client_order_id
+            ):
+                raise ValueError("venue answered with another order")
+        except Exception as exc:
+            # As for a listing's row: one the lane's rules or mappers refuse is a gap.
+            self._note_failures([(None, exc)])
+            raise
         return report
 
     async def _generate_order_status_reports(self, command: Any) -> list:

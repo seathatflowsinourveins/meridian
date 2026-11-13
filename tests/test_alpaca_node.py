@@ -1417,6 +1417,40 @@ def test_a_single_order_report_reads_the_lanes_order_and_refuses_anything_else()
     assert box["status"] == OrderStatus.ACCEPTED and box["missing"] is None
 
 
+def test_an_order_query_the_lane_cannot_map_denies_new_orders_until_a_read_settles():
+    """The engine queries an order whose venue status the lane has not classified. The read
+    fails, and it is a gap as a listing's row would be: new orders are denied until a full read
+    succeeds, which it does once the venue shows a status the lane knows."""
+    rig = Rig()
+
+    def on_start(running, box):
+        box["order"] = limit_order(running)
+        running.submit_order(box["order"])
+        box["second"], box["third"] = limit_order(running, 2), limit_order(running, 3)
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, row = rig.clients[0], rig.venue.orders[-1]
+        row["status"] = "pending_review_v2"
+        calls = len(rig.venue.calls)
+        box["strategy"].query_order(box["order"])
+        await until(lambda: ("get", f"/orders/{row['id']}") in rig.venue.calls[calls:])
+        await asyncio.sleep(0.2)
+        box["strategy"].submit_order(box["second"])
+        await until(lambda: status(2) in (OrderStatus.DENIED, OrderStatus.ACCEPTED))
+        box["second_status"] = status(2)
+        row["status"] = "new"  # a status the lane knows again
+        await until(lambda: client.coverage_complete)
+        box["strategy"].submit_order(box["third"])
+        await until(lambda: status(3) == OrderStatus.ACCEPTED)
+
+    box = drive(rig, script, on_start=on_start)
+    assert box["error"] is None
+    assert box["second_status"] == OrderStatus.DENIED
+    assert type(rig.clients[0].failures[0][1]).__name__ == "UnmappedOrderStatus"
+    assert rig.venue.last_post["client_order_id"] == f"{PREFIX}3"  # the second was never sent
+
+
 def test_a_windowed_open_order_check_still_reads_older_working_orders():
     rig = Rig()
     old = order_row(client_order_id=f"{PREFIX}old", status="new", filled_qty="0")
