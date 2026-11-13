@@ -98,7 +98,8 @@ Notes on the order budget, measured by the soak (`evidence/M2-order-budget-*-soa
   minute), so the 162nd refill lands 102 ns after the window: a full burst of 18 plus 161
   refills. That holds for any budget and burst: the cap is always one under the budget.
   Rounding down instead, `(window_ns - 1) // (limit - burst)`, would give exactly the budget
-  and still never exceed it; that is a change to the owner's arithmetic and is not made here.
+  for a window as long as this one (a very short window would need a guard against going over);
+  that is a change to the owner's arithmetic and is not made here.
   After a quiet spell the bucket is full again, and the window that follows holds 179 too.
   Under steady demand above the budget it sends 161 to 163 a minute, because the burst is
   shared with the budget rather than added to it.

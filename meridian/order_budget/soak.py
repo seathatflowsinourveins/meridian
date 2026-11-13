@@ -19,9 +19,10 @@ A run passes when:
   - no rolling 60 s window holds more paced requests than the budget (180), after a quiet
     spell as at any other time, and windows reach 179, so the budget is used;
   - under steady demand above the budget, every whole minute sends at least 161;
-  - the action past the budget is refused: when a window first holds the bucket's cap, an
-    action is waiting, and nothing more is sent until the window's oldest send has left it;
-    and no withdrawn entry ever reaches the venue;
+  - the action past the budget is held, not sent: when a window first holds the bucket's cap,
+    an action is waiting, and nothing more is sent until the window's oldest send has left it.
+    The pacer never refuses an action for being over the budget; an entry is left unsent only
+    when its caller withdraws it (here, after 30 s), and no withdrawn entry reaches the venue;
   - every send follows CANCEL > REDUCE > MODIFY > QUERY > SUBMIT, first in first out within a
     kind, judged from the soak's own record of what is waiting, not from the pacer's;
   - the venue never answers 429;
@@ -451,7 +452,7 @@ def problems(data: dict[str, Any]) -> list[str]:
     if seen["lost"]:
         found.append("an action was neither sent nor withdrawn by its caller")
     if not seen["withdrawn_by_caller"][ActionKind.SUBMIT.name]:
-        found.append("no entry was withdrawn: the demand never went past the budget")
+        found.append("no entry was withdrawn, so the withdrawal path went untested")
     full = seen["when_a_window_first_held_the_cap"]
     if full is None:
         found.append("no window ever held the bucket's cap")

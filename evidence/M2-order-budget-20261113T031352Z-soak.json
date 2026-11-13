@@ -134,8 +134,8 @@
   "offline": true,
   "problems": [],
   "result": "pass",
-  "run_ended_utc": "2026-11-13T02:47:54Z",
-  "run_started_utc": "2026-11-13T02:47:53Z",
+  "run_ended_utc": "2026-11-13T03:13:52Z",
+  "run_started_utc": "2026-11-13T03:13:52Z",
   "schema": "meridian.run-record/1",
   "simulated_venue": {
     "limit_per_window": 200,

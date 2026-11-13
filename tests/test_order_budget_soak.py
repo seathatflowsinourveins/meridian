@@ -1,6 +1,6 @@
 """
 The order budget's soak: it holds the 180 budget against a simulated venue, after quiet spells
-as under steady demand, refuses what is past it, keeps the priority order, and the committed
+as under steady demand, holds back what is past it, keeps the priority order, and the committed
 run record is what the soak produces. Each check is shown to fail on a record or a pacer that
 breaks it.
 """
@@ -28,7 +28,7 @@ def record():
     return soak.run_soak()
 
 
-def test_the_soak_holds_the_budget_and_refuses_what_is_past_it(record):
+def test_the_soak_keeps_to_the_budget_and_holds_back_what_is_past_it(record):
     assert record["result"] == "pass", record["problems"]
     budget, seen = record["budget"], record["observed"]
     assert (budget["request_budget_per_window"], budget["broker_limit_per_window"]) == (180, 200)
@@ -38,7 +38,7 @@ def test_the_soak_holds_the_budget_and_refuses_what_is_past_it(record):
     assert budget["cap_per_window_from_the_refill_arithmetic"] == 179
     assert record["simulated_venue"]["most_requests_in_any_window"] <= 180
     assert record["simulated_venue"]["rate_limited_answers"] == 0
-    # The demand went past the budget; what was past it was withdrawn and never sent.
+    # The simulated caller withdrew its stale entries, and none of them was sent.
     assert seen["withdrawn_by_caller"]["SUBMIT"] > 0
     assert sum(seen["withdrawn_by_caller"].values()) == seen["withdrawn_by_caller"]["SUBMIT"]
     assert seen["lost"] == seen["sent_after_withdrawal"] == seen["sent_twice"] == 0
@@ -163,7 +163,7 @@ RECORD_FAILURES = {
     "an action lost": (change(("observed", "lost"), 1), "neither sent nor withdrawn"),
     "nothing withdrawn": (
         change(("observed", "withdrawn_by_caller", "SUBMIT"), 0),
-        "the demand never went past the budget",
+        "the withdrawal path went untested",
     ),
     "the cap never held": (change(FULL, None), "no window ever held"),
     "nothing waiting at the cap": (change((*FULL, "waiting"), None), "nothing was waiting"),
