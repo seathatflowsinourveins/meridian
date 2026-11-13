@@ -1,8 +1,10 @@
 """
 The sandbox lane cannot send an order to IBKR: its node has one data client and the engine's
-sandbox as its only execution client. The build fails if an Interactive Brokers execution
-client, any other way to add an execution client, or a way to the IBKR lane's own run appears
-in the lane's code, or if the node the lane builds has anything but the sandbox for execution.
+sandbox as its only execution client. The build fails if the lane's code names an Interactive
+Brokers execution client, another way to add an execution client, or one of the ways to the
+IBKR lane's own run that the source check lists, or if the node the lane builds has anything
+but the sandbox for execution. The source check reads names: it is a tripwire for the routes
+it lists, not a proof that the lane's code has no other route.
 
 It also runs, offline, on a fake data feed: the strategy's orders reach the simulated venue
 and only it, nothing is left open at stop, only the lane's own lines reach the terminal, and a
@@ -119,9 +121,12 @@ DYNAMIC_BUILTINS = {
 # a module or attribute found from a string at run time (importlib's import, the engine's
 # import by path in nautilus_trader.live.config and its plugin loader, sys.modules, the import
 # system's finders, sys.breakpointhook, typing's forward references, which evaluate a string
-# in a named module or the module that owns them, and operator's attrgetter and methodcaller,
-# which are getattr by other names), the namespace behind a frame, the collector's object
-# lists, and asyncio's and concurrent.futures' ways to start another process;
+# in a named module or the module that owns them, warnings' option parsers, which import the
+# module a category string names, and operator's attrgetter and methodcaller, which are
+# getattr by other names), text run as code by dataclasses' function builder, a file run in a
+# process by sys.remote_exec, a frame and the namespace behind it, the collector's object
+# lists, and the ways to start another process of asyncio, of its event loops (the engine
+# hands asyncio over) and of concurrent.futures;
 RUN_TIME_LOOKUPS = {
     "import_module",
     "resolve_path",
@@ -139,9 +144,18 @@ RUN_TIME_LOOKUPS = {
     "_eval_type",
     "_type_check",
     "_type_convert",
+    "_getcategory",  # warnings: __import__ of the module a category string names
+    "_setoption",
+    "_processoptions",
     "attrgetter",
     "methodcaller",
+    "_FuncBuilder",  # dataclasses: add_fns_to_class runs the text it was given through exec
+    "add_fns_to_class",
+    "remote_exec",  # sys: runs a file in a process, this one included
     "_getframe",
+    "_current_frames",
+    "walk_stack",
+    "walk_tb",
     "f_globals",
     "f_locals",
     "f_builtins",
@@ -150,16 +164,20 @@ RUN_TIME_LOOKUPS = {
     "get_referents",
     "create_subprocess_exec",
     "create_subprocess_shell",
+    "subprocess_exec",  # an event loop's two, and the private method behind both
+    "subprocess_shell",
+    "_make_subprocess_transport",
     "ProcessPoolExecutor",
 }
-# os's ways to start another program, on whatever object or under whatever name they are
-# reached (``_common.os.system``);
+# os's functions that start another program, by these names on any object
+# (``_common.os.system``, ``argparse._os._execvpe``): those dir(os) has on the Python that runs
+# the test, with or without a leading underscore (os's private ``_execvpe`` and ``_spawnvef``);
 OS_PROCESS = {
-    n for n in dir(os) if re.fullmatch(r"system|popen|(exec|spawn|posix_spawn|fork)\w*", n)
+    n for n in dir(os) if re.fullmatch(r"_?(system|popen|(exec|spawn|posix_spawn|fork)\w*)", n)
 } | {"startfile"}  # Windows only
 # modules that import, unpickle, evaluate or start code by other routes, a socket of the lane's
 # own, and IB's client libraries (also when another module hands them over: ``from _common
-# import subprocess``);
+# import subprocess``, ``nautilus_trader.live.providers.asyncio``);
 FORBIDDEN_MODULES = {
     "importlib",
     "annotationlib",
@@ -176,6 +194,7 @@ FORBIDDEN_MODULES = {
     "ctypes",
     "subprocess",
     "multiprocessing",
+    "asyncio",  # its event loops start processes; the engine hands it over
     "pty",
     "posix",
     "socket",
@@ -407,6 +426,11 @@ def test_the_source_check_catches_an_added_execution_client(planted):
         "found.getattr(sandbox_lane, name)",
         "pattern.compile(source, 'lane', 'exec')",
         "traceback.codeop.compile_command(source, symbol='exec')",
+        # Text run as code by dataclasses' function builder, which boundary hands over.
+        "boundary.dataclasses._FuncBuilder({})",
+        "builder.add_fns_to_class(holder)",
+        # A file run in a process, this one included.
+        "sys.remote_exec(os.getpid(), path)",
         # A module or an attribute found from a string at run time, or behind an object.
         "sys.modules['meridian.ibkr_paper']",
         "from sys import modules",
@@ -419,6 +443,9 @@ def test_the_source_check_catches_an_added_execution_client(planted):
         "typing._eval_type(typing._type_check(name, '', module=path), None, None)",
         "typing.evaluate_forward_ref(ref)",
         "from typing import get_type_hints",
+        "traceback.warnings._getcategory('meridian.ibkr' + '_paper.' + name)",
+        "traceback.warnings._setoption('ignore::' + name)",
+        "warnings._processoptions(options)",
         "os.environ['PYTHONBREAKPOINT'] = path\nbreakpoint(bounds, account)",
         "sys.breakpointhook(bounds, account)",
         "node.add_plugin(path, 'Plugin')",
@@ -436,6 +463,9 @@ def test_the_source_check_catches_an_added_execution_client(planted):
         "__spec__.loader",
         "().__class__.__base__.__subclasses__()",
         "sys._getframe().f_back",
+        "sys._current_frames()",
+        "traceback.walk_stack(None)",
+        "traceback.walk_tb(tb)",
         "frame.f_globals",
         "gc.get_referrers(boundary)",
         "path = 'meridian.ibkr_paper:_run_node'",
@@ -443,11 +473,17 @@ def test_the_source_check_catches_an_added_execution_client(planted):
         "subprocess.run(command)",
         "from _common import subprocess",
         "os.execv(sys.executable, args)",
+        "os._execvpe(sys.executable, command, os.environ)",
+        "argparse._os._spawnvef(os.P_NOWAIT, sys.executable, command, os.environ, f)",
         "os.system(command)",
         "_common.os.system(command)",
         "import os as o\no.posix_spawn(path, args, env)",
         "from os import posix_spawn",
         "asyncio.create_subprocess_exec(*command)",
+        "engine.live.providers.asyncio.new_event_loop()",
+        "loop.subprocess_exec(protocol, *command)",
+        "loop.subprocess_shell(protocol, text)",
+        "loop._make_subprocess_transport(protocol, command, False, None, None, None, 0)",
         "concurrent.futures.ProcessPoolExecutor()",
         "command = [sys.executable, '-m', 'meridian.ibkr_paper', 'order']",
         # IB's API spoken over a socket of the lane's own.
