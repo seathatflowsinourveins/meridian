@@ -123,10 +123,12 @@ DYNAMIC_BUILTINS = {
 # system's finders, sys.breakpointhook, typing's forward references, which evaluate a string
 # in a named module or the module that owns them, warnings' option parsers, which import the
 # module a category string names, and operator's attrgetter and methodcaller, which are
-# getattr by other names), text run as code by dataclasses' function builder, a file run in a
-# process by sys.remote_exec, a frame and the namespace behind it, the collector's object
-# lists, and the ways to start another process of asyncio, of its event loops (the engine
-# hands asyncio over) and of concurrent.futures;
+# getattr by other names), dataclasses' private _FuncBuilder and its add_fns_to_class, which
+# run text as code through exec (the public dataclass() reaches the same exec through a
+# field's name and is not listed), a file run in a process by sys.remote_exec, a frame and
+# the namespace behind it, the collector's object lists, and the ways to start another
+# process of asyncio, of its event loops (the engine hands asyncio over) and of
+# concurrent.futures;
 RUN_TIME_LOOKUPS = {
     "import_module",
     "resolve_path",
@@ -176,8 +178,9 @@ OS_PROCESS = {
     n for n in dir(os) if re.fullmatch(r"_?(system|popen|(exec|spawn|posix_spawn|fork)\w*)", n)
 } | {"startfile"}  # Windows only
 # modules that import, unpickle, evaluate or start code by other routes, a socket of the lane's
-# own, and IB's client libraries (also when another module hands them over: ``from _common
-# import subprocess``, ``nautilus_trader.live.providers.asyncio``);
+# own, and IB's client libraries (also when another module hands them over under these
+# names: ``from _common import subprocess``, ``nautilus_trader.live.providers.asyncio``; not
+# under another name, as the engine's ``nautilus_trader._metadata`` is importlib.metadata);
 FORBIDDEN_MODULES = {
     "importlib",
     "annotationlib",
@@ -426,7 +429,7 @@ def test_the_source_check_catches_an_added_execution_client(planted):
         "found.getattr(sandbox_lane, name)",
         "pattern.compile(source, 'lane', 'exec')",
         "traceback.codeop.compile_command(source, symbol='exec')",
-        # Text run as code by dataclasses' function builder, which boundary hands over.
+        # dataclasses' private function builder, which runs text as code; boundary hands it over.
         "boundary.dataclasses._FuncBuilder({})",
         "builder.add_fns_to_class(holder)",
         # A file run in a process, this one included.
