@@ -325,3 +325,49 @@ def test_engine_settings_that_leave_no_order_check_are_refused(settings):
     passed."""
     with pytest.raises(ValueError, match="open-order checks must replace in-flight checks"):
         engine_config([AAPL], **settings)
+
+
+@pytest.mark.parametrize(
+    ("settings", "refusal"),
+    [
+        # rc9's own upper limit: the node's first periodic check a day after the start.
+        ({"reconciliation_startup_delay_secs": 86_400.0}, "reconciliation_startup_delay_secs"),
+        ({"reconciliation_startup_delay_secs": 60.5}, "reconciliation_startup_delay_secs"),
+        ({"open_check_interval_secs": 1e9}, "open_check_interval_secs"),
+        ({"open_check_interval_secs": 60.5}, "open_check_interval_secs"),
+        ({"inflight_check_interval_ms": 61_000}, "open_check_interval_secs"),  # sets the cadence
+        # Checks that run but defer every order with local activity inside the threshold.
+        ({"open_check_threshold_ms": 4_294_967_295}, "open_check_threshold_ms"),
+        ({"open_check_threshold_ms": 60_001}, "open_check_threshold_ms"),
+        ({"single_order_query_delay_ms": 60_001}, "single_order_query_delay_ms"),
+        ({"open_check_missing_retries": 31}, "open_check_missing_retries"),  # 31 x 2 s
+        (
+            {"open_check_interval_secs": 0.2, "open_check_missing_retries": 301},
+            "open_check_missing_retries",
+        ),
+        ({"max_single_order_queries_per_cycle": 0}, "max_single_order_queries_per_cycle"),
+        ({"filtered_client_order_ids": ["M3-1"]}, "filtered_client_order_ids"),
+    ],
+)
+def test_engine_settings_under_which_a_check_waits_too_long_or_never_acts_are_refused(
+    settings, refusal
+):
+    """A check that comes too late, or runs without acting, leaves an order whose answer or
+    update was lost as unresolved as no check does. No setting may let one wait more than a
+    minute, a check must be able to query a single order, and no order may be filtered out."""
+    with pytest.raises(ValueError, match=f"^{refusal} would "):
+        engine_config([AAPL], **settings)
+
+
+def test_engine_settings_at_the_longest_check_wait_are_accepted():
+    settings = {
+        "reconciliation_startup_delay_secs": 60.0,
+        "open_check_interval_secs": 60.0,
+        "open_check_threshold_ms": 60_000,
+        "single_order_query_delay_ms": 60_000,
+        "open_check_missing_retries": 1,
+        "max_single_order_queries_per_cycle": 1,
+    }
+    config = engine_config([AAPL], **settings)
+    assert [getattr(config, name) for name in settings] == list(settings.values())
+    assert engine_config([AAPL], open_check_missing_retries=30).open_check_missing_retries == 30

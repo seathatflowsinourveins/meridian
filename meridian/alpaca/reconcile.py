@@ -41,6 +41,10 @@ from .wire import NOT_JSON
 
 ORDER_PAGE_LIMIT = 500  # alpaca-py 0.45.0 GetOrdersRequest: limit at most 500
 FILL_PAGE_SIZE = 100  # account activities: page_size at most 100
+# The longest any engine setting may let an order check wait before it acts on what the venue
+# shows, in seconds. NautilusTrader 2.0.0rc9 itself accepts a startup delay of up to a day and
+# any positive cadence, deferral threshold, query delay or missing-order retry count.
+MAX_CHECK_WAIT_SECS = 60
 
 Call = Callable[..., Awaitable[Any]]
 
@@ -177,6 +181,14 @@ def engine_config(universe: Sequence[InstrumentId], **kwargs: Any) -> LiveExecut
     zero (`crates/live/src/node/mod.rs`, its run loop), so with neither, nothing would read an
     order whose answer or update was lost. The in-flight interval passed only sets the cadence
     when none is given; passing 0 for it needs an explicit one.
+
+    A check that runs too late, or never acts, is no check either. No setting may make one wait
+    more than MAX_CHECK_WAIT_SECS: the delay the node adds before the first periodic check
+    (`reconciliation_startup_delay_secs`, same run loop), the cadence, the recent local
+    activity under which a check defers an order (`open_check_threshold_ms`, `manager.rs`,
+    `reconcile_open_order_reports`), the delay between targeted order queries, and the misses
+    before an order absent from the listing is queried (retries times the cadence). A check
+    may send at least one targeted query per cycle, and no order is filtered out of the checks.
     """
     scope = [str(instrument_id) for instrument_id in universe]
     if not scope:
@@ -204,8 +216,24 @@ def engine_config(universe: Sequence[InstrumentId], **kwargs: Any) -> LiveExecut
         **kwargs,
     )
     cadence = config.open_check_interval_secs
-    if config.inflight_check_interval_ms != 0 or cadence is None or not 0 < cadence < float("inf"):
+    # rc9's constructor also refuses a set interval that is not positive and finite; the lane's
+    # rule does not rest on that.
+    if config.inflight_check_interval_ms != 0 or cadence is None or not cadence > 0:
         raise ValueError("open-order checks must replace in-flight checks")
+    waits = {
+        "reconciliation_startup_delay_secs": config.reconciliation_startup_delay_secs,
+        "open_check_interval_secs": cadence,
+        "open_check_threshold_ms": config.open_check_threshold_ms / 1000,
+        "single_order_query_delay_ms": config.single_order_query_delay_ms / 1000,
+        "open_check_missing_retries": config.open_check_missing_retries * cadence,
+    }
+    for name, seconds in waits.items():
+        if not seconds <= MAX_CHECK_WAIT_SECS:
+            raise ValueError(f"{name} would let an order check wait over {MAX_CHECK_WAIT_SECS} s")
+    if config.max_single_order_queries_per_cycle < 1:
+        raise ValueError("max_single_order_queries_per_cycle would stop every targeted query")
+    if config.filtered_client_order_ids:
+        raise ValueError("filtered_client_order_ids would leave an order unchecked")
     return config
 
 
