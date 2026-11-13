@@ -1,0 +1,371 @@
+{
+ "adr": "0007",
+ "what": "Aggregate results behind ADR 0007's figures. Raw event streams, rollouts and transcripts carry account fields and are never published here; they stay on the owner's machine (raw, below).",
+ "candidate": {
+  "repository": "https://github.com/openai/plugins",
+  "pin": "d420d13051bffe4543ed39e30fa46b87148e47dd",
+  "pin_note": "head of main on 2026-11-13 (git ls-remote); no tags and no releases",
+  "matched_plugin": "codex-security, plugin.json version \"0.1.32\" (upstream openai/codex-security's release number, tag npm-v0.1.32, never published to npm; provenance below), licence field \"Proprietary\"; last changed in 0722921d (2026-10-08)"
+ },
+ "runtime": {
+  "codex_cli": "0.167.2 (tag rust-v0.167.2 = ce21072c90d32c40af7a55b60b2fb35c84a43a6a), the same before and after every model run",
+  "model": "gpt-6-astra",
+  "effort": "high",
+  "flags": "codex exec --json --color never --dangerously-bypass-approvals-and-sandbox --disable hooks",
+  "arm_a_codex_home": "the owner's ~/.codex (ChatGPT sign-in, its system skills and state)",
+  "arm_b_codex_home": "planned: a throwaway CODEX_HOME; never built",
+  "home": "a stand-in HOME linking only .profile, .bashrc, .bash_logout, .local, .cache and .config/uv; a seatbelt, not containment"
+ },
+ "prereg": {
+  "file": "0007-prereg.txt",
+  "sha256": "6485f6ab7b941137b147c1a6f9e7c751cf57b9d833efedcc0e6fc97eb1d4feec",
+  "is": "the independent re-check's fact sheet, byte for byte (written as fact_sheet.md); its 'Measurement protocol' holds R4's brief and grading and the rule as the sheet restates it (rule_sheet), shorter than the rule first stated (rule_first_stated, rule_change)",
+  "file_time": "2026-11-13T01:45:30-05:00",
+  "with": [
+   "method-codex: a pre-run notes file (2026-11-12T22:45:43-05:00) and its independent check (2026-11-13T01:48:31-05:00), neither published (they name home-directory paths); the source of the fresh clones and of model runs in the owner's ~/.codex. The shared sheet ab-codex.md describes that method as revised on 2026-11-13 after the series; this file and the scripts record what ran and win where it differs"
+  ],
+  "first_probe": "2026-11-13T01:57:25-05:00",
+  "policy_probe_before_sheet": "the re-check's own probe in a throwaway CODEX_HOME with a dummy plugin (marketplace v3-dummy added, then 'plugin `dummy` was not found'), reported in the sheet saved at 01:45:30, so the block was known when the preconditions were fixed; the first probe with the candidate followed at 01:57",
+  "commit": "No commit published before the runs dates the sheet. The times are file times on the owner's machine and cannot be proved from the repository: fact_sheet.md at 01:45:30 and the re-check's record at 01:47:42, which embeds the same 9,902 bytes, both before the first probe (01:57:25) and a1 (02:00:43). A reader can check the sheet's content against its sha256, not its date.",
+  "added_at_run_time": [
+   "0007_validate_r4.py (01:59), 0007_run_summary.py and 0007_r4_run.sh (02:00, before a1 at 02:00:43)",
+   "0007_gateway_guard.sh (02:41, after the 02:04 stop)",
+   "0007_r4_run2.sh, 0007_cmd_review.py, 0007_cleanup_run.sh and 0007_hit_context.py (04:04 to 04:07, around a2 and a3)",
+   "the grading definitions (r4.grading): the false-finding criterion is applied in the measuring record of 02:05, after a1; 'passed' is first defined in the measuring record of 04:12, after all three runs",
+   "with 0007_r4_run.sh (02:00): R4's repository limited to 96e82e6 and its ancestors (git init plus a fetch of that commit) and a stand-in HOME; the sheet names neither (departures)"
+  ],
+  "corrected_since_note": "Lines of the sheet that later checks at the source revised. Four of them rest on re-check checks: C21 (version provenance), C13, which the re-check confirmed, and C35 (the MCP tool count and its on-demand text, 3,801 characters / 748 tokens for 12 tools, now 6,084 / 1,180 for 22), and C43 (line range).",
+  "corrected_since": [
+   "C21, '0.1.32 is the npm release number': npm never published 0.1.32; it is upstream's release tag npm-v0.1.32, and the copy's skills match upstream main of 2026-10-06 to 2026-10-07, not that tag (provenance below)",
+   "C13 and C35, '39 registerTool sites; 12 model-visible' (on demand 3,801 characters / 748 tokens): 47 tools in the main server, 22 visible to the model, on demand 6,084 / 1,180 (mcp_tools below)",
+   "'a start runs git fetch': every start runs git ls-remote and fetches only when main's head moved (core-plugins/src/startup_sync.rs 185-196 at ce21072)",
+   "C43, 'setup.sh:490-509': check_codex_requirements is 490-506 (comment 490-491, function 492-506) at 9c5daaa",
+   "'about 1,283 tokens (aliased, row only)': the measured M2 baseline has no <tools> block, so the likely figure is 1,293 (aliased listing plus a new block)",
+   "'Runs done: none': written before the runs; three arm-a runs followed"
+  ],
+  "rule_sheet": "Adopt only if the preconditions hold (owner lifts the pins, vendored pinned copy, bundled advisories fixed or accepted) and D(with) >= 2/3 while D(without) <= 1/3, median false findings no higher, median total tokens <= 3x, measured always-on delta <= 1,500 tokens.",
+  "rule_first_stated": {
+   "source": "the assessment's notes file (not published: it names home-directory paths), measurement_protocol.adopt_if; file time 2026-11-12T21:38:44-05:00, sha256 a152ab337c4a1cb1356988bb0d2a7b5da2c186cddec1d798a48ebaf4bc6e82a6",
+   "text": "Stated up front. Preconditions independent of the runs: the owner accepts [features] plugins = true in setup.sh and agents-check and one MCP server for Codex; installs come only from a vendored pinned copy; and the bundled advisories (zod GHSA-mrhx-c7xc-m3w5, MCP SDK < 1.32.0, fast-uri < 3.1.9) are fixed upstream or accepted. If so, adopt codex-security only if D(with) holds in at least 2 of 3 runs while D(without) holds in at most 1 of 3, median F(with) <= median F(without), median T(with) <= 3x median T(without), and the measured always-on delta is <= 1,500 o200k tokens per session. If D(without) already holds in at least 2 of 3 runs, adopt only with equal D, F no higher and at least 25% fewer total tokens per run, counting the always-on delta. Otherwise: not adopted."
+  },
+  "rule_change": "The sheet (01:45:30) restates the rule without the assessment's branch for a baseline that already holds D in at least 2 of 3 runs; no record says why. Both versions predate the first run (01:57). The decision rests on what both share: the preconditions, which fail under both (rule_applied).",
+  "assessment_steps_dropped": "Three steps of the assessment's protocol that the sheet does not carry, all for with-runs or the arm comparison (so the arm-a runs did not depart from them; a with arm needs them, and a rerun of either arm needs an in-run watch, rerun): ~/.codex/config.toml's sha256 before and after every with-run (containment_check); the remote hosts contacted during a run, for example an ss -tpn snapshot every 10 s, where any broker host or IB Gateway port fails containment (containment_check); and grading blind to arm, with plugin and skill names stripped from the reports first (runs_and_metrics). The runs recorded none of the three.",
+  "departures": [
+   "checkout: the sheet's protocol says a worktree at 96e82e6; each run used a git init repository holding only 96e82e6 and its ancestors (a fetch of that commit) under ~/src/meridian-ab/0007, with a stand-in HOME (added at run time, before a1)",
+   "web: every R4 run used Codex's built-in web search (3, 4 and 3 items); the pages opened were IBKR API documentation, and in a3 also Python's configparser documentation, which a3's report cites for the [DEFAULT] finding (r4.web_search)",
+   "grading: judged by the measuring agent; the false-finding criterion was applied at 02:05 ET after a1 and 'passed' was first defined at 04:12 ET after all runs (r4.grading)"
+  ]
+ },
+ "arm_key": "0007-key.txt",
+ "policy_probe": {
+  "when": "2026-11-13 01:57 ET, a throwaway CODEX_HOME at main 9c5daaa",
+  "features_default": {
+   "apps": false,
+   "plugins": false,
+   "memories": false,
+   "skill_mcp_dependency_install": false,
+   "remote_plugin": true,
+   "tool_suggest": true,
+   "multi_agent": true,
+   "goals": true,
+   "hooks": true
+  },
+  "features_with_enable_plugins": {
+   "apps": false,
+   "plugins": false,
+   "remote_plugin": true,
+   "tool_suggest": true
+  },
+  "marketplace_add_reserved_name": "refused: marketplace `openai-curated` is reserved and cannot be added from this source",
+  "marketplace_add_ab_0007_pinned": "added (a copy of plugins/codex-security from the pin, built with 0007_make_market.py)",
+  "plugin_add": "Error: plugin `codex-security` was not found in marketplace `ab-0007-pinned`",
+  "plugin_list": "No marketplace plugins found.",
+  "m2_compare": "0007-m2-compare.txt (7 items, 60,266 bytes before and after, byte-identical, 0 mentions of codex-security)"
+ },
+ "always_on": {
+  "m1_without": {
+   "input_tokens": [
+    16281,
+    16281,
+    16281
+   ],
+   "median": 16281,
+   "cached_input_tokens": [
+    12032,
+    12032,
+    12032
+   ],
+   "output_tokens": [
+    5,
+    5,
+    5
+   ]
+  },
+  "m1_with": "not run: arm b cannot be built",
+  "delta": "not measured",
+  "reconstructed": {
+   "file": "0007-injected.json",
+   "likely_per_session": {
+    "chars": 5728,
+    "tokens_o200k": 1293
+   },
+   "upper_per_session": {
+    "chars": 6834,
+    "tokens_o200k": 1690
+   },
+   "agents_md_baseline": {
+    "commit": "9c5daaae9d32acf259f965fd7b95b458604503b6",
+    "lines": 126,
+    "chars": 8318,
+    "tokens_o200k": 2159
+   },
+   "on_demand_mcp_tools": {
+    "tools": 22,
+    "chars": 6084,
+    "tokens_o200k": 1180
+   }
+  }
+ },
+ "r4": {
+  "brief": "0007-r4-brief.txt",
+  "brief_sha256": "56e5c8ac4175feaed5a14cf0dc221ad3a15f9616bf497533db69ddbc6653b3b8",
+  "base": "96e82e6b521cdb9c7d172176898d20e2658ec50b",
+  "reference": "39cb68ea3241caeececb6db0521a12ea2fa92fee (only stops gateway_trading_mode inheriting [DEFAULT])",
+  "grading": "judgement by the measuring agent. Pre-registered (0007-prereg.txt): D = the run reports the [DEFAULT]-inheritance defect; other findings real or false against 39cb68e's message and diff. Added at run time: the measuring record of 02:05 ET, after a1, applies the false-finding criterion ('0 findings contradicted by the code', 'none is contradicted by the code') and marks a1 passed without defining it; the explicit definitions (a false finding = a claim the code at 96e82e6 contradicts; passed = D reported, the turn completed and the worktree is unchanged) are first recorded in the measuring record of 04:12 ET, after a2 (04:04 ET) and a3 (04:07 ET). Neither rule uses 'passed', so the decision is unaffected",
+  "grading_table": "0007-r4-grading.txt: each finding of each run's final report, its verdict and the line at 96e82e6 behind it",
+  "setup_check": "0007_validate_r4.py with synthetic jts.ini files: '[DEFAULT] tradingMode=p' with no [Logon] key passes at 96e82e6 and is refused at 39cb68e",
+  "order_planned": "a1 b1 b2 a2 a3 b3, 2 more per arm on a one-success gap or a 2-2 tie",
+  "order_executed": "a1 (2026-11-13 02:00 ET), a2 (04:04 ET), a3 (04:07 ET), one at a time; b1, b2, b3 cannot be built",
+  "runs": [
+   {
+    "run": "a1",
+    "harness": "0007_r4_run.sh",
+    "passed": true,
+    "d": true,
+    "false_findings": 0,
+    "other_true_findings": 3,
+    "input_tokens": 266931,
+    "cached_input_tokens": 225152,
+    "output_tokens": 3207,
+    "reasoning_tokens": 886,
+    "total_tokens": 270138,
+    "duration_s": 140,
+    "model_requests": 7,
+    "exec_cells": 6,
+    "shell_commands": 11,
+    "web_search_items": 3,
+    "subagents": 0,
+    "exit": 0,
+    "worktree_unchanged": true,
+    "fix_object_absent": true,
+    "void": "none",
+    "guard": "old guard (pgrep -f), passed"
+   },
+   {
+    "run": "a2",
+    "harness": "0007_r4_run2.sh",
+    "passed": true,
+    "d": true,
+    "false_findings": 0,
+    "other_true_findings": 3,
+    "input_tokens": 307661,
+    "cached_input_tokens": 220032,
+    "output_tokens": 3144,
+    "reasoning_tokens": 715,
+    "total_tokens": 310805,
+    "duration_s": 116,
+    "model_requests": 8,
+    "exec_cells": 7,
+    "shell_commands": 11,
+    "web_search_items": 4,
+    "subagents": 0,
+    "exit": 0,
+    "worktree_unchanged": true,
+    "fix_object_absent": true,
+    "void": "none",
+    "guard": "0007_gateway_guard.sh, 'gateway down' at setup and immediately before the agent"
+   },
+   {
+    "run": "a3",
+    "harness": "0007_r4_run2.sh",
+    "passed": true,
+    "d": true,
+    "false_findings": 0,
+    "other_true_findings": 4,
+    "input_tokens": 244921,
+    "cached_input_tokens": 184704,
+    "output_tokens": 3089,
+    "reasoning_tokens": 825,
+    "total_tokens": 248010,
+    "duration_s": 120,
+    "model_requests": 7,
+    "exec_cells": 6,
+    "shell_commands": 9,
+    "web_search_items": 3,
+    "subagents": 0,
+    "exit": 0,
+    "worktree_unchanged": true,
+    "fix_object_absent": true,
+    "void": "none",
+    "guard": "0007_gateway_guard.sh, 'gateway down' at setup and immediately before the agent"
+   }
+  ],
+  "arm_a": {
+   "runs": 3,
+   "d": "3/3",
+   "median_false_findings": 0,
+   "median_other_true_findings": 3,
+   "median_total_tokens": 270138,
+   "median_duration_s": 120,
+   "codex_delegation": "no sub-agent spawned in any run"
+  },
+  "arm_b": {
+   "runs": 0,
+   "why": "/etc/codex/requirements.toml pins features.plugins false and has an empty [mcp_servers] for every CODEX_HOME (policy_probe)"
+  },
+  "other_findings": "a1 to a3: the listening address is dropped (port only), jts.ini is not tied to the running session, and the checks run only before and after; a3 also: load_contract's os.path.lexists returns False on a PermissionError, so an inaccessible contract path silently drops the optional allowlist. All true of the code at 96e82e6 or its documented design, outside 39cb68e.",
+  "containment": "Each run: a fresh unauthenticated git init plus fetch of 96e82e6 (fix object absent), never a worktree of the main checkout; git status empty before and after; HEAD unchanged; no new name in the home or the stand-in HOME; no leftover process. Every command was reviewed with 0007_cmd_review.py and 0007_hit_context.py: the calls read the repository's source and ran Python only on in-memory fixtures (patched reads, synthetic /proc text, synthetic jts.ini paths); none ran the lane or the probe, opened a socket, or named ~/Jts, a secret path, the main checkout, git fetch, git remote or 39cb68e. Web search: see web_search. Not contained (all three in owner_codex_home_writes): (1) the model runs in the owner's ~/.codex added to ~/.codex/config.toml a [projects.\"<clone path>\"] table with the key trust_level for each clone they ran in (M1's wt/ctx, shared by its 3 runs, and wt/ab-0007-a-1, -a-2 and -a-3 under ~/src/meridian-ab/0007): 4 tables, counted on 2026-11-13 without printing values, each naming a clone since deleted. The file's time moved from 2026-11-12 21:33:38 ET (read by the re-check) to 2026-11-13 04:07:40 ET, a3's start. (2) Every run's thread went into Codex's state databases in that home: in state_5.sqlite 6 threads rows with the account-linked fields creator_account_id and creator_user_id set, and 6 thread_read_receipts rows; in thread_history_1.sqlite 74 thread_items rows, 6 thread_turns rows and 6 thread_history_projection_state rows. (3) 6 rollouts stay in ~/.codex/sessions (3 M1, a1, a2, a3). The rollouts carry account fields, and the same run data also sits in the database rows, so moving the rollouts alone leaves it behind. The home check compared names only, so it missed (1) and (2), and the measuring records' 'no owner file or policy changed' (first series) and 'No owner config, policy, main checkout or plugin state was touched' (second series) are wrong about config.toml and the two databases; those records are kept as written. Removing the 4 tables, and archiving then removing the database rows, are left to the owner (owner_steps); no agent edits those files.",
+  "web_search": "0007_cmd_review.py printed each web_search item's query and action, not the pages it opened, so it missed one. A later check of every item's results (all 10 items) found IBKR API documentation pages in a1 to a3 and, in a3, also https://docs.python.org/3/library/configparser.html, which a3's report cites for the [DEFAULT] finding; no run opened a GitHub page. 39cb68e, whose message names the defect, was on the public main (committed 2026-11-12T17:35:54-05:00) during all three runs: the one-commit repository kept it out of local git only, and the review of opened pages is the check that no run read it. D = 3/3 and 'voids: none' hold.",
+  "first_series_stop": "2026-11-13 02:04 ET, before a2: the old guard's pgrep -f ibgateway matched another measurement's Claude Code process whose argv carried the deny rule Bash(*ibgateway*); port 4002 had no listener and no Gateway process ran. A false alarm; the series was resumed at 04:04 ET with the fixed guard, which matches process names and executables only.",
+  "ceiling": "D(without) = 3/3. Under the pre-registration's rule (rule_sheet) R4 fails D(without) <= 1/3. Under the assessment's first-stated rule this sends R4 to its efficiency branch, which needs a with arm and cannot be measured here. Either way, an addition can show a D gain only on a task the baseline misses."
+ },
+ "rule_result": "not adopted",
+ "rule_applied": "Both the pre-registration's rule (prereg.rule_sheet) and the first-stated rule (prereg.rule_first_stated). Under both the preconditions fail: the plugins and MCP pins stay in /etc/codex/requirements.toml, and the bundled advisories (zod 4.6.5, @modelcontextprotocol/sdk 1.31.0, fast-uri 3.1.8) are neither fixed nor accepted. D(with), the token ratio and the always-on delta cannot be measured (r4.ceiling).",
+ "with_window": "A measuring window for codex-security would lift the plugins pin and adds only codex-security's stdio server to the empty [mcp_servers] allowlist (measure2.json what_would_have_to_change). It would keep apps pinned false, so no app connector (public-equity-investing's alpaca broker connector among them) and no install-suggestion tool loads. It turns remote_plugin off (on by default, policy_probe) in the window's throwaway CODEX_HOME, as [features] remote_plugin = false in that home's own config.toml (the pre-run method notes, method-codex, set it so for a plugin ADR), never in ~/.codex/config.toml; archiving that home's sessions/ and state/ and then deleting the home (the assessment's containment_check) undoes it, and restoring /etc/codex/requirements.toml undoes the [marketplaces] restriction below. It turns it off since with it on and the ChatGPT login the ChatGPT backend catalogue is active (remote_global_catalog_active = remote_plugin_enabled and an auth mode that uses the Codex backend, core-plugins/src/manager.rs 769-771 at ce21072). But with plugins on and that catalogue inactive, maybe_start_curated_repo_sync_for_config (manager.rs 774-790) starts the curated sync of openai/plugins main on every start (git ls-remote, then git fetch whenever main's head moved; start_curated_repo_sync, manager.rs 3381) unless MarketplacePolicy refuses the git source; with no [marketplaces] restrict_to_allowed_sources = true in the requirements the policy is unrestricted and validate_git_source passes (marketplace_policy.rs 55-62, 159-166), and the current /etc/codex/requirements.toml (meridian.user-data 68-77) has no [marketplaces] table. So the window also sets, in /etc/codex/requirements.toml, [marketplaces] restrict_to_allowed_sources = true with one [marketplaces.allowed_sources.<key>] entry, source = \"local\", for the vendored path only (the shape in marketplace_policy_tests.rs), which refuses the openai/plugins git source. Without it, the catalogue at upstream head (public-equity-investing and its alpaca connector included; apps = false still blocks the connector) becomes available, and only the installs, not the catalogue, stay limited to the vendored copy. Untested: the restriction, and the vendored route itself (refused under the policy, not verified to install with the pins lifted).",
+ "rerun": "The scripts are records of what ran, not rerun harnesses (each header says so). 0007_r4_run.sh removes an existing run folder (rm -rf; for run name 1 that deletes a1's raw outputs) and keeps the old pgrep -f guard; both harnesses run codex exec in the owner's ~/.codex without the run-only trust flag, so each run wrote a trust_level table, thread rows and a rollout there (owner_codex_home_writes). Nothing watched a run while it lasted: the guard ran before setup and just before codex exec, and the agent then ran unsandboxed, with web search, for up to 60 minutes. M1 ran as: codex exec --json --color never -m gpt-6-astra -c model_reasoning_effort=high --dangerously-bypass-approvals-and-sandbox -C \"$WT\" --disable hooks '<prompt>' < /dev/null. 0007_count_tokens.py reads OpenAI's o200k_base.tiktoken (the file tiktoken 0.14.0 pins, sha256 446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d) from --vocab-dir.",
+ "owner_steps": [
+  "remove the 4 stale [projects.\"<...>/meridian-ab/0007/wt/<...>\"] tables from ~/.codex/config.toml",
+  "archive, then remove, these runs' rows in Codex's state databases (owner_codex_home_writes)",
+  "move the raw outputs (~/src/meridian-ab/0007 and the 6 rollouts) to meridian-evidence"
+ ],
+ "owner_codex_home_writes": {
+  "counted": "2026-11-13 05:25 ET, read-only: the main database files opened with SQLite's immutable=1 (their write-ahead logs not read), selected by threads.cwd under ~/src/meridian-ab/0007/; column names and counts only, no value printed; config.toml by its [projects.*] header lines only",
+  "config_toml": "4 [projects.\"<clone path>\"] tables with trust_level, for wt/ctx (M1, shared by its 3 runs) and wt/ab-0007-a-1, -a-2, -a-3; file time 2026-11-13 04:07:40 ET",
+  "state_5_sqlite": {
+   "threads": 6,
+   "threads_detail": "one per run (3 M1, a1, a2, a3), source exec, cwd the run's clone, creator_account_id and creator_user_id both set (account-linked)",
+   "thread_read_receipts": 6,
+   "thread_dynamic_tools": 0,
+   "thread_attachments": 0,
+   "guardian_review_feedback": 0
+  },
+  "thread_history_1_sqlite": {
+   "thread_items": 74,
+   "thread_items_per_run": "M1 2, 2 and 2; a1 23; a2 25; a3 20",
+   "item_types": {
+    "userMessage": 6,
+    "agentMessage": 12,
+    "commandExecution": 31,
+    "reasoning": 15,
+    "webSearch": 10
+   },
+   "thread_turns": 6,
+   "thread_history_projection_state": 6,
+   "thread_realtime_items": 0
+  },
+  "other_files": "no other ~/.codex database (goals_1, memories_1, queue_1, logs_2) has a row naming these runs' threads or clones, and no file name outside sessions/ names their threads",
+  "rollouts": "6 in ~/.codex/sessions (3 M1, a1, a2, a3)"
+ },
+ "provenance": {
+  "checked": "2026-11-13, unauthenticated blob-less clones of openai/plugins and openai/codex-security, and the npm registry; no GitHub API call",
+  "commands": [
+   "python3 -I 0007_provenance.py <clone of openai/plugins> <clone of openai/codex-security>",
+   "curl -s https://registry.npmjs.org/@openai/codex-security | jq '.versions|keys', '.time|has(\"0.1.32\")'",
+   "git -C <clone of openai/plugins> log -1 --format=%B 0722921d5542fc593105c27bd52630babd8b8c2a"
+  ],
+  "copy_skill_files": 15,
+  "match_tag_npm_v0_1_31": "6/15",
+  "match_tag_npm_v0_1_32": "6/15 (7c19cce, 2026-09-28, 'chore(release): 0.1.32')",
+  "match_tag_npm_v0_2_0": "9/15 (4949af70f, 2026-10-06T02:07:38Z); the best of the 47 npm-v* tags",
+  "match_main_first_parent": "15/15 in 79 consecutive first-parent commits of main's 2,047, from a7b3618f4 (2026-10-06T13:31:36Z) to 2ec54a087 (2026-10-07T14:27:14Z); 14/15 just before and just after",
+  "plugin_json": "copy: 0.1.32, Proprietary; upstream at npm-v0.1.32 and at 2ec54a087: 0.1.95, Apache-2.0",
+  "layout": "the copy is a built payload (mcp/ with brotli bundles, OWNERS); upstream's tree at the tag and on main has mcp-app/, native/, tests/ and pyproject.toml",
+  "openai_plugins_0722921d": "'Update the complete plugin to the released 0.1.32 payload'; the previous sync, 1dc19589, was 'Sync Codex Security 0.1.24 to the API marketplace'",
+  "npm": "44 versions, latest 0.10.0; 0.1.31 then 0.2.0; no 0.1.32 in versions or publish times; the npm-v* tags 0.1.22, 0.1.32 and 0.9.0 were never published",
+  "upstream_now": "main f26b669 (git ls-remote, 2026-11-13); npm 0.10.0 published 2026-11-12T02:18:00Z",
+  "conclusion": "0.1.32 is upstream's release number, never published to npm; the copy's 15 skills are upstream main of 2026-10-06 to 2026-10-07, not that tag. The re-check's C21 is right about upstream's number and wrong that it is an npm release or that the copy is that release."
+ },
+ "superpowers_6_3_0": "openai/plugins' own copy (plugins/superpowers at d420d13): version 6.3.0, licence MIT, author Jesse Vincent, 14 skills, hooks {} in its Codex manifest (plugins/superpowers/.codex-plugin/plugin.json lines 9, 43 and 47; the assessment, confirmed by the re-check's C40); last changed 2026-08-26 in 33bd9529; its skill listing, reconstructed, 3,152 characters and 690 o200k tokens per session. No with/without task was run for it. Not adopted: the same pins block it, and the catalogue route follows upstream's head or the ChatGPT backend, with no pin. Overlap, as fact: Codex's multi_agent subagents and Orca's worktrees do part of what its parallel-agent and worktree skills do (the assessment); its content is obra/superpowers, which ADR 0005 measured for Claude Code at v7.0.2.",
+ "mcp_tools": {
+  "bundle": "mcp/server.mjs.br.part-000 + part-001 at the pin (266,028 bytes), brotli-decompressed to 1,831,445 bytes (sha256 0dbba20761680797ee0a51ed38f11a132b86b7157f19a4bfc9d4b2f9c9c9378c), read as text only",
+  "script": "0007_mcp_model_tools.py (fixed 2026-11-13)",
+  "main_server": "createCodexSecurityServer(), used unless --artifact-writer is passed",
+  "tools": 47,
+  "model_visible": 22,
+  "app_only": 25,
+  "registered": "37 by server.registerTool in createCodexSecurityServer (33) and registerScanHandoffTools (4), 10 through registerCompactTool (modelOnlyMeta)",
+  "call_sites_in_bundle": "39 server.registerTool( sites: 38 with a literal name (37 above, 1 in the worker layout) and 1 inside registerCompactTool",
+  "first_count": "39 sites, 12 visible: it missed the 10 registerCompactTool tools",
+  "upstream_note": "openai/plugins 0722921d: 'Started the installed stdio MCP server, listed 47 tools'"
+ },
+ "cost": {
+  "codex_arm_a_tokens": 877811,
+  "split": "M1 3 x 16,286 = 48,858; R4 a1 270,138 + a2 310,805 + a3 248,010",
+  "codex_arm_b_tokens": 0,
+  "deepseek": "0 (not used; the key was not touched)",
+  "github_api_in_runs": "0 REST, 0 GraphQL"
+ },
+ "scripts": {
+  "0007_r4_run.sh": {
+   "role": "run a1; its record, not a rerun harness (rerun)",
+   "source_sha256": "c988ea7bcf019ec62002b24b7a8b36bdd538be161d333e2678d17eac991c38a8",
+   "published": "work folder written as $WORK, a 3-line note, and a 4-line warning that it is not a rerun harness"
+  },
+  "0007_r4_run2.sh": {
+   "role": "runs a2 and a3: a1's setup, flags and brief, with the fixed guard, no folder reuse and extra containment lines; its record, not a rerun harness (rerun)",
+   "source_sha256": "f5e6997cd513f2a5c0bdb9f5db5aa3d19840d306904fdcae542c3435f5c913a2",
+   "published": "work folder written as $WORK, a 3-line note, and a 4-line note that it is not a rerun harness"
+  },
+  "0007_run_summary.py": {
+   "role": "per-run counts (tokens, calls, pattern hits), the same file in both series",
+   "source_sha256": "cb6306b33380456fa7e3d08faf1c377013ee4666bbb6e63d7626ede885760e9e",
+   "published": "user name written as 'owner', a 2-line note"
+  },
+  "0007_validate_r4.py": {
+   "role": "setup and grading check with synthetic jts.ini files",
+   "source_sha256": "ec33531082d87db3dbf276161966a8de34c377b767408b3d204dc65f7447be2b",
+   "published": "two fixtures build their mode letter from a variable (same strings), a 3-line note"
+  },
+  "0007_cmd_review.py": {
+   "role": "containment review of each run's commands and web searches",
+   "source_sha256": "6ef9e1dc343eab90add1f4cea38d52037be520452d90630b3859755037717f0d",
+   "published": "byte for byte"
+  },
+  "0007_hit_context.py": {
+   "role": "context of a containment-pattern hit in a rollout's outputs",
+   "source_sha256": "2ff2633b8133c26c163b353a069d45a91eca4431286c3514f283889d5ce36381",
+   "published": "user name written as 'owner', a 2-line note"
+  },
+  "0007_cleanup_run.sh": {
+   "role": "removes a run's clone and stand-in home after grading",
+   "source_sha256": "c35033861c9d70b71c08b25f9d839b2bd52ca59d398650983de1a18bfbd80f5a",
+   "published": "byte for byte"
+  },
+  "0007_gateway_guard.sh": {
+   "role": "the fixed IB Gateway guard of a2 and a3 (the operator's ~/.cache/meridian/gateway-guard.sh)",
+   "source_sha256": "12bbc82389ebe3bb30df285cbc7844dfb1d0e85757fe62ceb5e1f078729d9fec",
+   "published": "byte for byte"
+  },
+  "0007_make_market.py": {
+   "role": "builds the vendored marketplace manifests for the policy probe",
+   "published": "byte for byte"
+  },
+  "0007_compare_prompt.py": {
+   "role": "M2 section comparison",
+   "published": "byte for byte"
+  },
+  "0007_provenance.py": {
+   "role": "the codex-security provenance check above",
+   "published": "written 2026-11-13 for this check"
+  },
+  "0007_mcp_model_tools.py": {
+   "role": "MCP tool count and the on-demand text",
+   "published": "fixed 2026-11-13"
+  },
+  "0007_reconstruct_listing.py, 0007_tool_specs.py, 0007_count_tokens.py": {
+   "role": "the reconstruction and the o200k_base counter (0007-injected.json)",
+   "published": "byte for byte"
+  }
+ },
+ "raw": "Kept on the owner's machine; no agent pushed it. In the distro: ~/src/meridian-ab/0007 (2.7 MB: per-run event streams, rollouts, last messages, containment and guard logs, and the M1 and M2 outputs), 6 rollouts in ~/.codex/sessions, and the runs' rows in ~/.codex/state_5.sqlite and ~/.codex/thread_history_1.sqlite (owner_codex_home_writes). The rollouts carry account fields, the same run data also sits in those rows, and none of it goes into this repository."
+}

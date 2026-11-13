@@ -1,0 +1,358 @@
+{
+ "adr": "0009",
+ "candidate": "dsh-codex-peer v0.3.4, annotated tag on f4882df301c063481a80014ab9e6f99845e4bc94 (tree 2a32d9dcb833b1cc943649fe3801a22f994cbe82)",
+ "candidate_record": {
+  "repository": "https://github.com/wuanthony397-hash/dsh-codex-peer",
+  "tag": "v0.3.4, annotated, on f4882df301c063481a80014ab9e6f99845e4bc94 (2026-10-08T14:03:57Z), the latest of 8 releases (v0.2.1 to v0.3.4, all published 2026-10-08)",
+  "main": "462785a (2026-10-09) differs from the tag only in one line of README.zh-CN.md and an added PNG",
+  "release_asset": "dsh-codex-peer-0.3.4.tgz, 81,720 bytes, sha256 67a34b135e8dfb76b8493747c83cc2329affde8eb0aa4ce665ca8b4e30de1278 (GitHub's asset digest, built by the repository's CI with npm pack); not downloaded, so its per-file identity with the tag was not re-checked",
+  "npm": "not published: 404 for dsh-codex-peer and @wuanthony397-hash/dsh-codex-peer",
+  "licence": "MIT (LICENSE at the pin, package.json)",
+  "maintainer": "one, the individual GitHub account wuanthony397-hash (created 2026-03-23, 0 followers, 2 public repositories), sole committer: 15 commits on 2026-10-08 and 2026-10-09, none in the 35 days since, 14 of them unsigned including the pin; 0 issues, 0 pull requests, 2 stars, 0 forks; CI green at the pin (5 check runs)",
+  "found_in": "the community list awesome-dsh-plugin (CC0-1.0) at 891b3e3, category agi, README line 148, added 2026-10-17 (#6954); the list holds no stars, downloads or capabilities record for it",
+  "runtime_fit": "dsh 0.2.2-rc.1 (tag dsh-v0.2.2-rc.1 = 66491b0), profile dsh-tui (dsh-tui 0.20.0), started by Orca 1.4.257; it meets the plugin's peer @deepseek-ai/dsh ^0.2.0-rc.2 because dsh matches ranges with prereleases included"
+ },
+ "need_detail": {
+  "goal_features": "each runtime's built-in /goal: dsh-goal and goal-round-driver on in dsh-tui, Codex's goals feature, Claude Code's Stop-hook evaluator; each keeps one session working toward one end state",
+  "handbook": "docs/HANDBOOK.md, Goals, on the branch m2/handbook-size-budget (origin), not yet merged: neither main nor this branch has the file"
+ },
+ "runtime": "DeepSeek Harness 0.2.2-rc.1 (tag dsh-v0.2.2-rc.1 = 66491b0), headless template, scratch DSH_HOME; version gate passed before every probe",
+ "counter": {
+  "script": "0009_count_tokens.py",
+  "encoding": "o200k_base",
+  "vocabulary_sha256": "446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d",
+  "note": "OpenAI's vocabulary as a proxy; DeepSeek's tokenizer differs and no model call was made, so there are no provider token counts",
+  "vocabulary_file": "o200k_base.tiktoken (3,613,922 bytes), the file tiktoken 0.14.0 pins; not committed. The counter reads it from docs/adr/vocab/ (the folder above the script's, its VOCAB_DIR) unless --vocab-dir is given, and checks the sha256 above",
+  "rerun_vocab_dir": "a rerun passes --vocab-dir with a folder outside the repository. docs/adr/vocab/ is not git-ignored (git check-ignore -v --no-index returns 1), so the file there would be listed by git ls-files --others --exclude-standard, the list the paper-only and public-tree scans read; some of its rank lines read as the IB Gateway's live port, which the paper-only scan rejects, and a git add -A would commit OpenAI's vocabulary to the public repository"
+ },
+ "static_from_source": {
+  "source": "the re-check's reconstruction of the texts from the plugin's source at f4882df (lib/tools.js, lib/planning-tools.js, lib/argv.js, lib/review.js, lib/plan.js), counted again at this revision with the counter above; the five tool objects on the wire are byte-identical to it (0009-always-on.json, peer_tools_equal_static_fact_sheet_files)",
+  "scripts": "0009_extract_tools.py (the tool objects, the array and the listing; its output folder is 0009_analyze_probes.py's STATIC_WIRE_DIR) and 0009_build_percall.py (the per-call texts), the re-check's own, byte for byte except that the published 0009_build_percall.py loads its helper as 0009_extract_tools.py, not extract_tools.py (its first lines say so); both read the source as text and never run it",
+  "rerun": "2026-11-13, at this revision: both scripts on a fresh unauthenticated fetch of f4882df (tree 2a32d9dcb833b1cc943649fe3801a22f994cbe82) wrote 14 files, each byte-identical with the re-check's, and 0009_count_tokens.py gave every count below",
+  "every_deepseek_request": [
+   {
+    "text": "codex_ask tool object",
+    "chars": 2165,
+    "utf8_bytes": 2165,
+    "tokens_o200k": 462
+   },
+   {
+    "text": "codex_review tool object",
+    "chars": 1525,
+    "utf8_bytes": 1525,
+    "tokens_o200k": 319
+   },
+   {
+    "text": "codex_status tool object",
+    "chars": 871,
+    "utf8_bytes": 871,
+    "tokens_o200k": 186
+   },
+   {
+    "text": "codex_plan tool object",
+    "chars": 2698,
+    "utf8_bytes": 2698,
+    "tokens_o200k": 609
+   },
+   {
+    "text": "codex_task tool object",
+    "chars": 2656,
+    "utf8_bytes": 2660,
+    "tokens_o200k": 596
+   },
+   {
+    "text": "the five objects, summed",
+    "chars": 9915,
+    "utf8_bytes": 9919,
+    "tokens_o200k": 2172
+   },
+   {
+    "text": "the five objects as one JSON array (2 brackets, 4 commas)",
+    "chars": 9921,
+    "utf8_bytes": 9925,
+    "tokens_o200k": 2174
+   },
+   {
+    "text": "names and descriptions only, as '- name: description' lines (comparison; dsh does not send this form)",
+    "chars": 2971,
+    "utf8_bytes": 2975,
+    "tokens_o200k": 659
+   }
+  ],
+  "per_codex_call_openai_side": [
+   {
+    "text": "codex_ask prompt skeleton, mode ask",
+    "chars": 1513,
+    "tokens_o200k": 325
+   },
+   {
+    "text": "codex_ask prompt skeleton, mode plan",
+    "chars": 1618,
+    "tokens_o200k": 349
+   },
+   {
+    "text": "prompt skeleton, mode implement (also codex_task run)",
+    "chars": 1520,
+    "tokens_o200k": 328
+   },
+   {
+    "text": "codex_review stdin for an R4-style review",
+    "chars": 2380,
+    "utf8_bytes": 2382,
+    "tokens_o200k": 507
+   },
+   {
+    "text": "codex_review --output-schema file",
+    "chars": 2166,
+    "tokens_o200k": 484
+   },
+   {
+    "text": "codex_plan critique stdin",
+    "chars": 2603,
+    "tokens_o200k": 578
+   },
+   {
+    "text": "codex_plan critique --output-schema file",
+    "chars": 1716,
+    "tokens_o200k": 410
+   }
+  ]
+ },
+ "baseline_agents_md": {
+  "commit": "9c5daaae9d32acf259f965fd7b95b458604503b6",
+  "lines": 126,
+  "chars": 8318,
+  "utf8_bytes": 8320,
+  "tokens_o200k": 2159
+ },
+ "always_on_measured": {
+  "file": "0009-always-on.json",
+  "method": "3 probes per arm, order A1 B1 B2 A2 A3 B3 (02:00:11 to 02:00:47 ET), one-line probe, dsh under unshare -rn against a loopback capture that answered 401; first request body counted offline",
+  "basis": "raw request body: the whole JSON body as sent, counted as one text (without_tokens_o200k, with_tokens_o200k, delta_tokens_o200k, share_of_first_request); prompt_texts gives ADR 0011's basis for the same captures",
+  "changes_from_protocol": [
+   "an o200k count of the first request body captured on loopback (method-dsh's route; this ADR and ADR 0010 ran it under unshare -rn with a stub answering 401, ADRs 0011 and 0012 under bwrap --unshare-net with a stub answering 400) instead of the first step's provider usage (input plus cache-read plus cache-write tokens), because no run may use the DeepSeek key",
+   "the git source at f4882df loaded as a local module (./peer/index.js) instead of the sha256-checked v0.3.4 tarball through dsh plugin add",
+   "--permission-mode danger-full-access and timeout 300 instead of read-only and 1800",
+   "detached worktrees of one shallow clone of the public repo at 96e82e6 (no later history) instead of a fresh fetch per run",
+   "the measured difference between the arms is still only the five tool objects"
+  ],
+  "driver": "A1 started on its own; B1, B2, A2, A3 and B3 from one shell command, not committed, that saved each probe's output as probe-<tag>.driver.log (A1 has none)",
+  "containment_check_version": "0009_check_after.sh is the version B1 to B3, A2 and A3 ran: it was saved at 02:00:38.348, after A1's containment file (02:00:12.97) and before B1 started (02:00:38.457), adding two output filters, uv-<hex>.lock names in /tmp and probe_one/task_one among leftover processes. The version A1 ran was not kept; A1's file shows two uv lock names and its own parent probe_one.sh, the lines those filters drop, so no containment result changes",
+  "probe_exit_ms": {
+   "A1": 1811,
+   "B1": 1912,
+   "B2": 1811,
+   "A2": 1812,
+   "A3": 1912,
+   "B3": 1913
+  },
+  "probe_exit_code": 1,
+  "without_tokens_o200k": {
+   "runs": [
+    6003,
+    6003,
+    6003
+   ],
+   "median": 6003
+  },
+  "with_tokens_o200k": {
+   "runs": [
+    8175,
+    8175,
+    8175
+   ],
+   "median": 8175
+  },
+  "delta_tokens_o200k": 2172,
+  "delta_bytes": 9924,
+  "delta_bytes_breakdown": "the five objects' 9,919 bytes plus 5 commas in the tools array",
+  "share_of_first_request": "+36.2 % of a one-line probe's first request (raw body; +37.3 % on the prompt texts), headless preset; the standard preset that dsh-tui uses was not measured",
+  "prompt_texts": {
+   "basis": "ADR 0011's prompt figure (0011_analyze_capture.py): system text + tools as wire JSON (compact, key order as sent) + the message texts, each counted on its own; the one user message holds three text blocks, the probe among them",
+   "recounted": "2026-11-13, at this revision, offline and read-only, by 0009_prompt_basis.py (ADR 0011's split, writing nothing) with 0009_count_tokens.py and the sha256-checked o200k_base vocabulary, over the six captured bodies in ~/src/meridian-ab/0009/capture; raw body counts reproduced (27,428 and 37,352 bytes, 6,003 and 8,175 tokens)",
+   "without": {
+    "runs": [
+     5825,
+     5825,
+     5825
+    ],
+    "median": 5825,
+    "chars": 26967,
+    "system": {
+     "chars": 2222,
+     "tokens_o200k": 449
+    },
+    "tools": {
+     "count": 22,
+     "chars": 18583,
+     "tokens_o200k": 3857
+    },
+    "user_message": {
+     "chars": 6162,
+     "tokens_o200k": 1519,
+     "blocks": [
+      {
+       "text": "probe",
+       "chars": 54,
+       "tokens_o200k": 13
+      },
+      {
+       "text": "agent instructions (AGENTS.md and CLAUDE.md at 96e82e6, in dsh's wrapper)",
+       "chars": 5646,
+       "tokens_o200k": 1419
+      },
+      {
+       "text": "runtime context (with the run's 38-character working folder)",
+       "chars": 460,
+       "tokens_o200k": 87
+      }
+     ]
+    }
+   },
+   "with": {
+    "runs": [
+     7997,
+     7997,
+     7997
+    ],
+    "median": 7997,
+    "chars": 36887,
+    "system": "as without",
+    "tools": {
+     "count": 27,
+     "chars": 28503,
+     "tokens_o200k": 6029
+    },
+    "user_message": "as without"
+   },
+   "delta_tokens_o200k": 2172,
+   "delta_chars": 9920,
+   "delta_chars_breakdown": "the five objects' 9,915 characters plus 5 commas in the tools array",
+   "same_delta_reason": "system text and messages are identical across the arms (0009-always-on.json all_six_share), and the tools are counted as the same compact JSON on both bases, so the delta is the tool section's on both",
+   "adr_0011": "ADR 0011's without arm, at the same base 96e82e6 and overlay, reports the same counts on both bases: 26,967 characters, 5,825 tokens on the prompt texts; 27,428 bytes, 6,003 tokens on the raw body"
+  },
+  "tools": {
+   "count_without": 22,
+   "count_with": 27,
+   "tokens_without": 3857,
+   "tokens_with": 6029
+  },
+  "provider_tokens": {
+   "without": [
+    6820,
+    6820,
+    6820
+   ],
+   "with": [
+    9367,
+    9367,
+    9367
+   ],
+   "delta": 2547,
+   "basis": "first model call's prompt tokens as DeepSeek reports them, real series (0009-real-results.json always_on_provider_tokens)"
+  },
+  "provider_tokens_reason": "measured in the real series, not in the probes, which could not use a key"
+ },
+ "r4": {
+  "task": "R4 of ab-tasks.md, worktree at 96e82e6, graded against 39cb68e",
+  "brief_sha256": "e0807f47b7003c5340cb16b9df4ab2874d97c6eac1054835c6b84238d20bb5c2",
+  "rubric_sha256": "3210a767bab5eef7e1e45a91122283940a204193be9be5497437dcf727626e10",
+  "fixed_at": "2026-11-13T02:03:37-05:00 (0009-prereg.txt), after the always-on probes and before any R4 run",
+  "rubric_timing": "the rubric was hashed at 02:03:37 ET, 34 s after ADR 0007's first Codex run of the same brief had finished on this machine; its examples of real findings resemble that run's other findings, so its independence from Codex's answer rests on timing alone",
+  "first_round": {
+   "dsh_arms": "no run: no runner existed and no run could reach a DeepSeek key",
+   "reference_arm": "stopped before C1 by a false guard alarm at 02:04 ET",
+   "scripts": "the first round's reference runner and reader (0009_task_one.sh, 0009_task_read.sh) were never run past the guard and are withdrawn; the real series' scripts replace them"
+  },
+  "reference_evidence_adr_0007": {
+   "file": "0007-results.json, r4",
+   "brief": "0007-r4-brief.txt (sha256 56e5c8ac4175feaed5a14cf0dc221ad3a15f9616bf497533db69ddbc6653b3b8): the bytes of 0009-brief-R4.txt without its trailing LF",
+   "base": "96e82e6b521cdb9c7d172176898d20e2658ec50b",
+   "flags": "codex exec --json --color never -m gpt-6-astra -c model_reasoning_effort=high --dangerously-bypass-approvals-and-sandbox --disable hooks (this ADR's reference arm has -s read-only and --skip-git-repo-check instead of the bypass flag)",
+   "runs": "a1 2026-11-13 02:00 ET (old guard), a2 04:04 ET and a3 04:07 ET (fixed guard, 0007_gateway_guard.sh)",
+   "defect_reported": "3/3",
+   "false_findings": [
+    0,
+    0,
+    0
+   ],
+   "web_search_items": [
+    3,
+    4,
+    3
+   ],
+   "conditions": "a proxy for the reference arm, not the same conditions: those runs bypassed Codex's sandbox, and no recorded Codex run in this distro has used -s read-only (ab-codex.md's commands and ADR 0007's runs all use the bypass flag; no committed data file shows a read-only run; setup.sh lines 427-428 on main 9c5daaa set sandbox_mode = danger-full-access for the stack's Codex), so whether Codex's read-only sandbox works in this WSL2 distro, and how it would change the outcome, is unknown",
+   "consequence": "on this proxy the reference clause was likely to fail; the real series confirmed it (codexdirect 3 of 3, 0 false findings; 0009-real-results.json)"
+  },
+  "real_task": "run 2026-11-13 09:05:57 to 09:47 ET under 0009-real-prereg.txt (sha256 268aa64edf2822a1c2c217c1b2a205993053972002f8f4539a18d87234a35371, written 09:05:50 ET); every count, token figure, void and containment result is in 0009-real-results.json"
+ },
+ "codex_home": {
+  "read": "2026-11-13, at this revision: names and modification times only (stat and find in the distro, no file opened), Eastern time",
+  "changed_on_2026_11_13": [
+   "config.toml 04:07:40 (ADR 0007's run a3 start; 0007-results.json r4.containment: its codex exec runs added a [projects.\"<clone path>\"] trust_level table for each clone they ran in, 4 tables)",
+   "goals_1.sqlite, memories_1.sqlite and queue_1.sqlite 04:26:32",
+   "thread_history_1.sqlite 04:34:36",
+   "models_cache.json 04:35:13",
+   "state_5.sqlite 04:35:28",
+   "state_5 and thread_history_1 -shm 04:36:56, -wal 04:36:58",
+   "shell_snapshots/, thread-writer-locks/ and the goals_1, memories_1 and queue_1 -shm files 04:36:58",
+   "tmp/arg0-linux 04:56:17",
+   "27 files under sessions/ modified on 2026-11-13, from the day's Codex runs"
+  ],
+  "trust_tables": "seen only from codex exec with --dangerously-bypass-approvals-and-sandbox (ADR 0007); whether the plugin's -s read-only --skip-git-repo-check children write them too was not checked",
+  "who_writes": "the plugin sets no CODEX_HOME unless codexHome is given (lib/config.js lines 68-70: empty inherits CODEX_HOME, or ~/.codex). In the real series every run had a scratch HOME, so the with row set codexHome to the owner's ~/.codex and the reference arm ran with CODEX_HOME=~/.codex (0009_real_ab-ns.sh); both wrote Codex's own records there, and ~/.codex/config.toml was mounted read-only"
+ },
+ "rule_text": {
+  "as_fixed": "adopt only if the with arm reports the [DEFAULT]-inheritance defect in at least 2 of 3 runs and the without arm in at most 1; with has at most one more false finding than without; the reference arm reports it in at most 1 of 3 or has more false findings than with; the always-on delta is at most 2,500 provider tokens; and nothing changes outside the plugin's state directory. One tool per job (plan 8.6) still applies if it passes",
+  "last_clause_as_fixed": "nothing changes outside the plugin's state directory",
+  "history": [
+   "assessment, 2026-11-12 21:34 ET (its record's modification time), 'Stated before any run': (a) with reports the defect in >= 2 of 3 runs and without in <= 1 of 3; (b) with's false findings at most without's + 1; (c) codexdirect reports it in <= 1 of 3 or has more false findings than with; (d) always-on delta <= 2,500 provider tokens per request, and the result needs no write path; (e) 'no tracked or untracked file changes outside .codex-peer/ in any worktree'",
+   "re-check, notes file last modified 2026-11-13 01:47:09 ET, before the always-on probes (the first started 02:00:11 ET): kept (a) to (c) and the 2,500 ceiling, dropped (d)'s write-path condition, and widened (e) to 'nothing changes outside the plugin's state directory', which covers dsh's own writes (sessions, storages, an anonymous id, /tmp/dsh-spill-*) and Codex's under its home, so every run fails it as written",
+   "amendments a, b and c, 2026-11-13, after the always-on probes (rule_text.amended); b loosened the last clause from what the probes showed and was narrowed at the revision that added config.toml"
+  ],
+  "fixed_by": "the re-check's notes file, not committed, last modified 2026-11-13 01:47:09 ET, before the always-on probes (the first started 02:00:11 ET); the rule's time rests on that modification time alone, because 0009-prereg.txt (02:03:37 ET) hashes only the brief and the rubric",
+  "assessment_protocol_replaced": "the assessment's protocol never ran; the re-check replaced it because its worktrees of the main checkout could reach the fix 39cb68e, the with arm's brief had an extra sentence, worktree names revealed the arm, and it would have written profiles and plugin state into the owner's ~/.dsh, without method-dsh's shared overlay or launch hygiene",
+  "always_on_ceiling_origin": "the 2,500 ceiling was set by the assessment (2026-11-12) with its static count of the same five schemas, 2,174 o200k tokens, in hand, and the re-check kept it; the measured delta, 2,172, is the per-tool counts summed (462 + 319 + 186 + 609 + 596), a fixed property of those schemas, so the clause adds no independent evidence",
+  "amended": [
+   "2026-11-13, at the ADR revisions, after the always-on probes and after ADR 0007's Codex-only R4 runs, before any R4 run of this ADR: no R4 result of its arms was seen, but b was written from what the always-on probes showed",
+   "a: the with arm's row also sets workspaceDir: '' and extraArgs: ['--disable', 'hooks'] (not run-verified), so the plugin writes no .codex-peer mirror and its Codex children run without hooks, as the reference arm does",
+   "b: the last clause counts only changes that appear in the with arm and not in the without arm, because dsh itself writes outside the plugin's state folder in both (sessions, storages and an anonymous id under the run folder, one /tmp/dsh-spill-* directory per probe). Under the Codex home it exempts only what the reference arm writes too and holds no configuration: a session file per child (no --ephemeral), the state_5, thread_history_1, goals_1, memories_1 and queue_1 databases, models_cache.json, shell_snapshots/, thread-writer-locks/ and tmp/ (codex_home). Any other change under the Codex home counts, ~/.codex/config.toml above all, whose sha256 is recorded before and after every run (0009-real-prereg.txt section 8). Without the exemption, as fixed or with session files alone exempt, the clause fails every with-arm run that calls codex_review",
+   "b, narrowed at the revision that added config.toml: the previous wording exempted everything Codex writes under its home, which would also have let through a change to the owner's ~/.codex/config.toml, such as the trust tables ADR 0007's runs added",
+   "c: after an extension to 5 runs per arm the 5-run counts decide, at the same fractions: with in at least 4 of 5, without in at most 1 of 5, false findings totalled over the same runs, the reference arm staying at 3 runs; a 2-2 tie already fails the without clause, and more runs cannot undo that"
+  ],
+  "containment_check_reads": "the run worktree (git status with ignored files), the main checkout's status hash, the owner's ~/.dsh, *codex-peer* names (home to depth 4, /tmp) and new top-level names in home and /tmp; not ~/.codex, where the last clause is unchecked until check_after.sh gains the listing and the config.toml hashes in 0009-real-prereg.txt section 8"
+ },
+ "rule": {
+  "with_reports_defect_in_at_least_2_of_3": "not met: 1 of 3 counted (b3); b1 and b2 void (rule 9(a)) and counted against the arm; all three with answers reported the defect",
+  "without_reports_defect_in_at_most_1_of_3": "1 counted run (a1), which reported the defect; a2 and a3 void; on the answers alone 3 of 3",
+  "with_false_findings_at_most_without_plus_1": "met: 0 against 0",
+  "reference_at_most_1_of_3_or_more_false_than_with": "not met: 3 of 3, 0 false findings against 0",
+  "always_on_delta_at_most_2500_provider_tokens": "not met: +2,547 DeepSeek prompt tokens on the first call (6,820 to 9,367); the o200k proxy below gave +2,172",
+  "nothing_changed_outside_state_folder": "as fixed: not met in any run of any arm; as amendment b reads it: met (config.toml mounted read-only, sha256 unchanged)"
+ },
+ "rule_result": "not adopted",
+ "rule_result_note": "the void rule, not the addition, decided the first clause: 4 of 6 dsh runs (2 per arm) read the fix from the public repository over the network; three clauses fail on any reading",
+ "decision": "not adopted, on the rule fixed before the real runs (three clauses fail)",
+ "adoption_path": "only if a reopened series' rule says adopt, and then the status becomes proposed: on the owner's word, deploy/wsl/setup.sh's dsh step would gain the pinned install into dsh-tui with a codex-peer row (stateDir, workspaceDir: '', extraArgs: ['--disable', 'hooks']) and a check_dsh line that asserts the row, and UPSTREAM.md's installed tables a row",
+ "containment": {
+  "clause_as_fixed": "not met in 6 of 6 probes, both arms: each left one new, empty /tmp/dsh-spill-* directory and wrote sessions, storages and an anonymous id under the run folder, all dsh's own and outside the plugin's state folder",
+  "clause_as_amended_b": "met in 6 of 6 probes; amendment b was written after these probes, from what they showed",
+  "main_checkout_status_hash_unchanged": "6 of 6 probes",
+  "owner_dsh_hashes_unchanged": "6 of 6 probes",
+  "run_worktree_clean_with_ignored_files": "6 of 6 probes",
+  "tmp_dsh_spill": "each of the 6 probes, in both arms, left one new empty /tmp/dsh-spill-* directory, dsh's own and not the plugin's; gone by cleanup",
+  "codex_home": "not checked (no Codex run in the probes)",
+  "leftover_process_check": "matches command lines (pgrep -af 'ab-without|ab-with|capture_server|codex exec|meridian-ab/0009'), as the old guard did; in A2, A3 and B3 it listed ADR 0007's running codex exec (its run a1), not a process of this measurement",
+  "void_runs": 0
+ },
+ "cost": {
+  "probes": {
+   "deepseek_tokens": 0,
+   "codex_runs": 0,
+   "github_rest_calls": 0,
+   "github_graphql_calls": 0
+  },
+  "real_series": "8,188,240 DeepSeek tokens and 964,706 Codex tokens (0009-real-results.json cost)"
+ },
+ "raw_files": "raw files of the probes and of the real series hold local paths and prompt text; they stay on the owner's machine, not published, and are not yet archived in the private meridian-evidence repository"
+}

@@ -1,0 +1,23 @@
+# The A/B overlay as it ran for ADR 0010, last --patch in both arms. <$EV> stands for the
+# evidence folder's absolute path, which the run wrote out, as in ab-dsh.md. dsh does not
+# expand ~ in these roots (session-persistence-jsonl resolves the root against the working
+# directory, storage-json creates it as given), so write the absolute path. Where that was
+# read: upstream_reads_after_the_recheck in 0010-results.json.
+- id: session-log-deepseek
+  config: {enabled: false}
+- id: plugin-package-inventory-deepseek
+  config: {enabled: false}
+- id: session-telemetry-otel
+  config: {mode: DISABLED}
+- id: session-title-llm
+  disabled: true
+- id: tool-web
+  disabled: true
+- id: agent-default-model
+  config: {provider: deepseek-official, model: deepseek-flash}
+- id: llm-deepseek
+  config: {thinking: enabled, reasoningEffort: max}
+- id: session-persistence-jsonl
+  config: {root: <$EV>/sessions, compression: none}
+- id: storage-json
+  config: {root: <$EV>/storages}

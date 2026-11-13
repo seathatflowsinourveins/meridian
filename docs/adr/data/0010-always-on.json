@@ -1,0 +1,43 @@
+{
+ "adr": "0010",
+ "what": "Always-on context of DeepSeek Harness 0.2.2-rc.1 without dsh-gungnir: the first provider request of a one-line probe, split into its parts. There is no with arm: dsh 0.2.2-rc.1 refused the install (exit 1, nothing installed).",
+ "captured": "2026-11-13, 01:57 ET, distro meridian",
+ "setup": "Headless profile from dsh's shipped template in a scratch DSH_HOME, plus the A/B overlay (uploads and telemetry off, session-title model and tool-web off, deepseek-flash with thinking on and effort max, session log uncompressed, storage-json and session roots in the evidence folder). 3 runs (A1 to A3), each in a fresh detached worktree of an unauthenticated scratch clone at the R2 base 96e82e6b521cdb9c7d172176898d20e2658ec50b with the tests of 39cb68ea3241caeececb6db0521a12ea2fa92fee. Probe: 'Reply with exactly the word OK. Do not call any tool.'",
+ "capture": "dsh ran inside `unshare -rn` with DEEPSEEK_BASE_URL pointing at 0010_capture_server.py on 127.0.0.1, which recorded the request body and the header names (never their values) and answered 401; the API key was a placeholder. No model call was made and nothing left the machine, so there are no provider prompt-token counts.",
+ "split": "0010_split_request.py on each request body. Always-on = system prompt + tool schemas (compact JSON as sent) + every injected message block; the task block is excluded.",
+ "basis": "Prompt texts without the probe, each part counted on its own and summed. With the probe's 13 tokens the total is 5,825, the basis of ADR 0011 (5,825) and ADR 0012 (5,835, its runtime context 21 characters longer). The raw body (request.body_bytes) was not counted in tokens; ADR 0009 counts raw bodies (6,003 tokens at 27,428 bytes, its probe file 54 bytes with a final newline against 53 here, without one).",
+ "tokens": "0010_count_tokens.py, o200k_base (OpenAI's vocabulary, file sha256 446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d), a proxy: DeepSeek's tokenizer is not available offline.",
+ "request": {
+  "path": "/anthropic/v1/messages",
+  "model": "deepseek-flash",
+  "thinking": "enabled",
+  "effort": "max",
+  "max_tokens": 256000,
+  "body_bytes": 27426
+ },
+ "runs": [
+  {"run": "A1", "body_sha256": "be005ae136d8f79323ed7e179da399969fd9c928eb56b768e4f48cc77dbff614", "always_on_chars": 26911, "always_on_bytes": 26965, "always_on_tokens": 5812},
+  {"run": "A2", "body_sha256": "0b626953532287c28c9f53f89d222ce65e98544384589b1c9ed1c0b1b497a40e", "always_on_chars": 26911, "always_on_bytes": 26965, "always_on_tokens": 5812},
+  {"run": "A3", "body_sha256": "c369754e66dbcc945208059a2ea6d36d9bc6e60d6ea38a46cef7d0fbf07349bc", "always_on_chars": 26911, "always_on_bytes": 26965, "always_on_tokens": 5812}
+ ],
+ "runs_note": "The system prompt, the tools and the agent-instructions message are byte-identical in the three runs; the runtime-context message differs by one character of the worktree name.",
+ "parts_per_run": {
+  "system_prompt": {"chars": 2222, "bytes": 2236, "tokens": 449},
+  "tool_schemas": {
+   "count": 22,
+   "names": ["bash", "create_goal", "edit", "get_goal", "glob", "grep", "interrupt_agent", "job_kill", "job_list", "job_output", "list_agents", "read", "read_image", "send_message", "skill", "subagent", "subagent_fork", "todo_write", "update_goal", "workflow", "working_directory", "write"],
+   "chars": 18583, "bytes": 18621, "tokens": 3857
+  },
+  "agent_instructions_message": {"holds": "AGENTS.md at 96e82e6 (5,299 bytes) and CLAUDE.md, which imports it with @AGENTS.md", "chars": 5646, "bytes": 5646, "tokens": 1419},
+  "runtime_context_message": {"chars": 460, "bytes": 462, "tokens": 87},
+  "task_not_counted": {"chars": 53, "bytes": 53, "tokens": 13}
+ },
+ "always_on_total": {"chars": 26911, "bytes": 26965, "tokens": 5812, "median_tokens_of_3": 5812},
+ "dsh_goal_machinery_inside_the_total": {
+  "create_goal_get_goal_update_goal_schemas": {"bytes": 1741, "tokens": 339, "as": "those three tools as one compact JSON array (ASCII, so 1,741 characters too)", "one_by_one_bytes": [579, 172, 986], "one_by_one_note": "1,737 bytes one by one, read from the A1 capture on 2026-11-13 (0010-results.json, recheck_of_raw_capture); ADRs 0011 and 0012 count them that way (ADR 0011: 1,737 characters, 338 tokens; ADR 0012: 338 tokens). The array adds two brackets and two commas."},
+  "system_prompt_paragraph_on_goals": {"bytes": 528, "tokens": 101},
+  "tokens": 440
+ },
+ "cross_check": "dsh's own session log of each run, read with 0010_dsh_session_log.py: system prompt 2,236 bytes, injected messages 5,646 and 462 bytes; tools 18,577 bytes as the session log records them.",
+ "not_here": "Request bodies, split parts, session logs, run streams and install-probe output are on the owner's machine, not published: their paths name the home directory. Gate 0, the rebuilt texts and the rule result are in 0010-results.json."
+}

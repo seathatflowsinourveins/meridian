@@ -1,0 +1,2 @@
+ADR 0005 key (decided 2026-11-13 by secrets.choice): arm with superpowers = b
+[Published copy (docs/adr/data/0005-key.txt) of the key written 2026-11-13 01:31 ET, before the first run; the original ends its line with CR LF (sha256 ee60ef93387b02ce04a1623ee60cbca912a5e69e9464cdea6662e12559ce1dfa), this copy with LF, and this line is added.]

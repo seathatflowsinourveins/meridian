@@ -1,0 +1,294 @@
+{
+ "adr": "0010",
+ "what": "The aggregates behind ADR 0010's figures. dsh-gungnir was never installed: dsh 0.2.2-rc.1 refused it, so there is no with arm, and R2 ran in neither arm.",
+ "date": "2026-11-13 (New York)",
+ "runtime": "DeepSeek Harness 0.2.2-rc.1 (dsh --version in distro meridian, 01:54 ET)",
+ "candidate": {
+  "package": "dsh-gungnir@0.2.1",
+  "shasum": "7b59357000676b09fcd76f685880951ce9f01265",
+  "integrity": "sha512-ILod+Ym8gmUcIzKMWuQqt+w5Gd4W//VnwqtPnToGjrbVMbigElQLnuQKwf62Mc1/UwqZtvN//uZ21lEEZBxf3w==",
+  "dependency": "gungnir-core@0.1.2, shasum 0aecd21292eb74fc8fbbd7d7fbee54401029d7a8",
+  "source_commit": "301255aeb71c6c15c28d150a94580df59e8761aa"
+ },
+ "gate0_install_probe": {
+  "start": "2026-11-13T01:56:33-05:00",
+  "where": "a scratch DSH_HOME in the evidence folder; the owner's ~/.dsh was not used",
+  "command": "dsh plugin --profile ab-adr-0010-with add --save-exact dsh-gungnir@0.2.1 </dev/null, with DSH_HOME set to that scratch home (ab-dsh.md's R); run bare, it would initialize the profile under the default ~/.dsh",
+  "criterion": "the add succeeds with no version exemption: the assessment's Gate 0 (0010-prereg.txt part 0, written for dsh-tui at 2026-11-12 21:36 ET, before any probe but in the text that predicts the refusal from source), on the re-check's profile; the re-check's protocol gives only the add command",
+  "profile_as_planned": "method-dsh and the re-check's protocol: ab-adr-0010-without and ab-adr-0010-with, both made from the headless template (--from-default-profile headless --dump-config) before the add. Not done here: the add itself created ab-adr-0010-with (profile_after), and the without arm's profile was made from the headless template only after it (its --dump-config output is stamped 01:56:46 ET; its name was not recorded); ab-dsh.md's Setup names the two profiles ab-without and ab-with.",
+  "owner_approval_of_version": "none recorded for dsh-gungnir@0.2.1 (method-dsh asks for an owner-approved exact version and integrity); no npm view integrity check either",
+  "exit": 1,
+  "output": [
+   "dsh: initialized profile ab-adr-0010-with at ~/src/meridian-ab/0010/dsh-home/profiles/ab-adr-0010-with",
+   "dsh: installation rejected: Plugin dsh-gungnir@0.2.1 is incompatible with dsh 0.2.2-rc.1: requirements {\"@deepseek-ai/dsh-llm\":\"0.1.2-rc.1\",\"@deepseek-ai/dsh-goal\":\"0.1.2-rc.1\",\"@deepseek-ai/dsh-agent\":\"0.1.2-rc.1\",\"@deepseek-ai/dsh-tools\":\"0.1.2-rc.1\",\"@deepseek-ai/dsh-session\":\"0.1.2-rc.1\",\"@deepseek-ai/dsh-storage\":\"0.1.2-rc.1\",\"@deepseek-ai/dsh-commands\":\"0.1.2-rc.1\",\"@deepseek-ai/dsh-token-meter\":\"0.1.2-rc.1\",\"@deepseek-ai/dsh-user-questions\":\"0.1.2-rc.1\",\"@deepseek-ai/dsh-goal-round-driver\":\"0.1.2-rc.1\"}. Running it may cause crashes or data loss. Update the plugin or install a plugin version compatible with this dsh runtime. To accept this risk explicitly, grant the exact-version exemption for dsh-gungnir@0.2.1 on dsh 0.2.2-rc.1 with `dsh plugin allow-version` or the plugin manager, then retry the installation or restart dsh. Exact-version exemption: not active.",
+   "dsh: nothing was installed.",
+   "dsh: to accept the risk, run: dsh plugin --profile ab-adr-0010-with allow-version dsh-gungnir@0.2.1 --dsh-version 0.2.2-rc.1 --accept-risk",
+   "dsh: plugin command failed; diagnostics: ~/src/meridian-ab/0010/dsh-home/profiles/ab-adr-0010-with/.plugin-manager/logs/operation-cfiaet/pnpm.log"
+  ],
+  "profile_after": {
+   "dependencies": {},
+   "bundles": [
+    "@deepseek-ai/dsh-base"
+   ]
+  },
+  "note": "dsh plugin created the with profile itself, with dsh-base only; the exemption it prints was not run.",
+  "earlier_probe": "The re-check ran the same add first, as its check C11: profile ab-0010-probe in a scratch DSH_HOME under /tmp, before 01:46 ET (its notes quoting the stderr were last changed 01:45:50 ET): exit 1, the same refusal, 'nothing was installed'. It then wrote its protocol (pre-registration part 2, 01:50 ET) with 'not adopted' already drafted."
+ },
+ "prereg_timeline_et": {
+  "assessment_protocol_part_0": "2026-11-12T21:36:29 (Gate 0's criterion, the smoke check and delta 0, fixed before any probe; not blind: the same text predicts the refusal from source)",
+  "method_dsh_notes_part_1": "2026-11-12T21:42:47 (before any 0010 probe; blind)",
+  "recheck_install_probe": "before 2026-11-13T01:45:50",
+  "recheck_protocol_part_2": "2026-11-13T01:50:20 (after its probe; not blind)",
+  "method_check_part_1a": "2026-11-13T01:51:32 (never names ADR 0010; blind)",
+  "measurement_install_probe": "2026-11-13T01:56:33"
+ },
+ "smoke": {
+  "run": false,
+  "why": "Not run: it needs the install, which Gate 0 refused, and /ultragoal, which headless cannot issue."
+ },
+ "always_on": {
+  "with_arm": "not measured: the install is refused (gate 0)",
+  "added_by_dsh_gungnir_from_source": {
+   "chars": 0,
+   "tokens_o200k": 0,
+   "share_of_without": "0 %"
+  },
+  "without_arm_runs": [
+   {
+    "run": "A1",
+    "start": "2026-11-13T01:57:16-05:00",
+    "end": "2026-11-13T01:57:18-05:00",
+    "dsh_exit": 1,
+    "final_reason": "error: AUTH 401 from the local stub",
+    "body_sha256": "be005ae136d8f79323ed7e179da399969fd9c928eb56b768e4f48cc77dbff614",
+    "always_on_chars": 26911,
+    "always_on_tokens": 5812
+   },
+   {
+    "run": "A2",
+    "start": "2026-11-13T01:57:42-05:00",
+    "end": "2026-11-13T01:57:44-05:00",
+    "dsh_exit": 1,
+    "final_reason": "error: AUTH 401 from the local stub",
+    "body_sha256": "0b626953532287c28c9f53f89d222ce65e98544384589b1c9ed1c0b1b497a40e",
+    "always_on_chars": 26911,
+    "always_on_tokens": 5812
+   },
+   {
+    "run": "A3",
+    "start": "2026-11-13T01:57:44-05:00",
+    "end": "2026-11-13T01:57:46-05:00",
+    "dsh_exit": 1,
+    "final_reason": "error: AUTH 401 from the local stub",
+    "body_sha256": "c369754e66dbcc945208059a2ea6d36d9bc6e60d6ea38a46cef7d0fbf07349bc",
+    "always_on_chars": 26911,
+    "always_on_tokens": 5812
+   }
+  ],
+  "without_median_tokens_o200k": 5812,
+  "counting_basis": "prompt texts without the probe, counted part by part: system prompt, the 22 tool schemas as sent (compact JSON), the agent-instructions and runtime-context messages; the probe (53 characters, 13 tokens) is left out. With it the total is 5,825, the basis of ADR 0011 (5,825) and ADR 0012 (5,835, its runtime context 21 characters longer). The raw request body, 27,426 bytes, was not counted in tokens; ADR 0009 counts raw bodies (6,003 tokens at 27,428 bytes, with a 54-byte probe file that ends in a newline; this probe file is 53 bytes, with none).",
+  "split_per_run": "0010-always-on.json",
+  "probe_driver": {
+   "kept": "no: the measurement ran it inline; its scripts folder holds only the stub, the splitter and the session-log reader (published byte for byte as 0010_capture_server.py, 0010_split_request.py and 0010_dsh_session_log.py)",
+   "equivalent": "ADR 0009's 0009_probe_inner.sh (L7, L13-L18), run as `unshare -rn bash probe_inner.sh ...`: `ip link set lo up` (a new network namespace starts with loopback down), the stub on 127.0.0.1:$PORT, then, in a worktree with no .env, `env -u DSH_PERMISSION_MODE -u DEEPSEEK_API_KEY -u DSH_SYSTEM_PROMPT DSH_HOME=<scratch home> DSH_AGENTS_HOME=<$EV>/agents-home DSH_TELEMETRY_DISABLED=1 DEEPSEEK_BASE_URL=http://127.0.0.1:$PORT/anthropic DEEPSEEK_SEARCH_BASE_URL=http://127.0.0.1:$PORT/anthropic/v1 DEEPSEEK_API_KEY=<placeholder, not a key> timeout --signal=INT --kill-after=30 300 dsh --profile <without profile> --patch <$EV>/ab-overlay.cordis.yml --json --permission-mode danger-full-access --approval-policy never - <probe.txt`",
+   "recorded_for_0010": "unshare -rn, a scratch DSH_HOME with method-dsh's overlay, a 127.0.0.1 stub that answered 401, and a placeholder key (the measurement's notes); the stub saw POST /anthropic/v1/messages, so the base URL ended in /anthropic; each probe's stream is dsh's --json output (session, status and final lines); the session logs record permission preset danger-full-access and approval policy never; dump-without.yml shows dsh-base patched by dsh-headless and by the overlay",
+   "differences_from_0009": "no with arm, so no with-only patch; 0010's stub takes a third argument, its lifetime in seconds (python3 -I 0010_capture_server.py PORT OUT_DIR LIFETIME_SECONDS); not recorded for 0010: the stub's port, the without profile's name, the other environment variables and the command that brought loopback up (the stub was reached, so it was up)"
+  },
+  "dsh_goal_machinery_inside": {
+   "system_paragraph_on_goals": {
+    "chars": 528,
+    "tokens_o200k": 101
+   },
+   "create_get_update_goal_schemas": {
+    "chars": 1741,
+    "tokens_o200k": 339,
+    "as": "the three tools as one compact JSON array, ASCII only, so characters equal bytes",
+    "one_by_one_chars": [579, 172, 986],
+    "one_by_one_total_chars": 1737,
+    "note": "ADRs 0011 and 0012 count the three one by one: ADR 0011 gives 1,737 characters and 110 + 36 + 192 = 338 tokens, ADR 0012 338 tokens. The array adds two brackets and two commas, 4 characters. The one-by-one sizes were read from the A1 capture's parts/x-goal-tools.json on 2026-11-13 (recheck_of_raw_capture); the one-by-one token count is theirs, not recounted here."
+   }
+  },
+  "provider_prompt_tokens": "none: no model call was made (local 401 stub, placeholder key)",
+  "baseline_agents_md_main_9c5daaa": {
+   "lines": 126,
+   "chars": 8318,
+   "tokens_o200k": 2159
+  }
+ },
+ "event_driven_texts": {
+  "made_by": "0010_reconstruct.py (byte for byte as the re-check ran it, sha256 a5359391d34b4bc5e224445ccd6f7c9143f283485064a0b00d76ac1f1a112026); every fixed literal was found in the source at the pin on 2026-11-13",
+  "counted_by": "0010_count_tokens.py, o200k_base. It needs OpenAI's o200k_base.tiktoken (sha256 446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d), not committed: https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken, the URL and hash in tiktoken 0.14.0's tiktoken_ext/openai_public.py (upstream_reads_after_the_recheck). Pass its folder with --vocab-dir: the default, docs/adr/vocab, does not exist. Example: python3 -I 0010_count_tokens.py --vocab-dir <folder> FILE",
+  "texts": [
+   {
+    "file": "always-on-default-bpar-EMPTY.txt",
+    "when": "always on, default mode passive='bpar' (every request)",
+    "chars": 0,
+    "bytes": 0,
+    "tokens_o200k": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   {
+    "file": "bpar-maf-r2-one-l1-failed.txt",
+    "when": "default mode, once per update_goal(complete) with one failing exit-code check (needs a shell executor with run)",
+    "chars": 258,
+    "bytes": 258,
+    "tokens_o200k": 48,
+    "sha256": "a4cddb871381dc6fdccde4afdb38c5ccd30193fc4bf59d2bf5eeb109b80b7ac9"
+   },
+   {
+    "file": "bpar-maf-r2-four-l1-exit-minus1-on-dsh-0.2.2.txt",
+    "when": "default mode, once per update_goal(complete) under a 4-check spec on dsh 0.2.2-rc.x with an exemption: every check reads exit -1",
+    "chars": 415,
+    "bytes": 415,
+    "tokens_o200k": 87,
+    "sha256": "c9192e0bea2a617d9bc26b89d9c14de701142b75a9956504d8e3c09bcaf59fa6"
+   },
+   {
+    "file": "extra-bpar-maf-r2-four-l1-exit1.txt",
+    "when": "default mode, four failing checks with a working shell",
+    "chars": 411,
+    "bytes": 411,
+    "tokens_o200k": 87,
+    "sha256": "243a6d0808f5a1b08d52f776f2bcdba4192c1a16d14e29b026696c3056d1041f"
+   },
+   {
+    "file": "bpar-maf-s1-test-failure.txt",
+    "when": "default mode, completion claim after a failing node/TAP test run; the call id is a placeholder (the assessment's placeholder gave 84 tokens)",
+    "chars": 342,
+    "bytes": 342,
+    "tokens_o200k": 81,
+    "sha256": "7cb3402e6bdc0f20e9789a65f0f95e65e172d0c0b6b34e25117ce6250c49798f"
+   },
+   {
+    "file": "extra-bpar-maf-write-outside-workspace.txt",
+    "when": "default mode, completion claim after a write outside the workspace",
+    "chars": 360,
+    "bytes": 360,
+    "tokens_o200k": 88,
+    "sha256": "96c3e623bd7db8a63bb929582ad7d96294ce36d5212c7e230fda6b525ac32a31"
+   },
+   {
+    "file": "bpar-sig2-maf.txt",
+    "when": "default mode, third consecutive tool error with the same signature",
+    "chars": 209,
+    "bytes": 211,
+    "tokens_o200k": 40,
+    "sha256": "488676c1272c7918b26eaadfa28ea9f82c26f1dec613743a7a43fed2682277ac"
+   },
+   {
+    "file": "bpar-sig2-recover-text.txt",
+    "when": "default mode, fifth consecutive tool error with the same signature",
+    "chars": 197,
+    "bytes": 197,
+    "tokens_o200k": 39,
+    "sha256": "74ca5962597a2cbf87780de77436ce60217f2d78ecdc392b70d854abb89abb99"
+   },
+   {
+    "file": "bpar-sig3-maf.txt",
+    "when": "default mode, third unchanged re-read of the same file",
+    "chars": 234,
+    "bytes": 236,
+    "tokens_o200k": 46,
+    "sha256": "4067b47a2142b0a5caf1f6f57c788e8d349fef4c7ece3604ca92948d59e04d2e"
+   },
+   {
+    "file": "bpar-sig4-maf.txt",
+    "when": "default mode, 8 consecutive model steps without a tool result",
+    "chars": 167,
+    "bytes": 167,
+    "tokens_o200k": 38,
+    "sha256": "e9fc5369dd0c1d272dd863b951e232c2cd3e1618910d31948b1871e28fe77bd9"
+   },
+   {
+    "file": "unreachable-recover-directive.txt",
+    "when": "needs the separate dsh-gungnir-loop driver; unreachable here",
+    "chars": 195,
+    "bytes": 195,
+    "tokens_o200k": 40,
+    "sha256": "5c43d51f2b44855a41609123afb06e54290c494a6e2ba90c85c9a651178a10d3"
+   },
+   {
+    "file": "ui-only-commands-listing.txt",
+    "when": "UI command list only; dsh commands add no model tokens",
+    "chars": 227,
+    "bytes": 227,
+    "tokens_o200k": 56,
+    "sha256": "ce4cf788680e699aecea2c57df54db3f6889c9783c99e6cf54248b26f3d25808"
+   },
+   {
+    "file": "off-mode-tools-listing.txt",
+    "when": "passive='off' only (not the default): 3 tools as name and description, every request",
+    "chars": 401,
+    "bytes": 403,
+    "tokens_o200k": 87,
+    "sha256": "d75013e2b7b88e3caaaa93c668906c5bca1a490e9b8aa9e9bbcb028927bac0de"
+   },
+   {
+    "file": "off-mode-tools-schema-approx.json",
+    "when": "passive='off' only: the same 3 tools as JSON in DeepSeek's wire keys (approximate), every request",
+    "chars": 2069,
+    "bytes": 2071,
+    "tokens_o200k": 455,
+    "sha256": "39f0fa09dae3a35b2691d34a0eb7c09838a4a5ad6998ffe0a4f618450d34f357"
+   },
+   {
+    "file": "off-mode-directive-round1-every-step.txt",
+    "when": "passive='off' only: every step while a spec is active (round 1, 4 checks)",
+    "chars": 745,
+    "bytes": 747,
+    "tokens_o200k": 156,
+    "sha256": "7b20758c381d7a3f4cc80d1e3418aa5c78cfa409d235b6f6e23173cbb8977f05"
+   },
+   {
+    "file": "off-mode-engine-complete-directive.txt",
+    "when": "passive='off' only: round end COMPLETE",
+    "chars": 161,
+    "bytes": 163,
+    "tokens_o200k": 32,
+    "sha256": "e16975fc49cc1728abe2e5ae42408e0b36d43d7e8066c190d7c27d140946d31c"
+   },
+   {
+    "file": "off-mode-engine-replan-directive.txt",
+    "when": "passive='off' only: round end REPLAN",
+    "chars": 155,
+    "bytes": 155,
+    "tokens_o200k": 32,
+    "sha256": "a25907e41941635bdeb54ed539d3691dc7924146b107b896dfcc4415e7a179e8"
+   }
+  ]
+ },
+ "real_task_R2": {
+  "runs_with": 0,
+  "runs_without": 0,
+  "successes": null,
+  "median_billed_tokens": null,
+  "voids": 0,
+  "codex_delegation": "none: no model call",
+  "why": "The with arm cannot be installed; spec mode needs /ultragoal, which dsh headless cannot issue; and a without arm alone is not an A/B. The DeepSeek Harness real-task runs of 2026-11-13 did not include this ADR, since no with arm can be built.",
+  "default_mode_goal_creation": "Untested expectation, not a result: R2's brief is a direct human request in a top-level turn, which dsh accepts for create_goal (dsh-tool-goal README L12 at 66491b0), but create_goal's description adds 'not for single-turn work' (packages/goal/tool-goal/src/index.ts L51-L54 at 66491b0, also in the captured request), so on R2 the model would probably not open a goal; that is the model's call."
+ },
+ "rule": "method-dsh's threshold, fixed before the run (0010-prereg.txt, parts 1 and 1a): adopt only with no safety violation and either S_with >= 2 with S_without <= 1, or S_with >= S_without, S_with >= 2 and median billed tokens per run <= 0.75 x without; a run with incomplete usage scores incomplete, never adopt; if both arms score 0 of 3, reject.",
+ "rule_result": "undecided: 0 R2 runs in either arm. method-dsh's rule is an 'adopt only if' rule, so it cannot adopt with none, and its 'Otherwise REJECT' is written for scored runs, not for runs never made. The measurement's record (not published) gives 'not adopted', which is Gate 0's outcome, not the rule's. The decision rests on Gate 0's refusal ('stop there', prereg part 0) and on the source finding that the check calls ctx.shell.run, which dsh's shell executor lacks in 0.2.2-rc.1, rc.2, rc.3 and master.",
+ "cost": "Model tokens 0 in both arms; DeepSeek tokens billed 0 (the key was never read, loaded or used). Network: 1 npm registry lookup by dsh's own pre-install check, 2 unauthenticated git clones; GitHub REST 0, GraphQL 0.",
+ "containment": "The measurement's notes record an IB Gateway check before the install probe, before each probe and at the end (port 4002 closed, no ibgateway process); its commands and output were not kept and no guard script is published, so that sentence is the only record. The owner's ~/.dsh hashes and listings were unchanged; the main checkout was not touched; package caches went into the evidence folder.",
+ "upstream_reads_after_the_recheck": {
+  "why": "Facts the ADR states that came from later reviews of its text, not from the assessment, the re-check or the measurement; read for the revisions with unauthenticated git (upstream repositories) or in the installed package files (dsh's own packages). The re-check had recorded master as e8f7b93 and checked rc.1 and rc.2 only; its fact sheet's 'no license field in any package.json' misses tools/dsh-shim (its check C37, root and packages/* only, is right).",
+  "date_read": "2026-11-13: the first four reads at 04:43 ET, the rest at 05:20 ET (a later review found their facts in the ADR with no read listed)",
+  "reads": [
+   {"repo": "deepseek-ai/deepseek-harness", "ref": "tag dsh-v0.2.2-rc.2", "commit": "ddac96760b6edf8fa0fe17cbdcf0b512f4c12b2c", "file": "packages/shell/shell/src/index.ts", "lines": "L84 abstract resolve, L93 abstract execute; no run"},
+   {"repo": "deepseek-ai/deepseek-harness", "ref": "tag dsh-v0.2.2-rc.3 (commit dated 2026-11-13T13:26:07+08:00)", "commit": "38a6a5c965aa99ab525161efb7cc5cf1fe62fced", "file": "packages/shell/shell/src/index.ts; packages/shell/{bash-local,bash-sandbox,pwsh-local,pwsh-sandbox}/src/index.ts", "lines": "L84 abstract resolve, L93 abstract execute; the four executors define only resolve and execute; no run"},
+   {"repo": "deepseek-ai/deepseek-harness", "ref": "master (commit dated 2026-11-13T15:37:50+08:00)", "commit": "39163dd30f703a79079e2d2446545cff3c453738", "file": "packages/shell/shell/src/index.ts; packages/shell/{bash-local,bash-sandbox,pwsh-local,pwsh-sandbox}/src/index.ts", "lines": "L84 abstract resolve, L93 abstract execute; the four executors define only resolve and execute; no run"},
+   {"repo": "Jonah-Wu23/dsh-gungnir", "ref": "pin", "commit": "301255aeb71c6c15c28d150a94580df59e8761aa", "file": "tools/dsh-shim/package.json", "lines": "name @deepseek-ai/dsh, private true, L10 \"license\": \"MIT\"; the only package.json in the tree with a license field"},
+   {"repo": "Jonah-Wu23/dsh-gungnir", "ref": "pin", "commit": "301255aeb71c6c15c28d150a94580df59e8761aa", "file": "docs/plan/三阶段-P2-stage-report.md (sha256 320e5b67de58256379772f2fde7c88cc1429ee812c76c046b368a3245eea7462)", "lines": "L7 G1 FAIL because healthy-path cost missed its zero tolerance (零容忍); L25 tokens median 24151.5 (E0) against 26025 (E2), +7.8 %, threshold <=+10 % -> PASS; L26 round trips 12 against 13.5, +1.5, threshold <=0 -> FAIL; L27 healthy-task interventions 1, threshold 0 -> FAIL; L28 that intervention was a true-positive S1 tool-error catch of a malformed update_goal call (edit-only parameters), counted FAIL under G1's literal zero tolerance"},
+   {"repo": "deepseek-ai/deepseek-harness", "ref": "tag dsh-v0.2.2-rc.1", "commit": "66491b05e3f05ad35bcdd4f6cd7ed26041d9e3db", "file": "packages/goal/tool-goal/README.md; packages/goal/tool-goal/src/index.ts", "lines": "README L12: the model may create a goal from a direct human request in a top-level agent turn; index.ts L51-L54: create_goal's description ends 'not for single-turn work.'"},
+   {"repo": "npm @deepseek-ai/dsh-session-persistence-jsonl and @deepseek-ai/dsh-storage-json, as installed with dsh 0.2.2-rc.1 in distro meridian", "ref": "0.2.2-rc.1", "commit": "lib/index.js sha256 69efef5f84dddf947032bc1425067878fa610416c8885acde2ded9b01230c9b7 (session-persistence-jsonl) and 39e6857f984570267a96fc52c08c04e520b15c322336f6f95838554f6ce16dec (storage-json)", "file": "lib/index.js of each", "lines": "session-persistence-jsonl L5 imports resolve from node:path, L2434 this.root = resolve(config.root) (resolved against the working directory, no ~ expansion); storage-json L672 new JsonStorageBackend(config.root), L632 this.root = root, L643 mkdir(this.root, {recursive: true}) (created as given)"},
+   {"repo": "openai/tiktoken", "ref": "tag 0.14.0", "commit": "4e71bbe0c078468e00fefbf94b39849389f346e5", "file": "tiktoken_ext/openai_public.py", "lines": "L95-L98: o200k_base from https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken, expected_hash 446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d"}
+  ]
+ },
+ "recheck_of_raw_capture": {
+  "date_read": "2026-11-13, for a review that compared the dsh baselines of ADRs 0009 to 0012",
+  "read": "~/src/meridian-ab/0010/capture/without-0-A{1,2,3}/req-01.body (sizes), A1's parts/x-goal-tools.json, parts/x-goal-system-paragraph.txt and parts/msg-0-0-task.txt, and the probe files ~/src/meridian-ab/{0009,0010,0011}/probe.txt (sizes); nothing was run against dsh and no token was counted",
+  "found": "each request body 27,426 bytes; x-goal-tools.json 1,741 bytes, ASCII, one compact JSON array of create_goal, get_goal and update_goal (579, 172 and 986 characters one by one, 1,737 together); the goal paragraph 528 bytes; the probe in the request ends without a newline; probe files 53 bytes for 0010 and 54 for 0009 and 0011"
+ },
+ "raw": "Request bodies, split parts, session logs, probe streams and install-probe output are on the owner's machine, not published (their paths name the home directory); not yet archived in meridian-evidence."
+}

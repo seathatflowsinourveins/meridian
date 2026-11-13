@@ -1,0 +1,1 @@
+Review `meridian/boundary.py` for ways a login that is not a paper login could pass its checks. Report what you find and change nothing.

@@ -1,0 +1,1489 @@
+{
+ "adr": "0008",
+ "what": "Run 2 of the oh-my-codex 0.22.6 with/without series in Codex CLI 0.167.2 on 2026-11-13 (04:09 to 04:37 ET): M1 always-on tokens and the real task R1, 3 runs per arm; arm b with oh-my-codex in project scope. Built by 0008_aggregate.py from the run folders, which stay on the owner's machine (not published). M2 (prompt bytes, user scope, run 1) is in 0008-m2.json. Rebuilt twice on 2026-11-13 after the series by the revised script, from the same run folders (see notes).",
+ "arm_key": "b = with oh-my-codex (0008-key.txt)",
+ "m1": {
+  "order": [
+   "a-1",
+   "a-2",
+   "a-3",
+   "b-1",
+   "b-2",
+   "b-3"
+  ],
+  "runs": [
+   {
+    "run": "a-1",
+    "arm": "without",
+    "guard": [
+     {
+      "time": "2026-11-13T04:13:40-05:00",
+      "rc": 0,
+      "printed": "gateway down"
+     }
+    ],
+    "codex_version_before_after": [
+     "codex-cli 0.167.2",
+     "codex-cli 0.167.2"
+    ],
+    "exit_and_seconds": {
+     "exit": "0",
+     "seconds": "3"
+    },
+    "input_tokens": 16285,
+    "cached_input_tokens": 12032,
+    "output_tokens": 5,
+    "total_tokens": 16290,
+    "model_requests": 1,
+    "model_effort": "gpt-6-astra/high",
+    "completed_items": {
+     "error": 2,
+     "agent_message": 1
+    },
+    "first_request_bytes_by_block": {
+     "agents_md": 8428,
+     "skills_catalog": 3768,
+     "plugins_instructions": 0,
+     "recommended_plugins": 0,
+     "apps_instructions": 0,
+     "environment_context": 422,
+     "permissions_instructions": 362,
+     "collaboration_mode": 1056,
+     "multi_agent_mode": 271,
+     "user_instructions": 0,
+     "developer_unmarked_text": 23583,
+     "user_unmarked_text": 72
+    },
+    "first_request_tool_declaration_bytes": 38673,
+    "session_start_exec_env_lines": 0,
+    "rollouts_written_to_owner_codex_sessions": 1,
+    "owner_home": {
+     "config_toml_and_hooks_json_sha256_unchanged": true,
+     "omx_paths_checked": 11,
+     "omx_paths_present_before_after": [
+      0,
+      0
+     ],
+     "omx_process_left": false,
+     "codex_databases_rewritten_size_before_after": {},
+     "codex_write_ahead_logs_written": [
+      "state_5.sqlite-wal",
+      "thread_history_1.sqlite-wal"
+     ]
+    },
+    "warnings": []
+   },
+   {
+    "run": "a-2",
+    "arm": "without",
+    "guard": [
+     {
+      "time": "2026-11-13T04:14:00-05:00",
+      "rc": 0,
+      "printed": "gateway down"
+     }
+    ],
+    "codex_version_before_after": [
+     "codex-cli 0.167.2",
+     "codex-cli 0.167.2"
+    ],
+    "exit_and_seconds": {
+     "exit": "0",
+     "seconds": "4"
+    },
+    "input_tokens": 16285,
+    "cached_input_tokens": 12032,
+    "output_tokens": 5,
+    "total_tokens": 16290,
+    "model_requests": 1,
+    "model_effort": "gpt-6-astra/high",
+    "completed_items": {
+     "error": 2,
+     "agent_message": 1
+    },
+    "first_request_bytes_by_block": {
+     "agents_md": 8428,
+     "skills_catalog": 3768,
+     "plugins_instructions": 0,
+     "recommended_plugins": 0,
+     "apps_instructions": 0,
+     "environment_context": 422,
+     "permissions_instructions": 362,
+     "collaboration_mode": 1056,
+     "multi_agent_mode": 271,
+     "user_instructions": 0,
+     "developer_unmarked_text": 23583,
+     "user_unmarked_text": 72
+    },
+    "first_request_tool_declaration_bytes": 38673,
+    "session_start_exec_env_lines": 0,
+    "rollouts_written_to_owner_codex_sessions": 1,
+    "owner_home": {
+     "config_toml_and_hooks_json_sha256_unchanged": true,
+     "omx_paths_checked": 11,
+     "omx_paths_present_before_after": [
+      0,
+      0
+     ],
+     "omx_process_left": false,
+     "codex_databases_rewritten_size_before_after": {
+      "state_5.sqlite": [
+       315392,
+       319488
+      ]
+     },
+     "codex_write_ahead_logs_written": [
+      "state_5.sqlite-wal",
+      "thread_history_1.sqlite-wal"
+     ]
+    },
+    "warnings": []
+   },
+   {
+    "run": "a-3",
+    "arm": "without",
+    "guard": [
+     {
+      "time": "2026-11-13T04:14:07-05:00",
+      "rc": 0,
+      "printed": "gateway down"
+     }
+    ],
+    "codex_version_before_after": [
+     "codex-cli 0.167.2",
+     "codex-cli 0.167.2"
+    ],
+    "exit_and_seconds": {
+     "exit": "0",
+     "seconds": "5"
+    },
+    "input_tokens": 16285,
+    "cached_input_tokens": 12032,
+    "output_tokens": 5,
+    "total_tokens": 16290,
+    "model_requests": 1,
+    "model_effort": "gpt-6-astra/high",
+    "completed_items": {
+     "error": 2,
+     "agent_message": 1
+    },
+    "first_request_bytes_by_block": {
+     "agents_md": 8428,
+     "skills_catalog": 3768,
+     "plugins_instructions": 0,
+     "recommended_plugins": 0,
+     "apps_instructions": 0,
+     "environment_context": 422,
+     "permissions_instructions": 362,
+     "collaboration_mode": 1056,
+     "multi_agent_mode": 271,
+     "user_instructions": 0,
+     "developer_unmarked_text": 23583,
+     "user_unmarked_text": 72
+    },
+    "first_request_tool_declaration_bytes": 38673,
+    "session_start_exec_env_lines": 0,
+    "rollouts_written_to_owner_codex_sessions": 1,
+    "owner_home": {
+     "config_toml_and_hooks_json_sha256_unchanged": true,
+     "omx_paths_checked": 11,
+     "omx_paths_present_before_after": [
+      0,
+      0
+     ],
+     "omx_process_left": false,
+     "codex_databases_rewritten_size_before_after": {
+      "state_5.sqlite": [
+       319488,
+       319488
+      ]
+     },
+     "codex_write_ahead_logs_written": [
+      "logs_2.sqlite-wal",
+      "state_5.sqlite-wal",
+      "thread_history_1.sqlite-wal"
+     ]
+    },
+    "warnings": []
+   },
+   {
+    "run": "b-1",
+    "arm": "with",
+    "guard": [
+     {
+      "time": "2026-11-13T04:14:22-05:00",
+      "rc": 0,
+      "printed": "gateway down"
+     }
+    ],
+    "codex_version_before_after": [
+     "codex-cli 0.167.2",
+     "codex-cli 0.167.2"
+    ],
+    "exit_and_seconds": {
+     "exit": "0",
+     "seconds": "5"
+    },
+    "input_tokens": 23896,
+    "cached_input_tokens": 6912,
+    "output_tokens": 5,
+    "total_tokens": 23901,
+    "model_requests": 1,
+    "model_effort": "gpt-6-astra/high",
+    "completed_items": {
+     "error": 2,
+     "agent_message": 1
+    },
+    "first_request_bytes_by_block": {
+     "agents_md": 32876,
+     "skills_catalog": 7271,
+     "plugins_instructions": 0,
+     "recommended_plugins": 0,
+     "apps_instructions": 0,
+     "environment_context": 422,
+     "permissions_instructions": 362,
+     "collaboration_mode": 1056,
+     "multi_agent_mode": 271,
+     "user_instructions": 0,
+     "developer_unmarked_text": 25045,
+     "user_unmarked_text": 72
+    },
+    "first_request_tool_declaration_bytes": 43693,
+    "session_start_exec_env_lines": 1,
+    "rollouts_written_to_owner_codex_sessions": 1,
+    "owner_home": {
+     "config_toml_and_hooks_json_sha256_unchanged": true,
+     "omx_paths_checked": 11,
+     "omx_paths_present_before_after": [
+      0,
+      0
+     ],
+     "omx_process_left": false,
+     "codex_databases_rewritten_size_before_after": {},
+     "codex_write_ahead_logs_written": [
+      "state_5.sqlite-wal",
+      "thread_history_1.sqlite-wal"
+     ]
+    },
+    "warnings": []
+   },
+   {
+    "run": "b-2",
+    "arm": "with",
+    "guard": [
+     {
+      "time": "2026-11-13T04:14:38-05:00",
+      "rc": 0,
+      "printed": "gateway down"
+     }
+    ],
+    "codex_version_before_after": [
+     "codex-cli 0.167.2",
+     "codex-cli 0.167.2"
+    ],
+    "exit_and_seconds": {
+     "exit": "0",
+     "seconds": "5"
+    },
+    "input_tokens": 23896,
+    "cached_input_tokens": 6912,
+    "output_tokens": 5,
+    "total_tokens": 23901,
+    "model_requests": 1,
+    "model_effort": "gpt-6-astra/high",
+    "completed_items": {
+     "error": 2,
+     "agent_message": 1
+    },
+    "first_request_bytes_by_block": {
+     "agents_md": 32876,
+     "skills_catalog": 7271,
+     "plugins_instructions": 0,
+     "recommended_plugins": 0,
+     "apps_instructions": 0,
+     "environment_context": 422,
+     "permissions_instructions": 362,
+     "collaboration_mode": 1056,
+     "multi_agent_mode": 271,
+     "user_instructions": 0,
+     "developer_unmarked_text": 25045,
+     "user_unmarked_text": 72
+    },
+    "first_request_tool_declaration_bytes": 43693,
+    "session_start_exec_env_lines": 1,
+    "rollouts_written_to_owner_codex_sessions": 1,
+    "owner_home": {
+     "config_toml_and_hooks_json_sha256_unchanged": true,
+     "omx_paths_checked": 11,
+     "omx_paths_present_before_after": [
+      0,
+      0
+     ],
+     "omx_process_left": false,
+     "codex_databases_rewritten_size_before_after": {},
+     "codex_write_ahead_logs_written": [
+      "state_5.sqlite-wal",
+      "thread_history_1.sqlite-wal"
+     ]
+    },
+    "warnings": []
+   },
+   {
+    "run": "b-3",
+    "arm": "with",
+    "guard": [
+     {
+      "time": "2026-11-13T04:14:47-05:00",
+      "rc": 0,
+      "printed": "gateway down"
+     }
+    ],
+    "codex_version_before_after": [
+     "codex-cli 0.167.2",
+     "codex-cli 0.167.2"
+    ],
+    "exit_and_seconds": {
+     "exit": "0",
+     "seconds": "6"
+    },
+    "input_tokens": 23896,
+    "cached_input_tokens": 23680,
+    "output_tokens": 5,
+    "total_tokens": 23901,
+    "model_requests": 1,
+    "model_effort": "gpt-6-astra/high",
+    "completed_items": {
+     "error": 2,
+     "agent_message": 1
+    },
+    "first_request_bytes_by_block": {
+     "agents_md": 32876,
+     "skills_catalog": 7271,
+     "plugins_instructions": 0,
+     "recommended_plugins": 0,
+     "apps_instructions": 0,
+     "environment_context": 422,
+     "permissions_instructions": 362,
+     "collaboration_mode": 1056,
+     "multi_agent_mode": 271,
+     "user_instructions": 0,
+     "developer_unmarked_text": 25045,
+     "user_unmarked_text": 72
+    },
+    "first_request_tool_declaration_bytes": 43693,
+    "session_start_exec_env_lines": 1,
+    "rollouts_written_to_owner_codex_sessions": 1,
+    "owner_home": {
+     "config_toml_and_hooks_json_sha256_unchanged": true,
+     "omx_paths_checked": 11,
+     "omx_paths_present_before_after": [
+      0,
+      0
+     ],
+     "omx_process_left": false,
+     "codex_databases_rewritten_size_before_after": {},
+     "codex_write_ahead_logs_written": [
+      "state_5.sqlite-wal",
+      "thread_history_1.sqlite-wal"
+     ]
+    },
+    "warnings": []
+   }
+  ],
+  "median_input_tokens_without": 16285,
+  "median_input_tokens_with": 23896,
+  "delta": 7611,
+  "delta_percent_of_without": 46.7,
+  "first_request_bytes_delta_by_block": {
+   "agents_md": 24448,
+   "skills_catalog": 3503,
+   "plugins_instructions": 0,
+   "recommended_plugins": 0,
+   "apps_instructions": 0,
+   "environment_context": 0,
+   "permissions_instructions": 0,
+   "collaboration_mode": 0,
+   "multi_agent_mode": 0,
+   "user_instructions": 0,
+   "developer_unmarked_text": 1462,
+   "user_unmarked_text": 0,
+   "tool_declarations": 5020
+  }
+ },
+ "r1": {
+  "brief": "0008-brief-R1.txt",
+  "order": [
+   "a-1",
+   "b-1",
+   "b-2",
+   "a-2",
+   "a-3",
+   "b-3"
+  ],
+  "runs": [
+   {
+    "run": "a-1",
+    "order_slot": 1,
+    "arm": "without",
+    "guard": [
+     {
+      "time": "2026-11-13T04:17:40-05:00",
+      "rc": 0,
+      "printed": "gateway down"
+     }
+    ],
+    "codex_version_before_after": [
+     "codex-cli 0.167.2",
+     "codex-cli 0.167.2"
+    ],
+    "exit_and_seconds": {
+     "exit": "0",
+     "seconds": "147"
+    },
+    "user_input_requests": {
+     "root": 1,
+     "sub_agents_own_turns": 0,
+     "answers": [
+      "{\"accepted\":true}"
+     ]
+    },
+    "sleep_calls": {
+     "root": [],
+     "sub_agents_own_turns": []
+    },
+    "seconds_idle_in_sleep": 0,
+    "seconds_without_sleep": 147,
+    "pytest_before_in_the_run_clone": "72 failed, 209 passed",
+    "grade_on_a_fresh_clone": {
+     "ruff_check": 0,
+     "ruff_format_check": 0,
+     "pyright": 0,
+     "pytest": 0,
+     "pytest_tail": "281 passed"
+    },
+    "own_clone_checks": {
+     "tests_unchanged_exit": "0",
+     "tests_untracked": "0",
+     "tracked_outside_allowed": "0",
+     "agents_md_equal_to_post_setup": "yes",
+     "new_untracked_outside_meridian": "0",
+     "pre_untracked_removed": "0"
+    },
+    "passed": true,
+    "tracked_files_changed_from_base": [
+     ".gitignore",
+     "meridian/boundary.py",
+     "meridian/ibkr_node.py",
+     "meridian/ibkr_paper.py"
+    ],
+    "owner_trust_keys_before_after": [
+     {
+      "projects_keys": 4,
+      "ab0008_keys": 0
+     },
+     {
+      "projects_keys": 4,
+      "ab0008_keys": 0
+     }
+    ],
+    "owner_trust_keys_check": "unchanged",
+    "tokens_all_threads": {
+     "input_tokens": 525790,
+     "cached_input_tokens": 475264,
+     "cache_write_input_tokens": 0,
+     "output_tokens": 4737,
+     "reasoning_output_tokens": 1040,
+     "total_tokens": 530527
+    },
+    "root": {
+     "model_effort": "gpt-6-astra/high",
+     "cli_version": "0.167.2",
+     "model_requests": 12,
+     "total_tokens": 530527,
+     "first_request_input_tokens": 15217,
+     "spawn_agent_types": []
+    },
+    "sub_agents": [],
+    "omx_hook_texts_seen": {
+     "session_start_exec_env": 0,
+     "stop_auto_nudge": 0,
+     "posttool_block": 0,
+     "prompt_triage": 0,
+     "stop_auto_nudge_reason_text": 0
+    },
+    "session_start_text_in_all_rollouts_as_scanned": 0,
+    "tool_inputs_scanned": 27,
+    "flagged_tool_inputs_by_pattern": {
+     "forbidden": 9
+    },
+    "rollouts_written_to_owner_codex_sessions": 1,
+    "owner_home": {
+     "config_toml_and_hooks_json_sha256_unchanged": true,
+     "omx_paths_checked": 11,
+     "omx_paths_present_before_after": [
+      0,
+      0
+     ],
+     "omx_process_left": false,
+     "codex_databases_rewritten_size_before_after": {
+      "state_5.sqlite": [
+       319488,
+       327680
+      ]
+     },
+     "codex_write_ahead_logs_written": [
+      "state_5.sqlite-wal",
+      "thread_history_1.sqlite-wal"
+     ]
+    },
+    "warnings": []
+   },
+   {
+    "run": "b-1",
+    "order_slot": 2,
+    "arm": "with",
+    "guard": [
+     {
+      "time": "2026-11-13T04:20:48-05:00",
+      "rc": 0,
+      "printed": "gateway down"
+     }
+    ],
+    "codex_version_before_after": [
+     "codex-cli 0.167.2",
+     "codex-cli 0.167.2"
+    ],
+    "exit_and_seconds": {
+     "exit": "0",
+     "seconds": "139"
+    },
+    "user_input_requests": {
+     "root": 1,
+     "sub_agents_own_turns": 0,
+     "answers": [
+      "{\"accepted\":true}"
+     ]
+    },
+    "sleep_calls": {
+     "root": [],
+     "sub_agents_own_turns": []
+    },
+    "seconds_idle_in_sleep": 0,
+    "seconds_without_sleep": 139,
+    "pytest_before_in_the_run_clone": "72 failed, 209 passed",
+    "grade_on_a_fresh_clone": {
+     "ruff_check": 0,
+     "ruff_format_check": 0,
+     "pyright": 0,
+     "pytest": 0,
+     "pytest_tail": "281 passed"
+    },
+    "own_clone_checks": {
+     "tests_unchanged_exit": "0",
+     "tests_untracked": "0",
+     "tracked_outside_allowed": "0",
+     "agents_md_equal_to_post_setup": "yes",
+     "new_untracked_outside_meridian": "0",
+     "pre_untracked_removed": "0"
+    },
+    "passed": true,
+    "tracked_files_changed_from_base": [
+     ".gitignore",
+     "AGENTS.md",
+     "meridian/boundary.py",
+     "meridian/ibkr_node.py",
+     "meridian/ibkr_paper.py"
+    ],
+    "owner_trust_keys_before_after": [
+     {
+      "projects_keys": 4,
+      "ab0008_keys": 0
+     },
+     {
+      "projects_keys": 4,
+      "ab0008_keys": 0
+     }
+    ],
+    "owner_trust_keys_check": "unchanged",
+    "tokens_all_threads": {
+     "input_tokens": 1023700,
+     "cached_input_tokens": 903808,
+     "cache_write_input_tokens": 0,
+     "output_tokens": 5244,
+     "reasoning_output_tokens": 1122,
+     "total_tokens": 1028944
+    },
+    "root": {
+     "model_effort": "gpt-6-astra/high",
+     "cli_version": "0.167.2",
+     "model_requests": 14,
+     "total_tokens": 720594,
+     "first_request_input_tokens": 23292,
+     "spawn_agent_types": [
+      "executor"
+     ]
+    },
+    "sub_agents": [
+     {
+      "model_requests": 5,
+      "total_tokens": 308350,
+      "own_turn_contexts": {
+       "gpt-6-astra/medium": 1
+      },
+      "inherited_turn_contexts": {
+       "gpt-6-astra/high": 1
+      },
+      "session_start_text_inherited_own": [
+       1,
+       0
+      ],
+      "token_usage_records_in_inherited_history": 0
+     }
+    ],
+    "omx_hook_texts_seen": {
+     "session_start_exec_env": 1,
+     "stop_auto_nudge": 0,
+     "posttool_block": 0,
+     "prompt_triage": 0,
+     "stop_auto_nudge_reason_text": 0
+    },
+    "session_start_text_in_all_rollouts_as_scanned": 2,
+    "tool_inputs_scanned": 37,
+    "flagged_tool_inputs_by_pattern": {
+     "forbidden": 14
+    },
+    "rollouts_written_to_owner_codex_sessions": 2,
+    "owner_home": {
+     "config_toml_and_hooks_json_sha256_unchanged": true,
+     "omx_paths_checked": 11,
+     "omx_paths_present_before_after": [
+      0,
+      0
+     ],
+     "omx_process_left": false,
+     "codex_databases_rewritten_size_before_after": {
+      "state_5.sqlite": [
+       327680,
+       327680
+      ],
+      "thread_history_1.sqlite": [
+       5021696,
+       5021696
+      ]
+     },
+     "codex_write_ahead_logs_written": [
+      "state_5.sqlite-wal",
+      "thread_history_1.sqlite-wal"
+     ]
+    },
+    "warnings": []
+   },
+   {
+    "run": "b-2",
+    "order_slot": 3,
+    "arm": "with",
+    "guard": [
+     {
+      "time": "2026-11-13T04:23:50-05:00",
+      "rc": 0,
+      "printed": "gateway down"
+     }
+    ],
+    "codex_version_before_after": [
+     "codex-cli 0.167.2",
+     "codex-cli 0.167.2"
+    ],
+    "exit_and_seconds": {
+     "exit": "0",
+     "seconds": "162"
+    },
+    "user_input_requests": {
+     "root": 1,
+     "sub_agents_own_turns": 0,
+     "answers": [
+      "{\"accepted\":true}"
+     ]
+    },
+    "sleep_calls": {
+     "root": [],
+     "sub_agents_own_turns": []
+    },
+    "seconds_idle_in_sleep": 0,
+    "seconds_without_sleep": 162,
+    "pytest_before_in_the_run_clone": "72 failed, 209 passed",
+    "grade_on_a_fresh_clone": {
+     "ruff_check": 0,
+     "ruff_format_check": 0,
+     "pyright": 0,
+     "pytest": 0,
+     "pytest_tail": "281 passed"
+    },
+    "own_clone_checks": {
+     "tests_unchanged_exit": "0",
+     "tests_untracked": "0",
+     "tracked_outside_allowed": "0",
+     "agents_md_equal_to_post_setup": "yes",
+     "new_untracked_outside_meridian": "0",
+     "pre_untracked_removed": "0"
+    },
+    "passed": true,
+    "tracked_files_changed_from_base": [
+     ".gitignore",
+     "AGENTS.md",
+     "meridian/boundary.py",
+     "meridian/ibkr_node.py",
+     "meridian/ibkr_paper.py"
+    ],
+    "owner_trust_keys_before_after": [
+     {
+      "projects_keys": 4,
+      "ab0008_keys": 0
+     },
+     {
+      "projects_keys": 4,
+      "ab0008_keys": 0
+     }
+    ],
+    "owner_trust_keys_check": "unchanged",
+    "tokens_all_threads": {
+     "input_tokens": 1558240,
+     "cached_input_tokens": 1428608,
+     "cache_write_input_tokens": 0,
+     "output_tokens": 6554,
+     "reasoning_output_tokens": 1728,
+     "total_tokens": 1564794
+    },
+    "root": {
+     "model_effort": "gpt-6-astra/high",
+     "cli_version": "0.167.2",
+     "model_requests": 16,
+     "total_tokens": 880398,
+     "first_request_input_tokens": 23292,
+     "spawn_agent_types": [
+      "executor"
+     ]
+    },
+    "sub_agents": [
+     {
+      "model_requests": 10,
+      "total_tokens": 684396,
+      "own_turn_contexts": {
+       "gpt-6-astra/medium": 2
+      },
+      "inherited_turn_contexts": {
+       "gpt-6-astra/high": 1
+      },
+      "session_start_text_inherited_own": [
+       1,
+       0
+      ],
+      "token_usage_records_in_inherited_history": 0
+     }
+    ],
+    "omx_hook_texts_seen": {
+     "session_start_exec_env": 1,
+     "stop_auto_nudge": 0,
+     "posttool_block": 0,
+     "prompt_triage": 0,
+     "stop_auto_nudge_reason_text": 0
+    },
+    "session_start_text_in_all_rollouts_as_scanned": 2,
+    "tool_inputs_scanned": 43,
+    "flagged_tool_inputs_by_pattern": {
+     "forbidden": 8
+    },
+    "rollouts_written_to_owner_codex_sessions": 2,
+    "owner_home": {
+     "config_toml_and_hooks_json_sha256_unchanged": true,
+     "omx_paths_checked": 11,
+     "omx_paths_present_before_after": [
+      0,
+      0
+     ],
+     "omx_process_left": false,
+     "codex_databases_rewritten_size_before_after": {
+      "goals_1.sqlite": [
+       4096,
+       32768
+      ],
+      "memories_1.sqlite": [
+       4096,
+       45056
+      ],
+      "queue_1.sqlite": [
+       4096,
+       40960
+      ],
+      "state_5.sqlite": [
+       327680,
+       331776
+      ],
+      "thread_history_1.sqlite": [
+       5021696,
+       5668864
+      ]
+     },
+     "codex_write_ahead_logs_written": [
+      "state_5.sqlite-wal",
+      "thread_history_1.sqlite-wal"
+     ]
+    },
+    "warnings": []
+   },
+   {
+    "run": "a-2",
+    "order_slot": 4,
+    "arm": "without",
+    "guard": [
+     {
+      "time": "2026-11-13T04:27:02-05:00",
+      "rc": 0,
+      "printed": "gateway down"
+     }
+    ],
+    "codex_version_before_after": [
+     "codex-cli 0.167.2",
+     "codex-cli 0.167.2"
+    ],
+    "exit_and_seconds": {
+     "exit": "0",
+     "seconds": "208"
+    },
+    "user_input_requests": {
+     "root": 1,
+     "sub_agents_own_turns": 0,
+     "answers": [
+      "{\"accepted\":true}"
+     ]
+    },
+    "sleep_calls": {
+     "root": [
+      {
+       "requested_ms": 60000,
+       "reported_wall_seconds": 60.0051,
+       "next_request_input_tokens": 62389
+      }
+     ],
+     "sub_agents_own_turns": []
+    },
+    "seconds_idle_in_sleep": 60,
+    "seconds_without_sleep": 148,
+    "pytest_before_in_the_run_clone": "72 failed, 209 passed",
+    "grade_on_a_fresh_clone": {
+     "ruff_check": 0,
+     "ruff_format_check": 0,
+     "pyright": 0,
+     "pytest": 0,
+     "pytest_tail": "281 passed"
+    },
+    "own_clone_checks": {
+     "tests_unchanged_exit": "0",
+     "tests_untracked": "0",
+     "tracked_outside_allowed": "0",
+     "agents_md_equal_to_post_setup": "yes",
+     "new_untracked_outside_meridian": "0",
+     "pre_untracked_removed": "0"
+    },
+    "passed": true,
+    "tracked_files_changed_from_base": [
+     ".gitignore",
+     "meridian/boundary.py",
+     "meridian/ibkr_node.py",
+     "meridian/ibkr_paper.py"
+    ],
+    "owner_trust_keys_before_after": [
+     {
+      "projects_keys": 4,
+      "ab0008_keys": 0
+     },
+     {
+      "projects_keys": 4,
+      "ab0008_keys": 0
+     }
+    ],
+    "owner_trust_keys_check": "unchanged",
+    "tokens_all_threads": {
+     "input_tokens": 467613,
+     "cached_input_tokens": 405120,
+     "cache_write_input_tokens": 0,
+     "output_tokens": 5064,
+     "reasoning_output_tokens": 1037,
+     "total_tokens": 472677
+    },
+    "root": {
+     "model_effort": "gpt-6-astra/high",
+     "cli_version": "0.167.2",
+     "model_requests": 11,
+     "total_tokens": 472677,
+     "first_request_input_tokens": 15217,
+     "spawn_agent_types": []
+    },
+    "sub_agents": [],
+    "omx_hook_texts_seen": {
+     "session_start_exec_env": 0,
+     "stop_auto_nudge": 0,
+     "posttool_block": 0,
+     "prompt_triage": 0,
+     "stop_auto_nudge_reason_text": 0
+    },
+    "session_start_text_in_all_rollouts_as_scanned": 0,
+    "tool_inputs_scanned": 26,
+    "flagged_tool_inputs_by_pattern": {
+     "forbidden": 9
+    },
+    "rollouts_written_to_owner_codex_sessions": 1,
+    "owner_home": {
+     "config_toml_and_hooks_json_sha256_unchanged": true,
+     "omx_paths_checked": 11,
+     "omx_paths_present_before_after": [
+      0,
+      0
+     ],
+     "omx_process_left": false,
+     "codex_databases_rewritten_size_before_after": {},
+     "codex_write_ahead_logs_written": [
+      "state_5.sqlite-wal",
+      "thread_history_1.sqlite-wal"
+     ]
+    },
+    "warnings": []
+   },
+   {
+    "run": "a-3",
+    "order_slot": 5,
+    "arm": "without",
+    "guard": [
+     {
+      "time": "2026-11-13T04:31:00-05:00",
+      "rc": 0,
+      "printed": "gateway down"
+     }
+    ],
+    "codex_version_before_after": [
+     "codex-cli 0.167.2",
+     "codex-cli 0.167.2"
+    ],
+    "exit_and_seconds": {
+     "exit": "0",
+     "seconds": "216"
+    },
+    "user_input_requests": {
+     "root": 1,
+     "sub_agents_own_turns": 0,
+     "answers": [
+      "{\"accepted\":true}"
+     ]
+    },
+    "sleep_calls": {
+     "root": [
+      {
+       "requested_ms": 30000,
+       "reported_wall_seconds": 30.0032,
+       "next_request_input_tokens": 63047
+      }
+     ],
+     "sub_agents_own_turns": []
+    },
+    "seconds_idle_in_sleep": 30,
+    "seconds_without_sleep": 186,
+    "pytest_before_in_the_run_clone": "72 failed, 209 passed",
+    "grade_on_a_fresh_clone": {
+     "ruff_check": 0,
+     "ruff_format_check": 0,
+     "pyright": 0,
+     "pytest": 0,
+     "pytest_tail": "281 passed"
+    },
+    "own_clone_checks": {
+     "tests_unchanged_exit": "0",
+     "tests_untracked": "0",
+     "tracked_outside_allowed": "0",
+     "agents_md_equal_to_post_setup": "yes",
+     "new_untracked_outside_meridian": "0",
+     "pre_untracked_removed": "0"
+    },
+    "passed": true,
+    "tracked_files_changed_from_base": [
+     ".gitignore",
+     "meridian/boundary.py",
+     "meridian/ibkr_node.py",
+     "meridian/ibkr_paper.py"
+    ],
+    "owner_trust_keys_before_after": [
+     {
+      "projects_keys": 4,
+      "ab0008_keys": 0
+     },
+     {
+      "projects_keys": 4,
+      "ab0008_keys": 0
+     }
+    ],
+    "owner_trust_keys_check": "unchanged",
+    "tokens_all_threads": {
+     "input_tokens": 632863,
+     "cached_input_tokens": 585088,
+     "cache_write_input_tokens": 0,
+     "output_tokens": 5769,
+     "reasoning_output_tokens": 1252,
+     "total_tokens": 638632
+    },
+    "root": {
+     "model_effort": "gpt-6-astra/high",
+     "cli_version": "0.167.2",
+     "model_requests": 14,
+     "total_tokens": 638632,
+     "first_request_input_tokens": 15217,
+     "spawn_agent_types": []
+    },
+    "sub_agents": [],
+    "omx_hook_texts_seen": {
+     "session_start_exec_env": 0,
+     "stop_auto_nudge": 0,
+     "posttool_block": 0,
+     "prompt_triage": 0,
+     "stop_auto_nudge_reason_text": 0
+    },
+    "session_start_text_in_all_rollouts_as_scanned": 0,
+    "tool_inputs_scanned": 31,
+    "flagged_tool_inputs_by_pattern": {
+     "forbidden": 7
+    },
+    "rollouts_written_to_owner_codex_sessions": 1,
+    "owner_home": {
+     "config_toml_and_hooks_json_sha256_unchanged": true,
+     "omx_paths_checked": 11,
+     "omx_paths_present_before_after": [
+      0,
+      0
+     ],
+     "omx_process_left": false,
+     "codex_databases_rewritten_size_before_after": {
+      "thread_history_1.sqlite": [
+       5668864,
+       6246400
+      ]
+     },
+     "codex_write_ahead_logs_written": [
+      "state_5.sqlite-wal",
+      "thread_history_1.sqlite-wal"
+     ]
+    },
+    "warnings": []
+   },
+   {
+    "run": "b-3",
+    "order_slot": 6,
+    "arm": "with",
+    "guard": [
+     {
+      "time": "2026-11-13T04:35:13-05:00",
+      "rc": 0,
+      "printed": "gateway down"
+     }
+    ],
+    "codex_version_before_after": [
+     "codex-cli 0.167.2",
+     "codex-cli 0.167.2"
+    ],
+    "exit_and_seconds": {
+     "exit": "0",
+     "seconds": "105"
+    },
+    "user_input_requests": {
+     "root": 1,
+     "sub_agents_own_turns": 0,
+     "answers": [
+      "{\"accepted\":true}"
+     ]
+    },
+    "sleep_calls": {
+     "root": [],
+     "sub_agents_own_turns": []
+    },
+    "seconds_idle_in_sleep": 0,
+    "seconds_without_sleep": 105,
+    "pytest_before_in_the_run_clone": "72 failed, 209 passed",
+    "grade_on_a_fresh_clone": {
+     "ruff_check": 0,
+     "ruff_format_check": 0,
+     "pyright": 0,
+     "pytest": 0,
+     "pytest_tail": "281 passed"
+    },
+    "own_clone_checks": {
+     "tests_unchanged_exit": "0",
+     "tests_untracked": "0",
+     "tracked_outside_allowed": "0",
+     "agents_md_equal_to_post_setup": "yes",
+     "new_untracked_outside_meridian": "0",
+     "pre_untracked_removed": "0"
+    },
+    "passed": true,
+    "tracked_files_changed_from_base": [
+     ".gitignore",
+     "AGENTS.md",
+     "meridian/boundary.py",
+     "meridian/ibkr_node.py",
+     "meridian/ibkr_paper.py"
+    ],
+    "owner_trust_keys_before_after": [
+     {
+      "projects_keys": 4,
+      "ab0008_keys": 0
+     },
+     {
+      "projects_keys": 4,
+      "ab0008_keys": 0
+     }
+    ],
+    "owner_trust_keys_check": "unchanged",
+    "tokens_all_threads": {
+     "input_tokens": 756643,
+     "cached_input_tokens": 657152,
+     "cache_write_input_tokens": 0,
+     "output_tokens": 4837,
+     "reasoning_output_tokens": 819,
+     "total_tokens": 761480
+    },
+    "root": {
+     "model_effort": "gpt-6-astra/high",
+     "cli_version": "0.167.2",
+     "model_requests": 11,
+     "total_tokens": 496402,
+     "first_request_input_tokens": 23292,
+     "spawn_agent_types": [
+      "executor"
+     ]
+    },
+    "sub_agents": [
+     {
+      "model_requests": 5,
+      "total_tokens": 265078,
+      "own_turn_contexts": {
+       "gpt-6-astra/medium": 1
+      },
+      "inherited_turn_contexts": {
+       "gpt-6-astra/high": 1
+      },
+      "session_start_text_inherited_own": [
+       1,
+       0
+      ],
+      "token_usage_records_in_inherited_history": 0
+     }
+    ],
+    "omx_hook_texts_seen": {
+     "session_start_exec_env": 1,
+     "stop_auto_nudge": 0,
+     "posttool_block": 0,
+     "prompt_triage": 0,
+     "stop_auto_nudge_reason_text": 0
+    },
+    "session_start_text_in_all_rollouts_as_scanned": 2,
+    "tool_inputs_scanned": 29,
+    "flagged_tool_inputs_by_pattern": {
+     "forbidden": 9
+    },
+    "rollouts_written_to_owner_codex_sessions": 2,
+    "owner_home": {
+     "config_toml_and_hooks_json_sha256_unchanged": true,
+     "omx_paths_checked": 11,
+     "omx_paths_present_before_after": [
+      0,
+      0
+     ],
+     "omx_process_left": false,
+     "codex_databases_rewritten_size_before_after": {
+      "state_5.sqlite": [
+       331776,
+       335872
+      ]
+     },
+     "codex_write_ahead_logs_written": [
+      "state_5.sqlite-wal",
+      "thread_history_1.sqlite-wal"
+     ]
+    },
+    "warnings": []
+   }
+  ],
+  "without": {
+   "runs": [
+    "a-1",
+    "a-2",
+    "a-3"
+   ],
+   "passed": 3,
+   "total_tokens": [
+    530527,
+    472677,
+    638632
+   ],
+   "total_tokens_sum": 1641836,
+   "total_tokens_median": 530527,
+   "root_thread_tokens": [
+    530527,
+    472677,
+    638632
+   ],
+   "sub_agent_tokens": [
+    0,
+    0,
+    0
+   ],
+   "sub_agent_threads": [
+    0,
+    0,
+    0
+   ],
+   "output_tokens": [
+    4737,
+    5064,
+    5769
+   ],
+   "seconds": [
+    147,
+    208,
+    216
+   ],
+   "seconds_median": 208,
+   "user_input_requests_root": [
+    1,
+    1,
+    1
+   ],
+   "seconds_idle_in_sleep": [
+    0,
+    60,
+    30
+   ],
+   "seconds_without_sleep": [
+    147,
+    148,
+    186
+   ],
+   "seconds_without_sleep_median": 148,
+   "model_requests_incl_sub_agents": [
+    12,
+    11,
+    14
+   ],
+   "first_request_input_tokens": [
+    15217,
+    15217,
+    15217
+   ]
+  },
+  "with": {
+   "runs": [
+    "b-1",
+    "b-2",
+    "b-3"
+   ],
+   "passed": 3,
+   "total_tokens": [
+    1028944,
+    1564794,
+    761480
+   ],
+   "total_tokens_sum": 3355218,
+   "total_tokens_median": 1028944,
+   "root_thread_tokens": [
+    720594,
+    880398,
+    496402
+   ],
+   "sub_agent_tokens": [
+    308350,
+    684396,
+    265078
+   ],
+   "sub_agent_threads": [
+    1,
+    1,
+    1
+   ],
+   "output_tokens": [
+    5244,
+    6554,
+    4837
+   ],
+   "seconds": [
+    139,
+    162,
+    105
+   ],
+   "seconds_median": 139,
+   "user_input_requests_root": [
+    1,
+    1,
+    1
+   ],
+   "seconds_idle_in_sleep": [
+    0,
+    0,
+    0
+   ],
+   "seconds_without_sleep": [
+    139,
+    162,
+    105
+   ],
+   "seconds_without_sleep_median": 139,
+   "model_requests_incl_sub_agents": [
+    19,
+    26,
+    16
+   ],
+   "first_request_input_tokens": [
+    23292,
+    23292,
+    23292
+   ]
+  },
+  "with_vs_without_total_tokens_percent": {
+   "by_sum": 104.4,
+   "by_median": 93.9
+  },
+  "extension_runs_needed": false
+ },
+ "rule": {
+  "text": "adopt only if b passes more R1 runs (2 of 3 against at most 1, after any extension), or both pass every run and b uses at least 25 % fewer total tokens; and containment passes, no tests/ edit, no auto-nudge continuation, no write outside the run's worktree",
+  "b_passes_more": false,
+  "both_pass_all_and_b_25_percent_fewer_tokens": false,
+  "own_clone_and_owner_trust_checks_clean": true,
+  "containment_as_applied": true,
+  "containment_as_preregistered": false,
+  "result": "not adopted"
+ },
+ "setup_proof": {
+  "clone_at_main_9c5daaa_before_after_setup": {
+   "AGENTS.md": [
+    8320,
+    35045
+   ],
+   ".gitignore": [
+    524,
+    711
+   ],
+   ".codex/config.toml": [
+    null,
+    3525
+   ],
+   ".codex/hooks.json": [
+    null,
+    2456
+   ]
+  },
+  "codex_agents_toml": 18,
+  "codex_prompts_md": 32,
+  "codex_skill_folders": 24,
+  "r1_base_27aa964_without_vs_after_setup": {
+   "a-1": {
+    "AGENTS.md_bytes": 5717,
+    "gitignore_lines": 9
+   },
+   "b-1": {
+    "AGENTS.md_bytes": 32442,
+    "gitignore_lines": 19
+   }
+  },
+  "render_without_trust": {
+   "message_bytes": 66065,
+   "tool_bytes": 21832
+  },
+  "render_with_session_trust_flag": {
+   "message_bytes": 67167,
+   "tool_bytes": 26847
+  },
+  "route_proof_file_times": {
+   "install: home snapshot before": "2026-11-13T04:09:29-05:00",
+   "install: npm install log": "2026-11-13T04:09:35-05:00",
+   "setup: project-scope setup log": "2026-11-13T04:10:23-05:00",
+   "trust: second render": "2026-11-13T04:10:49-05:00",
+   "exec-noauth probe (in no published script): untrusted": "2026-11-13T04:11:17-05:00",
+   "exec-noauth probe (in no published script): trusted": "2026-11-13T04:11:31-05:00",
+   "selftrust: last probe": "2026-11-13T04:12:38-05:00"
+  }
+ },
+ "cost_tokens": {
+  "m1": 120573,
+  "r1_without": 1641836,
+  "r1_with": 3355218,
+  "all": 5117627
+ },
+ "scripts": [
+  {
+   "series_name": "codex_ab_summary.py",
+   "published_as": "0008_codex_ab_summary.py",
+   "bytes": 8801,
+   "sha256": "e9425d77dfacaa255d111fc69d55bd803a9e83033095e023a8946ad53e6f7ff2",
+   "copied_into_series_folder": "2026-11-13T04:13:33-05:00"
+  },
+  {
+   "series_name": "common2.sh",
+   "published_as": "0008_common2.sh",
+   "bytes": 5193,
+   "sha256": "92db4429dc331fb17669ce7eb068035431e822cebd319bbeb7db78e90028db14",
+   "copied_into_series_folder": "2026-11-13T04:13:33-05:00"
+  },
+  {
+   "series_name": "m1.sh",
+   "published_as": "0008_m1.sh",
+   "bytes": 3045,
+   "sha256": "1b0c8d7c9dd2bc5fb850bbc4f6477e01ef8f37e236d42c39a66500b0dbc43ea9",
+   "copied_into_series_folder": "2026-11-13T04:13:33-05:00"
+  },
+  {
+   "series_name": "proof.sh",
+   "published_as": "0008_proof.sh",
+   "bytes": 5762,
+   "sha256": "429886cd015d36766955bafdd7aa0e6a20efa5821dc54384bf5aa55170572d4e",
+   "copied_into_series_folder": "2026-11-13T04:13:33-05:00"
+  },
+  {
+   "series_name": "r1-brief.txt",
+   "published_as": "0008-brief-R1.txt",
+   "bytes": 344,
+   "sha256": "789791805eceb05d233fb1fc0d1c0ebefaed5d84d8f95612476bacb4a4feabc4",
+   "copied_into_series_folder": "2026-11-13T04:17:29-05:00"
+  },
+  {
+   "series_name": "r1.sh",
+   "published_as": "0008_r1.sh",
+   "bytes": 6986,
+   "sha256": "e6a36b98c56d7eb0d74bcb071f4320c56703a56f1fc63107089c68b3bc0a7cdf",
+   "copied_into_series_folder": "2026-11-13T04:17:29-05:00"
+  },
+  {
+   "series_name": "scan_run.py",
+   "published_as": "0008_scan_run.py",
+   "bytes": 3641,
+   "sha256": "b1f2f69111107c813dc2424b41b787b9b1312e4fe746f8845d0774cb5bbca2cd",
+   "copied_into_series_folder": "2026-11-13T04:17:29-05:00"
+  },
+  {
+   "series_name": "trust_keys.py",
+   "published_as": "0008_trust_keys.py",
+   "bytes": 436,
+   "sha256": "79162e02169a00d37590578a1d91bade6845a5aa39eb558a025be5f3992a6bab",
+   "copied_into_series_folder": "2026-11-13T04:13:33-05:00"
+  },
+  {
+   "series_name": "gateway-guard.sh (~/.cache/meridian, outside the series folder; guard() in 0008_common2.sh runs it)",
+   "published_as": "0008_gateway_guard.sh",
+   "bytes": 747,
+   "sha256": "12bbc82389ebe3bb30df285cbc7844dfb1d0e85757fe62ceb5e1f078729d9fec",
+   "last_written": "2026-11-13T02:41:20-05:00"
+  }
+ ],
+ "notes": [
+  "SessionStart text: omx_hook_texts_seen.session_start_exec_env counts the root thread only. 0008_scan_run.py, as run, counted it in every rollout (session_start_text_in_all_rollouts_as_scanned, 2 per b run): the second is the root's text again, in the history a sub-agent inherits (sub_agents[].session_start_text_inherited_own). A sub-agent's own turns are those from the last turn_context before its first token_usage_record; its inherited history holds no token record, so its token counts are its own.",
+  "Sub-agent effort: own_turn_contexts are the sub-agent's own turns; the one inherited_turn_context is the root's, copied into its rollout.",
+  "Containment as applied, a test chosen after the runs once the pre-registered one had failed: in every run the owner's ~/.codex/config.toml and hooks.json kept their sha256, the [projects] trust-key count and the ab-0008 trust keys were unchanged (R1), none of the omx_paths_checked existed before or after, and no OMX process was left. That is narrower than the pre-registered test (the snapshot must differ only by the ab-0008 worktrees), which no run met: both arms ran in the owner's signed-in ~/.codex (pre-registration change 1), so each wrote its rollouts to ~/.codex/sessions and wrote Codex's state and thread-history logs there (codex_write_ahead_logs_written). codex_databases_rewritten_size_before_after lists the owner's Codex database files whose size or time changed in the run's window, whichever process wrote them.",
+  "Script times: copied_into_series_folder is the time each script was copied into the series folder the runs read it from. 0008_proof.sh and 0008_common2.sh are the final versions: the route proof's install stage ran under earlier versions of both, and its setup and trust stages before proof.sh's last edit (route_proof_file_times). The exec-noauth probe was run by hand and its command was not kept, so no published script makes its files; a re-run records its two times as null.",
+  "Stop auto-nudge: omx_hook_texts_seen.stop_auto_nudge counts 0008_scan_run.py's needle, the Stop hook's systemMessage; stop_auto_nudge_reason_text counts the block reason that would continue the turn (auto-nudge.ts DEFAULT_AUTO_NUDGE_RESPONSE at the pin) in every line of the run's event stream and of its root and sub-agent rollouts. The rule's no-auto-nudge condition (own_clone_and_owner_trust_checks_clean) requires both to be 0.",
+  "Questions and sleeps: user_input_requests counts the agent's calls to Codex's request_user_input_async, with Codex's answers; in headless exec nobody replies. sleep_calls lists calls to Codex's sleep tool, with the wall time it reported and the input tokens of the next model request, which reads its result. seconds_without_sleep is the run's seconds less seconds_idle_in_sleep (the reported sleep times, summed and rounded). A sub-agent's calls are counted in its own turns only, not in the history it inherits."
+ ]
+}

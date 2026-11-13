@@ -1,0 +1,13 @@
+items: before 7 after 7
+0	additional_tools	'3 tools'	22200	22200	identical
+1	message/developer	'You are Codex, an agent base'	21428	21428	identical
+2	message/developer	'<skills_instructions>'	5066	5066	identical
+3	message/developer	'<multi_agent_role>You are `/'	2400	2400	identical
+4	message/developer	'<multi_agent_mode>Any earlie'	271	271	identical
+5	message/user	'# AGENTS.md instructions for'	8829	8829	identical
+6	message/user	'Reply with exactly the word '	72	72	identical
+total_bytes	60266	60266	delta 0
+mentions 'codex-security': before 0 after 0
+mentions 'codex_security': before 0 after 0
+mentions 'ab-0007-pinned': before 0 after 0
+mentions 'openai-curated': before 0 after 0

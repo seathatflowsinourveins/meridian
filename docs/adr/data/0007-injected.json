@@ -1,0 +1,100 @@
+{
+ "adr": "0007",
+ "what": "Texts codex-security (openai/plugins d420d13) would inject into Codex 0.167.2, reconstructed from the source (not measured: plugins are pinned off here), with their o200k_base counts.",
+ "how": "Rebuilt from the sources, not captured from Codex (plugins are pinned off here). Skill listing: 0007_reconstruct_listing.py <openai/plugins d420d13>/plugins/codex-security codex-security /home/owner/.codex-ab-0007-with/plugins/cache/ab-0007-pinned/codex-security/0.1.32 r1 <aliased out> <absolute out> (needs PyYAML), following codex-rs at ce21072. Totals: the listing followed directly by deferred_row_only or deferred_block_new. MCP tools: concatenate mcp/server.mjs.br.part-000 and part-001 of the pin, brotli-decompress (266,028 to 1,831,445 bytes), then 0007_mcp_model_tools.py <bundle> <txt out> <tsv out>; the bundle is read as text and never run. tool_suggest specs: 0007_tool_specs.py <out dir> (texts transcribed from codex-rs/core/src/tools/handlers at ce21072). <plugins_instructions>: extracted from a Codex test snapshot at ce21072; the mention hint: Codex's template filled with the plugin's names. Counted with 0007_count_tokens.py, o200k_base (vocabulary sha256 446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d), a proxy for OpenAI's tokenizer. sha256 is over the UTF-8 bytes with LF line ends.",
+ "redaction": "In the cache path the home folder's user name is replaced by 'owner' (same length); every count is the same before and after.",
+ "baseline_m2": "codex debug prompt-input in a throwaway CODEX_HOME at main 9c5daaa: no <tools> block; tools as namespaces functions (exec, wait, request_user_input, request_user_input_async), clock and collaboration (code mode; exec's description says deferred nested tools may be omitted); skill roots aliased r0 (.system) and r1 (the repo's .agents/skills). How plugin MCP tools would appear in code mode was not reconstructed.",
+ "texts": {
+  "skill_listing_aliased": {
+   "when": "Session start: codex-security's 15 skill-listing lines plus its alias-root line, as Codex renders them with a short alias root (render.rs:309-318, aliases); plugin cached at $CODEX_HOME/plugins/cache/ab-0007-pinned/codex-security/0.1.32",
+   "chars": 5664,
+   "tokens_o200k": 1275,
+   "sha256": "8466efd46b8143356ca23b661fb3ae8949528619513b0f0677f0efec91a37051",
+   "text_left_out": "candidate text (codex-security, whose licence field at the pin says Proprietary): rebuild it with the recipe and check this sha256"
+  },
+  "skill_listing_absolute": {
+   "when": "Session start: the same lines if Codex renders absolute paths (no alias root); upper bound",
+   "chars": 6770,
+   "tokens_o200k": 1672,
+   "sha256": "e1f05e6887ba4e1e23cd6b0623d8aca9161d2b415cc9471e39b753eb4755d41f",
+   "text_left_out": "candidate text (codex-security, whose licence field at the pin says Proprietary): rebuild it with the recipe and check this sha256"
+  },
+  "deferred_row_only": {
+   "when": "Session start: the deferred-namespace row alone, if a <tools> block already exists",
+   "chars": 22,
+   "tokens_o200k": 8,
+   "text": "- mcp__codex_security\n",
+   "sha256": "bcb9b221e514b2242665ee4b4058409cbd54153c4e3acd73b688e722de8690e0"
+  },
+  "deferred_block_new": {
+   "when": "Session start: a new <tools> block with the row",
+   "chars": 64,
+   "tokens_o200k": 18,
+   "text": "<tools>\nDeferred tool namespaces:\n- mcp__codex_security\n</tools>",
+   "sha256": "5b1eb0b418e2acc3d7bfafe94697fe10fe5ee60c750c0445de6b7070438c5d73"
+  },
+  "total_aliased_row": {
+   "when": "Static total: aliased listing + row only",
+   "chars": 5686,
+   "tokens_o200k": 1283,
+   "sha256": "d51f4a71eda7095ed787645b09c813faab39b3db3e7d2ac4b3b687dd58d78a2f",
+   "text_left_out": "candidate text (codex-security, whose licence field at the pin says Proprietary): rebuild it with the recipe and check this sha256"
+  },
+  "total_aliased_block": {
+   "when": "Static total: aliased listing + new <tools> block",
+   "chars": 5728,
+   "tokens_o200k": 1293,
+   "sha256": "7fe6375ece80210a228b1ad76b646ca82a4fe657d22fe527bf03ae3362319b38",
+   "text_left_out": "candidate text (codex-security, whose licence field at the pin says Proprietary): rebuild it with the recipe and check this sha256"
+  },
+  "total_absolute_block": {
+   "when": "Static total: absolute paths + new <tools> block (upper bound)",
+   "chars": 6834,
+   "tokens_o200k": 1690,
+   "sha256": "fb454479a5450bea4eb94893b591f3590a2b0459bb4b9444cfa40b9fcedda454",
+   "text_left_out": "candidate text (codex-security, whose licence field at the pin says Proprietary): rebuild it with the recipe and check this sha256"
+  },
+  "plugins_instructions": {
+   "when": "Not injected for gpt-6-astra (include_plugin_usage_instructions false): <plugins_instructions>",
+   "chars": 1014,
+   "tokens_o200k": 209,
+   "text": "<plugins_instructions>\n## Plugins\nA plugin is a local bundle of skills, MCP servers, and apps.\n### How to use plugins\n- Skill naming: If a plugin contributes skills, those skill entries are prefixed with `plugin_name:` in the Skills list.\n- MCP naming: Plugin-provided MCP tools keep standard MCP identifiers such as `mcp__server__tool`; use tool provenance to tell which plugin they come from.\n- Trigger rules: If the user explicitly names a plugin, prefer capabilities associated with that plugin for that turn.\n- Relationship to capabilities: Plugins are not invoked directly. Use their underlying skills, MCP tools, and app tools to help solve the task.\n- Relevance: Determine what a plugin can help with from explicit user mention or from the plugin-associated skills, MCP tools, and apps exposed elsewhere in this turn.\n- Missing/blocked: If the user requests a plugin that does not have relevant callable capabilities for the task, say so briefly and continue with the best fallback.\n</plugins_instructions>",
+   "sha256": "81d37acb6feff552b562f712b1e854339d90a0b19aa9f271047cca787f77a51a"
+  },
+  "tool_list_available_plugins_to_install": {
+   "when": "Every request, only with tool_suggest, apps and plugins on",
+   "chars": 772,
+   "tokens_o200k": 165,
+   "text": "{\"type\": \"function\", \"name\": \"list_available_plugins_to_install\", \"description\": \"# List plugin/connector install candidates\\n\\nUse this tool only when both are true:\\n- The user explicitly asks to use a specific plugin or connector that is not already available in the current context or active `tools` list.\\n- `tool_search` is not available, or it has already been called and did not find or make the requested tool callable.\\n\\nReturns known plugins and connectors that can be passed to `request_plugin_install`. When both a plugin and a connector match, prefer the plugin; use the connector only when its corresponding plugin is already installed.\\n\", \"strict\": false, \"parameters\": {\"type\": \"object\", \"properties\": {}, \"required\": [], \"additionalProperties\": false}}",
+   "sha256": "ec9ff1e2c1709675da35ef8118a1194e37b15a3fb7deaf6b2309d733625ae8c5"
+  },
+  "tool_request_plugin_install": {
+   "when": "Every request, same condition",
+   "chars": 1139,
+   "tokens_o200k": 264,
+   "text": "{\"type\": \"function\", \"name\": \"request_plugin_install\", \"description\": \"# Request plugin/connector install\\n\\nUse this tool only after `list_available_plugins_to_install` returns a plugin or connector that exactly matches the user's explicit request.\\n\\nDo not use it for adjacent capabilities, broad recommendations, or tools that merely seem useful. Pass the returned `tool_type` through directly, and pass the returned `id` as `tool_id`.\\n\\nIMPORTANT: DO NOT call this tool in parallel with other tools.\", \"strict\": false, \"parameters\": {\"type\": \"object\", \"properties\": {\"action_type\": {\"type\": \"string\", \"description\": \"Suggested action for the tool. Use \\\"install\\\".\"}, \"suggest_reason\": {\"type\": \"string\", \"description\": \"Concise one-line user-facing reason why this plugin or connector can help with the current request.\"}, \"tool_id\": {\"type\": \"string\", \"description\": \"Connector or plugin id to suggest.\"}, \"tool_type\": {\"type\": \"string\", \"description\": \"Type of discoverable tool to suggest. Use \\\"connector\\\" or \\\"plugin\\\".\"}}, \"required\": [\"tool_type\", \"action_type\", \"tool_id\", \"suggest_reason\"], \"additionalProperties\": false}}",
+   "sha256": "20184df5a2d9eebeadbcac64aaa8d1cd12de8d41e19a6ca1c069e35dfe906623"
+  },
+  "mcp_tool_names_descriptions": {
+   "when": "On demand after tool_search loads the namespace: the 22 model-visible MCP tools of the main stdio server (47 tools in all, 25 app-only), names and descriptions (schemas not counted)",
+   "chars": 6084,
+   "tokens_o200k": 1180,
+   "sha256": "f4982b247f38c7b9726c5ff474bea60af0b9c4a7df42d30cf9e7d90ee62bcfe5",
+   "corrected": "Recounted 2026-11-13 with the fixed 0007_mcp_model_tools.py, which follows createCodexSecurityServer() through its helpers. The first version counted only literal-name server.registerTool sites with modelActionMeta (38 in the bundle, plus the helper's own site: 39) and missed the 10 tools registered through registerCompactTool (modelOnlyMeta): 12 tools, 3,801 chars, 748 tokens, sha256 dcb3ad5003e9e618c568ebe65b9361deaa758ac633cf25e76480f1b20af619f5. 47 agrees with openai/plugins 0722921d's own test note ('listed 47 tools').",
+   "text_left_out": "candidate text (codex-security, whose licence field at the pin says Proprietary): rebuild it with the recipe and check this sha256"
+  },
+  "mention_hint": {
+   "when": "Per turn on an @-mention of the plugin",
+   "chars": 250,
+   "tokens_o200k": 52,
+   "text": "Capabilities from the `Codex Security` plugin:\n- Skills from this plugin are prefixed with `codex-security:`.\n- MCP servers from this plugin available in this session: `codex-security`.\nUse these plugin-associated capabilities to help solve the task.",
+   "sha256": "f31d74ce647c259e746d4114df1338ce25527bcbe21e5c9bc466a5f00f2b37c1"
+  },
+  "total_aliased_block_as_r2": {
+   "when": "As total_aliased_block with the alias r2, because the measured baseline already uses r0 and r1",
+   "chars": 5728,
+   "tokens_o200k": 1293,
+   "note": "Text not repeated: total_aliased_block with r1 replaced by r2."
+  }
+ }
+}
