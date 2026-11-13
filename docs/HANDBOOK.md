@@ -57,6 +57,10 @@ Before a run:
   other hosts out. `~/Jts/jts.ini` lists `TrustedIPs=127.0.0.1` only; the box itself is stored
   in the Gateway's encrypted settings and can only be checked in its window.
 - Optional: the allowlist in `risk/boundary.contract.json`, created as `AGENTS.md` shows.
+- The [rc9 source](https://github.com/nautechsystems/nautilus_trader/blob/da6b57aefdd62b44f675e434ffcfefca7f4025dd/crates/adapters/interactive_brokers/src/execution/reports.rs#L204) requests all open orders with either `fetch_all_open_orders` value; the startup AAPL.XNAS cache check includes reconciled external orders and account positions.
+  The [order request is a snapshot](https://www.interactivebrokers.com/docs/tws-api/doc/order-management/open-orders), so it does not guarantee visibility of later orders.
+  Only reports returned and successfully cached are visible; Client Portal/mobile coverage remains unverified.
+  Before `fill`, check all paper-account AAPL orders and positions by hand in IBKR, across every entry route.
 
 The clean-account condition, the run commands and what a pass looks like are in `AGENTS.md`,
 under "The IBKR paper lane (owner only)", not in this file.
