@@ -28,6 +28,7 @@ is logged by an audit hook along with every file semble opens for writing.
 
 import argparse
 import ast
+import asyncio
 import hashlib
 import json
 import os
@@ -38,6 +39,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from importlib import metadata
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -496,7 +498,10 @@ def tree_bytes(path: Path) -> int:
 
 def summarize_audit(log: Path, work: Path, home: Path) -> dict:
     """Network calls, process starts and written paths, from one audit log."""
-    network, processes, written = [], [], set()
+    network: list[str] = []
+    processes: list[str] = []
+    written: set[str] = set()
+    removed: set[str] = set()
     if log.exists():
         for raw in log.read_text(encoding="utf-8", errors="replace").splitlines():
             _, event, detail = (raw.split("\t", 2) + ["", ""])[:3]
@@ -504,15 +509,39 @@ def summarize_audit(log: Path, work: Path, home: Path) -> dict:
                 network.append(f"{event} {detail}"[:200])
             elif event in ("subprocess.Popen", "os.posix_spawn", "os.exec", "os.system"):
                 processes.append(f"{event} {detail}"[:200])
-            elif event == "open-write" or event in ("os.mkdir", "os.rename"):
-                path = detail.split(" ", 1)[0].strip("'\"")
-                if path.startswith(str(work)):
-                    path = "$WORK" + path[len(str(work)) :]
-                elif path.startswith(str(home)):
-                    path = "~" + path[len(str(home)) :]
-                written.add(re.sub(r"/[0-9a-f]{40,64}(?=/|$)", "/<hash>", path))
-    folders = sorted({str(Path(p).parent) for p in written})
-    return {"network": sorted(set(network)), "processes": processes, "write_folders": folders}
+            elif event == "open-write":
+                written.add(detail)
+            elif event in ("os.mkdir", "os.rename"):
+                written.update(re.findall(r"'([^']*)'", detail)[-1:])  # the path created
+            elif event in ("os.remove", "os.rmdir"):
+                removed.update(re.findall(r"'([^']*)'", detail)[:1])
+
+    def shown(path: str) -> str:
+        if path.startswith(str(work)):
+            path = "$WORK" + path[len(str(work)) :]
+        elif path.startswith(str(home)):
+            path = "~" + path[len(str(home)) :]
+        path = re.sub(r"/[0-9a-f]{40,64}(?=/|$)", "/<hash>", path)
+        return re.sub(r"\.pyc\.[0-9]+$", ".pyc", path)
+
+    absolute = {
+        p for p in written if p.startswith("/")
+    }  # fd numbers and fd-relative names left out
+    inside = sorted({str(Path(shown(p)).parent) for p in absolute if p.startswith(str(work))})
+    outside: dict[str, str] = {}
+    for path in sorted(absolute - {p for p in absolute if p.startswith(str(work))}):
+        if path == "/tmp":
+            outside["/tmp (an unnamed temporary file)"] = "has no name; gone when closed"
+        elif path.startswith("/tmp/") and path in removed:
+            outside["/tmp/<temporary name>"] = "created and removed in the same process"
+        else:
+            outside[shown(path)] = "kept"
+    return {
+        "network": sorted(set(network)),
+        "processes": processes,
+        "write_folders_in_work": inside,
+        "writes_outside_work": outside,
+    }
 
 
 def check(args: argparse.Namespace) -> None:
@@ -532,6 +561,10 @@ def run(args: argparse.Namespace) -> None:
     corpus, work, home = args.corpus.resolve(), args.work.resolve(), Path.home()
     files = corpus_files(args.repo, commit, corpus)
     indexes = {rel: FileIndex(corpus, rel) for rel in files}
+    caches = [work / "hf", work / "xdg-cache", *work.glob("semble-cache*")]
+    caches += [*work.glob("inprocess-cache*"), *work.glob("logs/audit-*")]
+    if used := [p for p in caches if p.is_file() or (p.is_dir() and any(p.iterdir()))]:
+        raise SystemExit(f"the run starts from empty caches; remove these first: {used}")
     audit_dir, logs = work / "audit", work / "logs"
     audit_dir.mkdir(parents=True, exist_ok=True)
     logs.mkdir(parents=True, exist_ok=True)
@@ -552,7 +585,9 @@ def run(args: argparse.Namespace) -> None:
         return env
 
     semble_python = str(Path(args.semble).parent / "python")
+    server_env = {**base_env, "PYRIGHT_PYTHON_IGNORE_WARNINGS": "1"}
     versions = {
+        "harness_blob": git_blob(Path(__file__).read_bytes()),
         "python": platform.python_version(),
         "semble": subprocess.run(
             [args.semble, "--version"], env=semble_env, capture_output=True, text=True, check=True
@@ -560,6 +595,13 @@ def run(args: argparse.Namespace) -> None:
         "ripgrep": subprocess.run(
             ["rg", "--version"], executable=args.rg, env=base_env, capture_output=True, text=True
         ).stdout.splitlines()[0],
+        "pyright": subprocess.run(
+            [str(Path(args.pyright).parent / "pyright"), "--version"],
+            env=server_env,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip(),
     }
 
     # 1. First use: the model download, the only step that may touch the network.
@@ -571,12 +613,21 @@ def run(args: argparse.Namespace) -> None:
         check=True,
     )
     model_download_s = time.perf_counter() - started
-    model_dir = work / "hf" / "hub" / ("models--" + MODEL.replace("/", "--"))
+    hf_home = work / "hf"
+    model_dir = hf_home / "hub" / ("models--" + MODEL.replace("/", "--"))
+    xet_logs = " ".join(p.read_text(errors="replace") for p in hf_home.glob("xet/logs/*.log"))
     model = {
         "name": MODEL,
         "revision": (model_dir / "refs" / "main").read_text(encoding="utf-8").strip(),
-        "files": sorted(p.name for p in (model_dir / "snapshots").rglob("*") if p.is_file()),
-        "bytes_on_disk": tree_bytes(model_dir),
+        "snapshot_files": sorted(
+            p.name for p in (model_dir / "snapshots").rglob("*") if p.is_file()
+        ),
+        # huggingface_hub 2.x keeps large files in a shared blob store under hub/blobs.
+        "hf_home_bytes": tree_bytes(hf_home),
+        "hf_home_entries": sorted(
+            p.relative_to(hf_home).as_posix() for p in [*hf_home.glob("*"), *hf_home.glob("*/*")]
+        ),
+        "hosts_in_xet_log": sorted(set(re.findall(r"[A-Za-z0-9.-]+\.hf\.co\b", xet_logs))),
         "first_load_with_download_s": round(model_download_s, 2),
     }
 
@@ -602,7 +653,6 @@ def run(args: argparse.Namespace) -> None:
         }
 
     # 3. Every question, both methods, REPEATS times each; results must not vary.
-    server_env = {**base_env, "PYRIGHT_PYTHON_IGNORE_WARNINGS": "1"}
     started = time.perf_counter()
     server = LanguageServer([args.pyright, "--stdio"], corpus, server_env)
     while not server.workspace_symbols("BoundaryError"):
@@ -812,12 +862,32 @@ def inprocess(args: argparse.Namespace) -> None:
             index.search(plan["query"], top_k=TOP_K)
             seconds.append(time.perf_counter() - started)
         latencies.append(statistics.median(seconds))
+    packages = sorted(
+        f"{d.metadata['Name'].lower()}=={d.version}" for d in metadata.distributions()
+    )
+    mcp_context = None
+    try:  # with the mcp extra: what the MCP server gives a client, built without serving
+        from semble.mcp import _IndexCache, create_server
+
+        server = create_server(_IndexCache())
+        tools = [
+            t.model_dump(mode="json", exclude_none=True) for t in asyncio.run(server.list_tools())
+        ]
+        mcp_context = {
+            "tools": [t["name"] for t in tools],
+            "tool_definitions_chars": len(json.dumps(tools)),
+            "server_instructions_chars": len(server.instructions or ""),
+        }
+    except ImportError:
+        pass
     print(
         json.dumps(
             {
                 "median_build_s_model_loaded": builds,
                 "median_search_s": round(statistics.median(latencies), 5),
                 "max_search_s": round(max(latencies), 5),
+                "packages": packages,
+                "mcp_context": mcp_context,
             }
         )
     )
