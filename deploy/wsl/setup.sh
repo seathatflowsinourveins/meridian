@@ -70,6 +70,9 @@ DSH_TUI_VERSION=0.20.0
 DSH_TUI_INTEGRITY=sha512-04K4E9nGBiefTerV2SaRjLYcDRGjwYXVNL0+tH/FCEdRhTnVDwMEADyC3a/etQ/NzoM2Sh1B+inb23T5Aqxcqw==
 PNPM_VERSION=11.28.9
 PNPM_INTEGRITY=sha512-NUIc6icg7KP1rXIrZ+jvGPTTzUdF7S/P6w3CiNTpQ3+tOHDZHuboPyaPD29+D2JyMxexlhe7Re5DMxcu9RFZ+A==
+# The session model (plan 8.8: DeepSeek V4.1 Flash, which DeepSeek serves as `deepseek-flash`).
+# It is dsh-base's own default today; the pin keeps it if that default moves.
+DSH_MODEL=deepseek-flash
 # The only install scripts dsh's tree may run (terminal, FFI, its process helper, two SDKs).
 DSH_ALLOW_SCRIPTS=node-pty,koffi,@deepseek-ai/dsh-subprocess-local,@google/genai,protobufjs
 # Orca server: the server-only release tarball (orcad, its own Node, the orca-ide CLI), by the
@@ -100,6 +103,9 @@ CODEX_BRIDGE_COMMIT=db52e28f4d9ded852ab3942cea316258ae4ef346
 AGY_VERSION=1.5.7
 AGY_SHA256=d6150a8d2a9e29a3d171b2325d6f66b6e7059628f4799a20c069b8ed8f78fdbb
 AGY_URL="https://github.com/google-antigravity/antigravity-cli/releases/download/${AGY_VERSION}/agy_cli_linux_x64.tar.gz"
+# agy's default model, by the label `agy models` prints (plan 8.8: Gemini 4 Carbon, at its
+# highest effort). A label agy no longer offers falls back to its own default, with a warning.
+AGY_MODEL='Gemini 4 Carbon (High)'
 
 # IBKR serves one file per channel and publishes no checksum. This is the SHA-256 of the
 # stable build named here, taken when it was downloaded. When IBKR moves the stable channel
@@ -197,7 +203,9 @@ cmd_uv() {
   "${HOME}/.local/bin/uv" --version
 }
 
-gh_version() { "${HOME}/.local/bin/gh" --version 2>/dev/null </dev/null | sed -n 's/^gh version \([^ ]*\).*/\1/p'; }
+# gh with its telemetry off for this call as well (GH_TELEMETRY outranks gh's config file).
+gh_cli() { GH_TELEMETRY=0 "${HOME}/.local/bin/gh" "$@" </dev/null; }
+gh_version() { gh_cli --version 2>/dev/null | sed -n 's/^gh version \([^ ]*\).*/\1/p'; }
 # installed, or nothing: the state dpkg records for Ubuntu's gh package.
 gh_package_state() { dpkg-query -W -f='${db:Status-Status}' gh 2>/dev/null || true; }
 
@@ -216,6 +224,10 @@ cmd_gh() {
   if [ "$(gh_package_state)" = installed ]; then
     sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y -o DPkg::Lock::Timeout=120 gh
   fi
+  # This gh sends usage telemetry by default, and `gh auth login` reports every run. Off in its
+  # config file, which every gh run as the owner reads; the random id it keeps for it goes too.
+  [ "$(gh_cli config get telemetry 2>/dev/null)" = disabled ] || gh_cli config set telemetry disabled
+  rm -f "${HOME}/.local/state/gh/device-id"
   check_gh
 }
 
@@ -226,7 +238,9 @@ check_gh() {
     || fail "gh resolves to $(command -v gh || echo nothing), not ~/.local/bin/gh"
   [ "$(gh_package_state)" != installed ] \
     || fail "Ubuntu's gh package is installed (run: deploy/wsl/setup.sh gh)"
-  ok "GitHub CLI $(gh_version), GitHub's own build in ~/.local/bin; Ubuntu's gh package not installed"
+  [ "$(gh_cli config get telemetry 2>/dev/null)" = disabled ] \
+    || fail "gh's telemetry is not disabled (run: deploy/wsl/setup.sh gh)"
+  ok "GitHub CLI $(gh_version), GitHub's own build in ~/.local/bin, telemetry off; no Ubuntu gh package"
 }
 
 claude_settings() {
@@ -533,18 +547,33 @@ cmd_agy() {
   # unpacked to ~/.local/bin/agy, no profile edits. agy then updates itself.
   if version_ge "$(agy_version)" "${AGY_VERSION}"; then
     ok "Antigravity CLI $(agy_version) is already installed"
-    check_agy
-    return
+  else
+    local tmp
+    tmp="$(mktemp -d)"
+    curl -fsSLo "${tmp}/agy.tar.gz" "${AGY_URL}"
+    echo "${AGY_SHA256}  ${tmp}/agy.tar.gz" | sha256sum -c -
+    [ "$(tar -tzf "${tmp}/agy.tar.gz")" = antigravity ] || fail "the agy archive is not one file named antigravity"
+    tar -xzf "${tmp}/agy.tar.gz" -C "${tmp}" antigravity
+    install -D -m 0755 "${tmp}/antigravity" "${HOME}/.local/bin/agy"
+    rm -rf "${tmp}"
   fi
-  local tmp
-  tmp="$(mktemp -d)"
-  curl -fsSLo "${tmp}/agy.tar.gz" "${AGY_URL}"
-  echo "${AGY_SHA256}  ${tmp}/agy.tar.gz" | sha256sum -c -
-  [ "$(tar -tzf "${tmp}/agy.tar.gz")" = antigravity ] || fail "the agy archive is not one file named antigravity"
-  tar -xzf "${tmp}/agy.tar.gz" -C "${tmp}" antigravity
-  install -D -m 0755 "${tmp}/antigravity" "${HOME}/.local/bin/agy"
-  rm -rf "${tmp}"
+  agy_settings
   check_agy
+}
+
+# agy's own settings file: the default model, merged in, because Orca keeps the workspaces it
+# trusts in the same file. agy saves its settings with mode 0600, and so does this.
+agy_settings() {
+  local file="${HOME}/.gemini/antigravity-cli/settings.json" tmp
+  mkdir -p "${file%/*}"
+  tmp="$(mktemp "${file}.XXXXXX")"
+  if [ -s "${file}" ]; then
+    jq --arg model "${AGY_MODEL}" '.model = $model' "${file}" > "${tmp}" \
+      || { rm -f "${tmp}"; fail "cannot merge the model into ${file}"; }
+  else
+    jq -n --arg model "${AGY_MODEL}" '{model: $model}' > "${tmp}"
+  fi
+  mv "${tmp}" "${file}"
 }
 
 check_agy() {
@@ -553,18 +582,24 @@ check_agy() {
   # No MCP server and no plugin: nothing here may give an agent a broker or an order tool.
   # agy has no machine-wide setting for that, so its user config and every worktree of the
   # repo are checked. (~/.gemini/config/hooks.json is Orca's status hook once Orca has started
-  # an agy session.)
-  local path tree
-  for path in "${HOME}/.gemini/config/mcp_config.json" "${HOME}/.gemini/config/plugins" \
-    "${HOME}/.gemini/settings.json"; do
-    [ ! -e "${path}" ] || fail "${path} exists: agy would load MCP servers or plugins from it"
+  # an agy session.) agy writes an empty ~/.gemini/config/mcp_config.json on its first full
+  # start: that file may exist, but only empty or naming no server (jq refuses comments, so a
+  # commented file fails as well).
+  local path tree mcp="${HOME}/.gemini/config/mcp_config.json"
+  [ ! -s "${mcp}" ] || jq -e '. == {} or . == {"mcpServers": {}}' "${mcp}" >/dev/null 2>&1 \
+    || fail "${mcp} names MCP servers: agy would start them"
+  for path in "${HOME}/.gemini/config/plugins" "${HOME}/.gemini/settings.json"; do
+    [ ! -e "${path}" ] || fail "${path} exists: agy would load plugins or MCP servers from it"
   done
   while read -r tree; do
     for path in "${tree}/.agents/mcp_config.json" "${tree}/.agents/plugins" "${tree}/.agents/hooks.json"; do
       [ ! -e "${path}" ] || fail "${path} exists: agy would load MCP servers, plugins or hooks from it"
     done
   done < <(git -C "${REPO_DIR}" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')
-  ok "Antigravity CLI $(agy_version): no MCP server, plugin or workspace hook, in its config or the repo's worktrees"
+  jq -e --arg model "${AGY_MODEL}" '.model == $model' "${HOME}/.gemini/antigravity-cli/settings.json" >/dev/null 2>&1 \
+    || fail "agy's default model is not ${AGY_MODEL} (run: deploy/wsl/setup.sh agy)"
+  # Its telemetry is an account setting kept by Google, with no local file to check (UPSTREAM.md).
+  ok "Antigravity CLI $(agy_version): ${AGY_MODEL}; no MCP server, plugin or workspace hook, in its config or the repo's worktrees"
 }
 
 dsh_version() { "${HOME}/.local/bin/dsh" --version 2>/dev/null </dev/null | head -n 1; }
@@ -637,6 +672,28 @@ YAML
 YAML
     chmod 0600 "${HOME}/.dsh/cordis.patch.yml"
   fi
+  # The model row is added to a file written earlier as well, above Orca's block. A row's config
+  # replaces the default's config as a whole, so it names the provider too.
+  if ! grep -qxF -- '- id: agent-default-model' "${HOME}/.dsh/cordis.patch.yml"; then
+    python3 -I - "${HOME}/.dsh/cordis.patch.yml" "${DSH_MODEL}" <<'PY' \
+      || fail "cannot add the model row to ~/.dsh/cordis.patch.yml"
+import os
+import sys
+
+path, model = sys.argv[1], sys.argv[2]
+row = f"- id: agent-default-model\n  config:\n    model: {model}\n    provider: deepseek-official\n"
+with open(path, encoding="utf-8") as f:
+    lines = f.read().splitlines(keepends=True)
+if lines and not lines[-1].endswith("\n"):
+    lines[-1] += "\n"
+at = next((i for i, line in enumerate(lines) if line.startswith("# >>> orca-managed-dsh-hooks")), len(lines))
+lines.insert(at, row)
+with open(f"{path}.new", "w", encoding="utf-8") as f:
+    f.writelines(lines)
+os.chmod(f"{path}.new", 0o600)
+os.replace(f"{path}.new", path)
+PY
+  fi
 }
 
 # dsh_row CONFIG ID: the lines of one row of `dsh --dump-config`, up to the next row.
@@ -659,7 +716,18 @@ check_dsh() {
   # plugins with them.
   dsh_row "${config}" tool-plugin-manager | grep -qx '  disabled: true' \
     || fail "the plugin manager's tools are on in the dsh-tui profile"
-  ok "DeepSeek Harness $(dsh_version) with dsh-tui $(dsh_tui_version): uploads to DeepSeek off, no plugin tools"
+  # The session model: the pinned row, in effect. A /model pick in dsh-tui outranks it and is
+  # kept in ~/.dsh-tui/model.json, so that file is absent or names the same route.
+  grep -qxF -- '- id: agent-default-model' "${HOME}/.dsh/cordis.patch.yml" \
+    || fail "the model is not pinned in ~/.dsh/cordis.patch.yml (run: deploy/wsl/setup.sh dsh)"
+  [ "$(dsh_row "${config}" agent-default-model \
+    | grep -c -x -e "    model: ${DSH_MODEL}" -e '    provider: deepseek-official')" = 2 ] \
+    || fail "DeepSeek Harness's default model is not deepseek-official/${DSH_MODEL}"
+  local pick="${HOME}/.dsh-tui/model.json"
+  [ ! -e "${pick}" ] \
+    || jq -e --arg model "${DSH_MODEL}" '.provider == "deepseek-official" and .model == $model' "${pick}" >/dev/null 2>&1 \
+    || fail "${pick} picks another model than deepseek-official/${DSH_MODEL}"
+  ok "DeepSeek Harness $(dsh_version) with dsh-tui $(dsh_tui_version): ${DSH_MODEL}; uploads to DeepSeek off, no plugin tools"
 }
 
 orca_cli() { "${ORCA_ROOT}/current/bin/orca-ide" "$@" </dev/null; }
@@ -759,11 +827,11 @@ cmd_signins() {
   # checks use exit codes and file presence only.
   local bin="${HOME}/.local/bin"
   say() { if eval "$1" >/dev/null 2>&1 </dev/null; then echo "done   $2"; else echo "to do  $2: $3"; fi; }
-  say "${bin}/gh auth status" "GitHub" "gh auth login"
+  say "GH_TELEMETRY=0 ${bin}/gh auth status" "GitHub" "gh auth login"
   say "${bin}/claude auth status" "Claude Code" "claude auth login"
   say "${bin}/codex login status" "Codex" "codex login --device-auth"
-  say "[ -e ${HOME}/.gemini/antigravity-cli/antigravity-oauth-token ]" "Antigravity" \
-    "agy acp --login   (then in agy: /config, telemetry off; agy models)"
+  say "[ -e ${HOME}/.gemini/antigravity-cli/antigravity-oauth-token ]" "Antigravity" "agy acp --login"
+  echo "check  Antigravity telemetry, in the first interactive agy: under 'Terms of Service & Data Use' make sure 'Yes, I agree to help improve...' is not ticked, then /config: Enable Telemetry off (saved with the Google account; agents-check cannot see it)"
   say "[ -s ${HOME}/.dsh/.env ]" "DeepSeek API key" \
     "install -d -m 700 ~/.dsh && ( umask 077 && read -rsp 'DeepSeek API key: ' k && echo && printf 'DEEPSEEK_API_KEY=%s\\n' \"\$k\" > ~/.dsh/.env && unset k )"
   echo "once   Orca window, in Windows Terminal: deploy/wsl/setup.sh orca-pair   (the link it prints grants shell access: paste it only into the Windows app)"
@@ -771,9 +839,9 @@ cmd_signins() {
 
 cmd_repo() {
   if [ ! -d "${REPO_DIR}/.git" ]; then
-    gh auth status >/dev/null 2>&1 || fail "sign in first: gh auth login"
+    gh_cli auth status >/dev/null 2>&1 || fail "sign in first: gh auth login"
     mkdir -p "$(dirname "${REPO_DIR}")"
-    gh repo clone "${REPO}" "${REPO_DIR}"
+    gh_cli repo clone "${REPO}" "${REPO_DIR}"
   fi
   cd "${REPO_DIR}"
   if [ -f pyproject.toml ]; then
