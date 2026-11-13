@@ -18,6 +18,7 @@ Rules carried from the earlier line (docs/m3-alpaca.md):
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from collections.abc import Callable
 from decimal import Decimal
@@ -44,6 +45,25 @@ _ORDER_PATH = re.compile(r"/orders/(?P<id>[^/]+)")
 # a refusal as well. Any other answer after send (5xx, a timeout, a 2xx body that does not
 # parse, a POST's 429) leaves the order possibly live, so it is never refused locally.
 REFUSALS = {"submit": frozenset({403, 422}), "cancel": frozenset({422, 429})}
+
+NOT_JSON = "Alpaca answer is not JSON"
+
+
+class UnreadableAnswer(ValueError):
+    """The venue answered (2xx) in a body that is not JSON. alpaca-py 0.45.0 decodes the body
+    inside the request (`common/rest.py`, `_one_request`: `response.json()`), so the decoder's
+    error arrives where a failed request's would; it is the answer's failure, not the
+    request's. An empty body is returned as None and fails where the answer is read."""
+
+    def __init__(self) -> None:
+        super().__init__(NOT_JSON)
+
+
+def _answer_or_request_failure(exc: Exception) -> Exception:
+    # requests 2.34.2 (locked with alpaca-py) raises its own JSONDecodeError, which derives
+    # from json's while simplejson is not installed; tests/test_alpaca_wire.py checks that.
+    # The venue's body is not carried on.
+    return UnreadableAnswer() if isinstance(exc, json.JSONDecodeError) else exc
 
 
 class PaperTradingClient(TradingClient):
@@ -218,7 +238,7 @@ class AccountGateway:
                 if isinstance(exc, APIError) and exc.status_code == 429:
                     self.pacer.on_rate_limited()
                 if not future.done():
-                    future.set_exception(exc)
+                    future.set_exception(_answer_or_request_failure(exc))
             else:
                 self.pacer.on_success()
                 if not future.done():

@@ -37,6 +37,7 @@ from nautilus_trader.model import InstrumentId
 
 from .budget import ActionKind
 from .reports import TERMINAL, decimal_text, timestamp_ns
+from .wire import NOT_JSON
 
 ORDER_PAGE_LIMIT = 500  # alpaca-py 0.45.0 GetOrdersRequest: limit at most 500
 FILL_PAGE_SIZE = 100  # account activities: page_size at most 100
@@ -64,6 +65,7 @@ _REASONS = frozenset(
         UNMAPPABLE_WORKING,
         UNMAPPABLE_FILLED,
         UNREADABLE_SYMBOL,
+        NOT_JSON,
         "Alpaca order page is not a list",
         "Alpaca fill page is not a list",
         "Alpaca positions are not a list",

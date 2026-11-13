@@ -79,7 +79,7 @@ from .trade_updates import (
     is_listening_ack,
     parse_trade_update,
 )
-from .wire import REFUSALS, AccountGateway, house_id, submit_payload
+from .wire import REFUSALS, AccountGateway, UnreadableAnswer, house_id, submit_payload
 
 # How long disconnect waits for the SDK's stream to stop by itself before cancelling it.
 STREAM_STOP_GRACE_SECS = 6.0
@@ -276,7 +276,9 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         our rules or mappers refuse), goes through `_note_failures`. A request's own failure is
         not the answer's: each one raised by a request, as `_traced_call` records it in
         `requests` (an HTTP error, a timeout, the budget refusing it before the wire), stays out
-        of it, wrapped in `IncompleteCoverage` or not. Everything propagates unchanged.
+        of it, wrapped in `IncompleteCoverage` or not. A 2xx answer whose body is not JSON
+        (`UnreadableAnswer`) is the answer's: the venue answered, and the lane cannot read it.
+        Everything propagates unchanged.
 
         Whether the read is a startup read is decided as it begins. The engine runs the three
         startup stages concurrently, so the fill stage can fail after the order and position
@@ -309,13 +311,17 @@ class AlpacaPaperExecutionClient(ExecutionClient):
             raise RuntimeError("account gateway is disconnected")
         return await self.gateway.call(kind, method, path, data, **kwargs)
 
-    def _traced_call(self, trace: StageTrace, requests: list[BaseException]) -> Callable:
-        """A paced request counted in `trace`; what it raises is recorded in `requests`."""
+    def _traced_call(self, trace: StageTrace | None, requests: list[BaseException]) -> Callable:
+        """A paced request, counted in `trace` if one is given. What it raises is recorded in
+        `requests` as the request's own failure, except an answer whose body is not JSON."""
 
         async def call(kind: ActionKind, method: str, path: str, data=None, **kwargs) -> Any:
-            trace.count_request(method, path)
+            if trace is not None:
+                trace.count_request(method, path)
             try:
                 return await self._call(kind, method, path, data, **kwargs)
+            except UnreadableAnswer:
+                raise  # the venue answered: the answer's failure (`_reading`)
             except Exception as exc:
                 requests.append(exc)
                 raise
@@ -720,6 +726,8 @@ class AlpacaPaperExecutionClient(ExecutionClient):
                 admission=lambda: not token.withdrawn and self._submit_admitted(),
                 on_wire=lambda: self._mark_sent(token),
             )
+        except UnreadableAnswer as exc:
+            row = exc  # the venue took the order (2xx); its answer is read below, and fails
         except Exception as exc:
             if _unresolved(exc, token):
                 # Sent: the venue's later status decides, never a local reject.
@@ -735,6 +743,8 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         # An answer the lane cannot read or map, or another order's row, is a gap (`_reading`);
         # the stream or the gap's read then shows the engine this order.
         with contextlib.suppress(Exception), self._reading():
+            if isinstance(row, UnreadableAnswer):
+                raise row
             report = self._order_report(row)
             if report.client_order_id != native.client_order_id:
                 raise ValueError("venue answered with another order")
@@ -747,15 +757,18 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         issued = self._now()
         root = house_id(str(command.client_order_id), self.house_prefix)
         venue = command.venue_order_id or self.cache.venue_order_id(command.client_order_id)
-        if venue is not None:
-            row = await self._call(ActionKind.QUERY, "get", f"/orders/{venue}")
-        else:
-            row = await self._call(
-                ActionKind.QUERY, "get", "/orders:by_client_order_id", {"client_order_id": root}
-            )
-        with self._reading():
+        requests: list[BaseException] = []
+        call = self._traced_call(None, requests)
+        with self._reading(requests):
+            if venue is not None:
+                row = await call(ActionKind.QUERY, "get", f"/orders/{venue}")
+            else:
+                row = await call(
+                    ActionKind.QUERY, "get", "/orders:by_client_order_id", {"client_order_id": root}
+                )
             if not isinstance(row, dict) or row.get("client_order_id") != root:
                 raise ValueError("venue order is outside the requested namespace")
+            # In depth: `_order_report` and `VenueOrderId` refuse such a row as well.
             if not isinstance(row.get("id"), str) or not row["id"]:
                 raise ValueError("Alpaca order report requires its venue and client order ids")
         try:
@@ -845,25 +858,24 @@ class AlpacaPaperExecutionClient(ExecutionClient):
     async def _generate_order_status_report(self, command: Any) -> Any:
         issued = self._now()
         venue = command.venue_order_id
-        try:
-            if venue is not None:
-                row = await self._call(ActionKind.QUERY, "get", f"/orders/{venue}")
-            elif command.client_order_id is not None:
-                row = await self._call(
-                    ActionKind.QUERY,
-                    "get",
-                    "/orders:by_client_order_id",
-                    {"client_order_id": str(command.client_order_id)},
-                )
-            else:
-                return None
-        except APIError as exc:
-            if exc.status_code == 404:
-                return None
-            raise
-        # As for a listing's row: an answer the lane cannot read or map is a gap. A row settles
-        # an earlier cancel only once it maps, as this order's.
-        with self._reading():
+        if venue is not None:
+            path, data = f"/orders/{venue}", None
+        elif command.client_order_id is not None:
+            path = "/orders:by_client_order_id"
+            data = {"client_order_id": str(command.client_order_id)}
+        else:
+            return None
+        requests: list[BaseException] = []
+        # As for a listing: an answer the lane cannot read or map is a gap, and a request that
+        # gets no answer is not. A row settles an earlier cancel only once it maps, as this
+        # order's.
+        with self._reading(requests):
+            try:
+                row = await self._traced_call(None, requests)(ActionKind.QUERY, "get", path, data)
+            except APIError as exc:
+                if exc.status_code == 404:
+                    return None
+                raise
             check_one_writer(row, self.house_prefix)
             if withheld_unloaded(row, self._is_loaded) or unmappable_history(row):
                 return None
@@ -947,10 +959,11 @@ class AlpacaPaperExecutionClient(ExecutionClient):
     async def _generate_position_status_reports(self, command: Any) -> list:
         await self._subscribed()
         gen = self._gap
+        requests: list[BaseException] = []
         with traced(self.report_trace, "positions") as trace:
-            trace.count_request("get", "/positions")
-            rows = await self._call(ActionKind.QUERY, "get", "/positions")
-            with self._reading():
+            call = self._traced_call(trace, requests)
+            with self._reading(requests):
+                rows = await call(ActionKind.QUERY, "get", "/positions")
                 if not isinstance(rows, list):
                     raise IncompleteCoverage(
                         [], [(None, ValueError("Alpaca positions are not a list"))]

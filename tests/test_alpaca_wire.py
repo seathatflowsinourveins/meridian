@@ -8,6 +8,7 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+import requests
 from alpaca_fakes import Clock, FakePacer, FakeVenue, api_error
 from nautilus_trader.model import (
     ClientOrderId,
@@ -27,6 +28,7 @@ from meridian.alpaca.execution import _why
 from meridian.alpaca.wire import (
     AccountGateway,
     PaperTradingClient,
+    UnreadableAnswer,
     permitted,
     price_text,
     submit_payload,
@@ -210,6 +212,28 @@ def gateway(venue=None, *, limit=180):
     clock = Clock()
     pacer = FakePacer(clock, limit=limit)
     return AccountGateway(venue or FakeVenue(), pacer, lambda: (0, 0)), pacer, clock
+
+
+def test_a_2xx_answer_whose_body_is_not_json_is_the_answers_failure(monkeypatch):
+    """alpaca-py 0.45.0 decodes a 2xx body inside the request, so a body that is not JSON
+    raises there, as requests' JSONDecodeError, where a failed request's error would arrive.
+    The gateway hands it on as `UnreadableAnswer`: the venue answered, and the client counts
+    that as the answer's failure (a gap), not the request's. None of the body is carried."""
+    client = PaperTradingClient("synthetic-key-id", "synthetic-secret", timeout_secs=1)
+    answer = requests.models.Response()
+    answer.status_code, answer._content, answer.encoding = 200, b"<html>synthetic</html>", "utf-8"
+    monkeypatch.setattr(client._session, "request", lambda method, url, **opts: answer)
+    with pytest.raises(requests.exceptions.JSONDecodeError):
+        client.get("/account")
+
+    async def scenario():
+        gw, _, _ = gateway(client)
+        return await gw.call(ActionKind.QUERY, "get", "/account")
+
+    with pytest.raises(UnreadableAnswer) as info:
+        asyncio.run(scenario())
+    assert str(info.value) == "Alpaca answer is not JSON" and "synthetic" not in repr(info.value)
+    assert info.value.__cause__ is None and info.value.__context__ is None
 
 
 def test_every_request_reads_included_passes_through_the_budget_with_its_kind():

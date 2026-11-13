@@ -18,6 +18,7 @@ import time
 from types import SimpleNamespace
 
 import pytest
+import requests
 from alpaca_fakes import (
     AAPL,
     PREFIX,
@@ -1760,10 +1761,17 @@ def reshaped(venue, path: str, change):
     return lambda: setattr(venue, "get", get)
 
 
+def not_json(*_):
+    """What a 2xx answer whose body is not JSON raises inside alpaca-py's request (it decodes
+    there): requests' JSONDecodeError."""
+    raise requests.exceptions.JSONDecodeError("Expecting value", "<html>synthetic</html>", 0)
+
+
 # One full page of the order listing: 500 working rows, all submitted at one instant.
 FULL_PAGE = [order_row(status="new", filled_qty="0") for _ in range(500)]
 UNREADABLE_LISTINGS = {
     "not-a-list": (lambda query: {"orders": FULL_PAGE}, "Alpaca order page is not a list"),
+    "not-json": (not_json, "Alpaca answer is not JSON"),
     "no-progress": (lambda query: list(FULL_PAGE), "order page made no progress"),
     "not-contiguous": (
         lambda query: [] if "until" in query else list(FULL_PAGE),
@@ -1779,10 +1787,10 @@ UNREADABLE_LISTINGS = {
 @pytest.mark.parametrize("shape", list(UNREADABLE_LISTINGS))
 def test_an_order_listing_the_lane_cannot_read_after_startup_denies_new_orders(shape):
     """The engine's routine open-order check (every 0.2 s here) meets an order listing whose
-    shape or pages the lane cannot read: not a list; a full page, then the same page again; a
-    full page, then one without its edge rows; more pages than the read's budget (one page
-    here). After startup that is a gap, as a row the lane cannot map is: new orders are denied
-    until a full read succeeds."""
+    shape or pages the lane cannot read: not a list; a 2xx answer whose body is not JSON; a
+    full page, then the same page again; a full page, then one without its edge rows; more pages
+    than the read's budget (one page here). After startup that is a gap, as a row the lane
+    cannot map is: new orders are denied until a full read succeeds."""
     rig = Rig()
     answer, reason = UNREADABLE_LISTINGS[shape]
 
@@ -1886,6 +1894,7 @@ UNREADABLE_ANSWERS = {
     "its ended row without a symbol": lambda row: lambda query: ended_without_symbol(row),
     "a listing of that row": lambda row: lambda query: [ended_without_symbol(row)],
     "a position without a symbol": lambda row: lambda query: [symbol_dropped(position_row())],
+    "a body that is not JSON": lambda row: not_json,
     "an unexplained fill": lambda row: (
         lambda query: [fill_activity(order_row(), when="2026-11-02T15:00:00.000000Z")]
     ),
@@ -1910,7 +1919,9 @@ UNREADABLE_ANSWERS = {
             "its ended row without a symbol",
             "Alpaca row requires its symbol",
         ),
+        ("one-order", "/orders/{id}", "a body that is not JSON", "Alpaca answer is not JSON"),
         ("positions", "/positions", "not a list", "Alpaca positions are not a list"),
+        ("positions", "/positions", "a body that is not JSON", "Alpaca answer is not JSON"),
         (
             "positions",
             "/positions",
@@ -1924,6 +1935,12 @@ UNREADABLE_ANSWERS = {
             "'str' object has no attribute 'get'",
         ),
         ("fills", "/account/activities/FILL", "not a list", "Alpaca fill page is not a list"),
+        (
+            "fills",
+            "/account/activities/FILL",
+            "a body that is not JSON",
+            "Alpaca answer is not JSON",
+        ),
         (
             "fills",
             "/account/activities/FILL",
@@ -1944,7 +1961,8 @@ def test_an_answer_the_lane_cannot_read_after_startup_is_a_gap(read, path, answe
     AttributeError; an order history without a time fails outside any listing), it is a gap at
     once: new orders stop before the gap's read, which restores coverage once the venue
     answers again. A row without its symbol is one: it is not known to be outside the universe,
-    so it is never withheld as history there."""
+    so it is never withheld as history there. So is a 2xx answer whose body is not JSON: the
+    venue answered (a request that gets none is no gap, below)."""
     rig = Rig()
 
     async def script(box, status):
@@ -2067,16 +2085,20 @@ def answered_with(venue, change) -> None:
     venue.post = lambda path, data=None: change(post(path, data))
 
 
-@pytest.mark.parametrize("answer", ["a list", "another order's row"])
+SUBMIT_ANSWERS = {
+    "a list": lambda row: [row],
+    "another order's row": lambda row: row | {"client_order_id": f"{PREFIX}other"},
+    "a body that is not JSON": not_json,
+}
+
+
+@pytest.mark.parametrize("answer", list(SUBMIT_ANSWERS))
 def test_a_submits_answer_the_lane_cannot_read_is_a_gap(answer):
-    """POST /orders stores the order but answers a list, or the row of another order. Either
-    answer is a gap: the next order is denied until a full read, which shows the engine the
-    order as the venue holds it."""
+    """POST /orders stores the order but answers a list, the row of another order, or a 2xx
+    body that is not JSON (the venue took the order). Each answer is a gap: the next order is
+    denied until a full read, which shows the engine the order as the venue holds it."""
     rig = Rig()
-    other = {"client_order_id": f"{PREFIX}other"}
-    answered_with(
-        rig.venue, (lambda row: [row]) if answer == "a list" else (lambda row: row | other)
-    )
+    answered_with(rig.venue, SUBMIT_ANSWERS[answer])
 
     def on_start(running, box):
         box["order"], box["second"] = limit_order(running), limit_order(running, 2)
@@ -2101,15 +2123,16 @@ def test_a_submits_answer_the_lane_cannot_read_is_a_gap(answer):
     [
         ("another order's row", 0),
         ("a row without a venue id", 0),
+        ("a body that is not JSON", 0),
         ("an ended row it cannot map", 0),
         ("a working row in an unclassified status", 1),
     ],
 )
 def test_a_cancels_read_the_lane_cannot_read_is_a_gap(answer, deletes):
     """The cancel's read of the lane's order answers what the lane cannot read or map: another
-    order's row, or a row without a venue id (the cancel is refused unsent); an ended row it
-    cannot map (nothing to delete); a working row in a status it has not classified (the DELETE
-    still goes to the lane's own order). Each is a gap."""
+    order's row, a row without a venue id, or a 2xx body that is not JSON (the cancel is refused
+    unsent); an ended row it cannot map (nothing to delete); a working row in a status it has
+    not classified (the DELETE still goes to the lane's own order). Each is a gap."""
     rig = Rig()
 
     async def script(box, status):
@@ -2120,6 +2143,8 @@ def test_a_cancels_read_the_lane_cannot_read_is_a_gap(answer, deletes):
             row["client_order_id"] = f"{PREFIX}another"
         elif answer == "a row without a venue id":
             answering(rig.venue, f"/orders/{row['id']}", lambda query: {**row, "id": None})
+        elif answer == "a body that is not JSON":
+            answering(rig.venue, f"/orders/{row['id']}", not_json)
         elif answer == "an ended row it cannot map":
             row.update(status="canceled", qty="many")
         else:
