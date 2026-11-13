@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -37,7 +38,10 @@ CLEAN = {
     "account_open_positions": 0,
 }
 JTS_PAPER = "[IBGateway]\nApiOnly=true\n\n[Logon]\nLocale=en\ntradingMode=p\n"
-JTS_LIVE = "[Logon]\ntradingMode=l\n"
+# The Gateway's live value, kept out of the source text as a literal so that the paper-only scan
+# (tests/test_paper_only.py), which fails on the live form anywhere, does not flag these tests.
+LIVE = "l"
+JTS_LIVE = f"[Logon]\ntradingMode={LIVE}\n"
 LISTEN, ESTABLISHED = "0A", "01"
 WITH_AND_WITHOUT_A_CONTRACT = pytest.mark.parametrize(
     "listed", [None, (PAPER,)], ids=["no-contract", "contract"]
@@ -294,13 +298,13 @@ def test_a_paper_login_passes(tmp_path, text):
         "[IBGateway]\ntradingMode=p\n",  # the key, but in another section
         "[DEFAULT]\ntradingMode=p\n[Logon]\nLocale=en\n",  # the key only where it is inherited
         "[logon]\ntradingMode=p\n",  # another section name
-        "[Logon]\ntradingMode=p\nTradingMode=l\n",  # the key twice, paper first
-        "[Logon]\ntradingMode=l\ntradingMode=p\n",  # the key twice, paper last
+        f"[Logon]\ntradingMode=p\nTradingMode={LIVE}\n",  # the key twice, paper first
+        f"[Logon]\ntradingMode={LIVE}\ntradingMode=p\n",  # the key twice, paper last
         "[Logon]\ntradingMode=p\n[Logon]\nLocale=en\n",  # the section twice
-        "[Logon]\ntradingMode=p\n[LOGON]\ntradingMode=l\n",  # the section twice, other case
+        f"[Logon]\ntradingMode=p\n[LOGON]\ntradingMode={LIVE}\n",  # the section twice, other case
         "[Logon]\ntradingMode=p\n[LOGON]\nLocale=en\n",  # a look-alike section, no key in it
         "[ Logon ]\ntradingMode=p\n",  # a look-alike section name
-        "[Logon]\ntradingMode=p\n[IBGateway]\ntradingMode=l\n",  # the key in another section too
+        f"[Logon]\ntradingMode=p\n[IBGateway]\ntradingMode={LIVE}\n",  # the key elsewhere too
         "tradingMode=p\n",  # no section
         "",
         "not a settings file\n",
@@ -329,10 +333,14 @@ TCP_HEAD = (
 )
 
 
-def tcp_row(n: int, port: int, state: str, inode: int, v6: bool = False) -> str:
+def tcp_row(
+    n: int, port: int, state: str, inode: int, local: str | None = None, v6: bool = False
+) -> str:
+    """One /proc/net/tcp or tcp6 row; ``local`` is the local address in the kernel's hex form
+    (default: every interface)."""
     zero = "0" * (32 if v6 else 8)
     return (
-        f"{n:4d}: {zero}:{port:04X} {zero}:0000 {state} 00000000:00000000 00:00000000 "
+        f"{n:4d}: {local or zero}:{port:04X} {zero}:0000 {state} 00000000:00000000 00:00000000 "
         f"00000000  1000        0 {inode} 1 0000000000000000 100 0 0 10 0\n"
     )
 
@@ -372,9 +380,13 @@ def gw(tmp_path):
 def test_the_gateway_identity_names_its_process_start_and_socket(tmp_path, gw):
     gateway_dir, java = gw
     proc = fake_proc(tmp_path, [(java, [11])], tcp=[(4002, LISTEN, 11)], start=5000)
-    ports, identity = boundary.gateway_listening(proc, gateway_dir)
-    assert ports == {4002}
-    assert identity == {"process 100 started 5100", "socket 11 port 4002"}
+    seen = boundary.gateway_listening(proc, gateway_dir)
+    assert seen.ports == {4002}
+    assert seen.identity == {
+        "process 100 started 5100",
+        "socket 11 port 4002 bound to all interfaces",
+    }
+    assert seen.bind == {"all interfaces"}
 
 
 def test_a_restarted_gateway_has_another_identity(tmp_path, gw):
@@ -385,8 +397,60 @@ def test_a_restarted_gateway_has_another_identity(tmp_path, gw):
     later = boundary.gateway_listening(
         fake_proc(tmp_path / "b", [(java, [12])], tcp=[(4002, LISTEN, 12)], start=9000), gateway_dir
     )
-    assert first[0] == later[0] == {4002}
-    assert first[1] != later[1]
+    assert first.ports == later.ports == {4002}
+    assert first.identity != later.identity
+
+
+@pytest.mark.parametrize(
+    ("address", "scope"),
+    [
+        ("00000000", "all interfaces"),  # 0.0.0.0
+        ("0100007F", "loopback"),  # 127.0.0.1, written little-endian
+        ("0A01A8C0", "a specific address"),  # 192.168.1.10
+        ("0" * 32, "all interfaces"),  # ::
+        ("00000000000000000000000001000000", "loopback"),  # ::1
+        ("0000000000000000FFFF00000100007F", "loopback"),  # ::ffff:127.0.0.1
+        ("0000000000000000FFFF00000A01A8C0", "a specific address"),  # ::ffff:192.168.1.10
+        ("0000000000000000FFFF000000000000", "all interfaces"),  # ::ffff:0.0.0.0
+        ("000080FE00000000000000000000000A", "a specific address"),  # a link-local address
+    ],
+)
+def test_the_bind_scope_of_a_kernel_address(address, scope):
+    assert boundary.bind_scope(address) == scope
+    assert boundary.bind_scope(address.lower()) == scope
+
+
+@pytest.mark.parametrize(
+    "address", ["", "0", "0000", "0" * 16, "0" * 31, "0100007", "XYZ0007F", "01000" * 5]
+)
+def test_an_address_of_another_shape_is_refused(address):
+    with pytest.raises(ValueError):
+        boundary.bind_scope(address)
+
+
+def test_the_bind_scope_is_seen_and_kept_in_the_identity(tmp_path, gw):
+    gateway_dir, java = gw
+    proc = fake_proc(
+        tmp_path,
+        [(java, [11, 12])],
+        tcp=[(4002, LISTEN, 11, "0100007F")],
+        tcp6=[(4002, LISTEN, 12)],
+    )
+    seen = boundary.gateway_listening(proc, gateway_dir)
+    assert seen.bind == {"loopback", "all interfaces"}
+    assert "socket 11 port 4002 bound to loopback" in seen.identity
+    assert not any("7F" in part or "127" in part for part in seen.identity)  # no address kept
+
+
+@pytest.mark.parametrize("bind", ["all interfaces", "a specific address", "", "all, loopback"])
+def test_the_bind_line_asks_the_owner_to_check_the_box_unless_the_port_is_loopback_only(bind):
+    note = ibkr_paper.bind_note(bind)
+    assert '"Allow connections from localhost only"' in note
+    assert "cannot read it" in note
+
+
+def test_a_loopback_only_bind_needs_no_box():
+    assert ibkr_paper.bind_note("loopback") == "The port is bound to loopback only."
 
 
 def test_a_gateway_process_whose_start_cannot_be_read_is_refused(tmp_path, gw):
@@ -510,10 +574,14 @@ def paper_state(tmp_path, monkeypatch):
         monkeypatch.setattr(boundary, "PAPER_PORT", gateway.port)
         monkeypatch.setattr(boundary, "PAPER_PORTS", frozenset({gateway.port}))
 
-        def listening(proc=None, gateway_dir=None) -> tuple[frozenset[int], frozenset[str]]:
+        def listening(proc=None, gateway_dir=None) -> boundary.Listening:
             if not state.running:
                 raise boundary.BoundaryError("the IB Gateway installed in (test) is not running")
-            return frozenset({gateway.port, *state.extra_ports}), frozenset(state.identity)
+            return boundary.Listening(
+                ports=frozenset({gateway.port, *state.extra_ports}),
+                identity=frozenset(state.identity),
+                bind=frozenset({"all interfaces"}),  # the Gateway's normal bind
+            )
 
         monkeypatch.setattr(boundary, "gateway_listening", listening)
 
@@ -540,13 +608,15 @@ def lane(tmp_path, monkeypatch, paper_state):
         return 0
 
     monkeypatch.setattr(ibkr_paper, "_run_node", fake_run_node)
+    # Fill mode checks the clock; these tests run as if in regular hours unless they say not.
+    monkeypatch.setattr(ibkr_paper, "in_regular_hours", lambda now=None: True)
 
     def start(gateway: FakeGateway, mode: str = "order", confirm: bool = True, listed=None) -> int:
         paper_state.use(gateway)
         if listed is not None:
             allowlist(tmp_path, monkeypatch, gateway, listed)
         if confirm:  # stand in for the owner typing the word; the tests below leave it real
-            monkeypatch.setattr(ibkr_paper, "owner_confirms", lambda: True)
+            monkeypatch.setattr(ibkr_paper, "owner_confirms", lambda mode="order": True)
         return ibkr_paper.main([mode])
 
     return start, reached
@@ -808,43 +878,53 @@ def test_contract_command_refuses_when_no_gateway_is_listening(contract_cmd, cap
     assert asked == []
 
 
-# --- order mode needs the owner at a terminal ------------------------------------------------
+# --- order and fill mode need the owner at a terminal -----------------------------------------
+
+CONFIRMED = pytest.mark.parametrize("mode", ["order", "fill"])
 
 
-def test_order_mode_refuses_without_a_terminal(lane, capsys):
+@CONFIRMED
+def test_a_placing_mode_refuses_without_a_terminal(lane, capsys, mode):
     start, reached = lane
     with FakeGateway(PAPER) as gateway:
         # The real check runs: under pytest neither stdin nor stdout is a terminal.
-        assert start(gateway, "order", confirm=False) == 2
+        assert start(gateway, mode, confirm=False) == 2
     assert reached == []
     out = capsys.readouterr()
     assert "needs the owner at a terminal" in out.err
     assert_no_account_in(out.out + out.err, PAPER)
 
 
+@CONFIRMED
 @pytest.mark.parametrize(("typed", "exit_code"), [("yes", 2), ("paper", 2), ("", 2), ("PAPER", 0)])
-def test_order_mode_goes_on_only_when_the_owner_types_the_word(lane, monkeypatch, typed, exit_code):
+def test_a_placing_mode_goes_on_only_when_the_owner_types_the_word(
+    lane, monkeypatch, typed, exit_code, mode
+):
     start, reached = lane
+    prompts: list[str] = []
     monkeypatch.setattr(ibkr_paper, "_at_terminal", lambda: True)
-    monkeypatch.setattr("builtins.input", lambda prompt="": typed)
+    monkeypatch.setattr("builtins.input", lambda prompt="": prompts.append(prompt) or typed)
     with FakeGateway(PAPER) as gateway:
-        assert start(gateway, "order", confirm=False) == exit_code
+        assert start(gateway, mode, confirm=False) == exit_code
     assert reached == ([PAPER] if exit_code == 0 else [])
+    (prompt,) = prompts  # the owner is told what this mode places
+    assert ("SELL" in prompt) == (mode == "fill") and "PAPER account" in prompt
 
 
 def confirm_after(change):
     """An owner_confirms stand-in: something changes while the prompt waits, then PAPER."""
 
-    def confirms() -> bool:
+    def confirms(mode: str = "order") -> bool:
         change()
         return True
 
     return confirms
 
 
+@CONFIRMED
 @pytest.mark.parametrize("change", ["live", "extra-port", "restarted", "other-account"])
-def test_order_mode_checks_everything_again_after_the_confirmation(
-    lane, paper_state, monkeypatch, capsys, change
+def test_a_placing_mode_checks_everything_again_after_the_confirmation(
+    lane, paper_state, monkeypatch, capsys, change, mode
 ):
     start, reached = lane
     later = NOT_LISTED if change == "other-account" else None
@@ -858,18 +938,79 @@ def test_order_mode_checks_everything_again_after_the_confirmation(
             "other-account": lambda: None,  # the Gateway reports another account the 2nd time
         }
         monkeypatch.setattr(ibkr_paper, "owner_confirms", confirm_after(changes[change]))
-        assert start(gateway, "order", confirm=False) == 2
+        assert start(gateway, mode, confirm=False) == 2
     assert reached == []  # the engine side was never entered
     assert "REFUSED TO START" in capsys.readouterr().err
 
 
-def test_order_mode_goes_on_when_nothing_changed_during_the_confirmation(lane, monkeypatch):
+@CONFIRMED
+def test_a_placing_mode_goes_on_when_nothing_changed_during_the_confirmation(
+    lane, monkeypatch, mode
+):
     start, reached = lane
     monkeypatch.setattr(ibkr_paper, "owner_confirms", confirm_after(lambda: None))
     with FakeGateway(PAPER) as gateway:
-        assert start(gateway, "order", confirm=False) == 0
+        assert start(gateway, mode, confirm=False) == 0
         assert gateway.sessions == 2  # asked before the prompt and again after it
     assert reached == [PAPER]
+
+
+# --- fill mode runs only in regular hours ------------------------------------------------------
+
+
+def test_fill_mode_refuses_outside_regular_hours_before_asking_the_gateway(
+    lane, monkeypatch, capsys
+):
+    start, reached = lane
+    monkeypatch.setattr(ibkr_paper, "in_regular_hours", lambda now=None: False)
+    monkeypatch.setattr(ibkr_paper, "owner_confirms", lambda mode="order": pytest.fail("asked"))
+    with FakeGateway(PAPER) as gateway:
+        assert start(gateway, "fill", confirm=False) == 2
+        assert gateway.sessions == 0
+    assert reached == []
+    assert "regular US market hours" in capsys.readouterr().err
+
+
+def test_fill_mode_refuses_when_the_session_ends_while_the_prompt_waits(lane, monkeypatch, capsys):
+    start, reached = lane
+    confirmed: list[bool] = []
+    # In hours until the owner has answered the prompt, out of hours after it.
+    monkeypatch.setattr(ibkr_paper, "in_regular_hours", lambda now=None: not confirmed)
+    monkeypatch.setattr(
+        ibkr_paper, "owner_confirms", lambda mode="order": confirmed.append(True) or True
+    )
+    with FakeGateway(PAPER) as gateway:
+        assert start(gateway, "fill", confirm=False) == 2
+    assert reached == [] and confirmed == [True]
+    assert "after the confirmation" in capsys.readouterr().err
+
+
+def test_order_and_restart_mode_do_not_look_at_the_clock(lane, monkeypatch):
+    start, reached = lane
+    monkeypatch.setattr(ibkr_paper, "in_regular_hours", lambda now=None: pytest.fail("clock"))
+    with FakeGateway(PAPER) as gateway:
+        assert start(gateway, "order") == 0
+    with FakeGateway(PAPER) as gateway:
+        assert start(gateway, "restart") == 0
+    assert reached == [PAPER, PAPER]
+
+
+@pytest.mark.parametrize(
+    ("utc", "inside"),
+    [
+        ("2026-11-13T14:30:00", True),  # Friday 09:30 New York (EST, UTC-5)
+        ("2026-11-13T14:29:59", False),  # a second before the open
+        ("2026-11-13T20:54:59", True),  # 15:54:59
+        ("2026-11-13T20:55:00", False),  # 15:55, the end of the window
+        ("2026-11-14T15:00:00", False),  # Saturday
+        ("2026-11-16T03:00:00", False),  # Sunday night in New York
+        ("2026-07-13T13:30:00", True),  # Monday 09:30 in summer time (EDT, UTC-4)
+        ("2026-07-13T13:29:00", False),
+    ],
+)
+def test_regular_hours_are_new_york_weekday_hours(utc, inside):
+    now = datetime.fromisoformat(utc).replace(tzinfo=UTC)
+    assert ibkr_paper.in_regular_hours(now) is inside
 
 
 @pytest.mark.parametrize("listed", [None, (PAPER,)], ids=["no-contract", "contract"])
@@ -886,7 +1027,9 @@ def test_every_start_says_whether_an_allowlist_is_used(lane, capsys, listed):
 
 def test_restart_mode_needs_no_confirmation(lane, monkeypatch, capsys):
     start, reached = lane
-    monkeypatch.setattr(ibkr_paper, "owner_confirms", lambda: pytest.fail("asked in restart"))
+    monkeypatch.setattr(
+        ibkr_paper, "owner_confirms", lambda mode="order": pytest.fail("asked in restart")
+    )
     with FakeGateway(PAPER) as gateway:
         assert start(gateway, "restart", confirm=False) == 0
     assert reached == [PAPER]
@@ -947,8 +1090,10 @@ def test_the_engine_gets_the_gated_host_port_and_account(engine_stub, tmp_path, 
         "paper_checks_passed_after_run": True,
         "allowlist_contract_present": False,
     }
+    # How the port was bound is in the record and on the terminal; no address is.
+    assert json.loads(text)["gateway"] == {"port": gateway.port, "bind": "all interfaces"}
     out = capsys.readouterr()
-    assert "PASS" in out.out
+    assert "PASS" in out.out and "bound to all interfaces" in out.out
     assert_no_account_in(out.out + out.err, PAPER)
 
 

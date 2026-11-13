@@ -1,0 +1,5 @@
+# Orca copies the git-ignored files listed here into each new worktree. Nothing is listed:
+# - .venv/ is built in each worktree by the setup script in orca.yaml;
+# - runs/ is local run output and can hold account ids;
+# - risk/boundary.contract.json is the owner's: a copy would be an agent-writable duplicate
+#   that never re-syncs, and the lane is run from the owner's own checkout.

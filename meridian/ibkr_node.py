@@ -12,13 +12,21 @@ Own design, and the only additions to that example:
   - the order: one DAY LIMIT BUY priced under the bid, so it rests. Upstream's base
     strategy then cancels it on acceptance (its default), which gives a terminal state
     without taking a position;
+  - in fill mode, one BUY priced to fill and, on its fill, one SELL of the filled quantity;
   - a refusal to submit when the account already has an open order or position in this
     instrument;
+  - a cap on what each mode may send (``MAX_ORDERS``), applied in an override of upstream's
+    ``submit_ib_order``, which every order goes through; and restart mode ignoring quotes;
   - the calls that feed the run record.
 
-This lane places exactly one order. Upstream's close-on-stop is switched off, so if the
+Order mode places exactly one order. Upstream's close-on-stop is switched off, so if that
 order ever fills (the bid comes from delayed data), the share stays in the paper account,
 the run is reported as a failure, and the owner closes the position by hand.
+
+Fill mode (regular hours) places at most two: a BUY priced to fill, then, on its fill, a
+SELL of the filled quantity priced to fill, so the run ends flat. If the SELL does not fill
+before the stop, the stop-time cancel removes it, the run fails, and the owner closes the
+share by hand.
 """
 
 from __future__ import annotations
@@ -56,14 +64,41 @@ from nautilus_trader.model import OrderSide, Price, Quantity  # noqa: E402
 INSTRUMENT_ID = default_aapl_instrument_id()  # AAPL.XNAS, upstream's stock example
 ORDER_QTY = "1"
 LIMIT_UNDER_BID = 0.02
+# Fill mode: how far past the quote its two limit orders are priced, so that they fill at once
+# (the quote is delayed data). The same distance M1's resting order had from the bid.
+CROSS_BAND = 0.02
 # Fixed ids, distinct from each other and from the probe's, so runs are comparable.
 DATA_CLIENT_ID = 1511
 EXEC_CLIENT_ID = 1512
-AUTO_STOP_SECONDS = {"order": 60, "restart": 25}
+AUTO_STOP_SECONDS = {"order": 60, "restart": 25, "fill": 90}
+# The most orders a run of each mode may send; a mode not named here sends none. Enforced in
+# ``OneDayLimit.submit_ib_order``, which every order of these strategies goes through. The one
+# upstream path that would not, close-on-stop, is switched off in every mode (``build``).
+MAX_ORDERS = {"order": 1, "fill": 2, "restart": 0}
+
+
+def marketable_limit(side: str, bid: float, ask: float = 0.0, band: float = CROSS_BAND) -> float:
+    """A limit price that crosses the spread by ``band``: above the ask to buy, under the bid
+    to sell. The venue fills it at the best price available, never worse than this limit.
+    A BUY needs a usable quote (0 < bid <= ask); a SELL needs only a positive bid."""
+    if side == "BUY":
+        if not (0 < bid <= ask):
+            raise ValueError("no usable quote to price the buy from")
+        return ask * (1.0 + band)
+    if side == "SELL":
+        if not bid > 0:
+            raise ValueError("no usable bid to price the sell from")
+        return bid * (1.0 - band)
+    raise ValueError(f"unknown side {side!r}")
 
 
 class OneDayLimit(IbV2OrderStrategy):
-    """One DAY LIMIT BUY. In restart mode upstream's base strategy submits nothing."""
+    """One DAY LIMIT BUY in order mode; nothing at all in restart mode.
+
+    Upstream's base strategy sends nothing in restart mode only because it never subscribes to
+    quotes there: its ``on_quote`` submits without looking at the mode. So this class refuses
+    at the point of sending as well (``submit_ib_order``), by mode and by count, and ignores
+    quotes in restart mode."""
 
     strategy_id_value = "MERIDIAN-M1"
     instrument_id_value = INSTRUMENT_ID
@@ -75,6 +110,23 @@ class OneDayLimit(IbV2OrderStrategy):
         super().__init__()
         self._bid: Price | None = None
         self._order_id: Any = None
+        self._sent = 0
+        self._hold: str | None = None  # a reason this run must send nothing more
+
+    def _mode(self) -> str:
+        return str(self._record.data["mode"])
+
+    def submit_ib_order(self, order: object) -> None:
+        """The only way this lane sends an order. Refuses what the run's mode does not allow."""
+        mode = self._mode()
+        allowed = MAX_ORDERS.get(mode, 0)
+        if self._hold is not None or self._sent >= allowed:
+            why = self._hold or f"{mode} mode sends at most {allowed} order(s)"
+            self._record.order_refused(why)
+            print(f"{self.strategy_id}: an order was refused before it was sent: {why}", flush=True)
+            return
+        self._sent += 1
+        super().submit_ib_order(order)
 
     @classmethod
     def create(cls, record: RunRecord) -> OneDayLimit:
@@ -98,6 +150,7 @@ class OneDayLimit(IbV2OrderStrategy):
         counts = self._open_counts()
         self._record.trader_started(**counts)
         if counts["instrument_open_orders"] or counts["instrument_open_positions"]:
+            self._hold = "the account had an open order or position in the instrument at start"
             print(
                 f"{self.strategy_id}: the account already has an open order or position in "
                 f"{self.instrument_id}; nothing will be submitted.",
@@ -107,6 +160,8 @@ class OneDayLimit(IbV2OrderStrategy):
         super().on_start()
 
     def on_quote(self, quote: Any) -> None:
+        if self._mode() not in ("order", "fill"):
+            return  # restart mode acts on no quote, even if one arrives
         if quote.instrument_id != self.instrument_id:
             return
         if not quote.bid_price.is_positive():
@@ -122,15 +177,7 @@ class OneDayLimit(IbV2OrderStrategy):
         self._order_id = self.client_order_id("LIMIT")
         # limit_order() is upstream's helper; its time in force defaults to DAY.
         order = self.limit_order(self._order_id, OrderSide.BUY, Quantity.from_str(ORDER_QTY), price)
-        self._record.order_built(
-            client_order_id=str(order.client_order_id),
-            instrument_id=str(order.instrument_id),
-            side=order.side.name,
-            type=order.order_type.name,
-            time_in_force=order.time_in_force.name,
-            quantity=str(order.quantity),
-            price=str(order.price),
-        )
+        self._record.order_built(**_described(order))
         self.submit_ib_order(order)
 
     def on_order_event(self, event: Any) -> None:
@@ -150,16 +197,94 @@ class OneDayLimit(IbV2OrderStrategy):
     def on_position_event(self, event: Any) -> None:
         self._record.event(type(event).__name__, event.ts_event)
 
+    def _orders_at_stop(self) -> list[tuple[str, Any]]:
+        """(record key prefix, client order id) for each order this run placed."""
+        return [("", self._order_id)]
+
     def on_stop(self) -> None:
         # Captured before upstream's stop-time cancel, so it shows what the run left.
         fields: dict[str, Any] = dict(self._open_counts())
-        if self._order_id is not None:
-            order = self.cache.order(self._order_id)
+        # Sent but not yet acknowledged orders are not "open" to the cache; count them too.
+        fields["instrument_inflight_orders"] = len(
+            self.cache.orders_inflight(instrument_id=self.instrument_id)
+        )
+        for prefix, order_id in self._orders_at_stop():
+            order = None if order_id is None else self.cache.order(order_id)
             if order is not None:
-                fields["order_status"] = order.status.name
-                fields["filled_qty"] = str(order.filled_qty)
+                fields[f"{prefix}order_status"] = order.status.name
+                fields[f"{prefix}filled_qty"] = str(order.filled_qty)
         self._record.at_stop(**fields)
         super().on_stop()
+
+
+class OneRoundTrip(OneDayLimit):
+    """Fill mode: one DAY LIMIT BUY priced to fill, and when it fills, one DAY LIMIT SELL of the
+    filled quantity priced to fill, so the run ends flat. Upstream's ``SpreadOrderStrategy``
+    closes a filled position the same way (an opposite order of ``event.last_qty``); this lane
+    uses limit orders priced past the quote instead of market orders, so the price is capped.
+    At most these two orders are ever placed; the stop-time cancel removes any that is left."""
+
+    strategy_id_value = "MERIDIAN-M1-FILL"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._ask: Price | None = None
+        self._close_id: Any = None
+
+    def on_quote(self, quote: Any) -> None:
+        if quote.instrument_id != self.instrument_id:
+            return
+        if not (quote.bid_price.is_positive() and quote.ask_price.is_positive()):
+            return  # wait for a usable bid and ask
+        if quote.ask_price.as_double() < quote.bid_price.as_double():
+            return  # a crossed quote (delayed ticks out of step) is not a price; wait
+        self._ask = quote.ask_price
+        super().on_quote(quote)  # keeps the latest bid; upstream submits the opening order once
+
+    def submit_example_orders(self) -> None:
+        if self._bid is None or self._ask is None or self.instrument is None:
+            raise RuntimeError("no quote to price the order from")
+        buy = marketable_limit("BUY", self._bid.as_double(), self._ask.as_double())
+        self._order_id = self.client_order_id("BUY")
+        order = self.limit_order(
+            self._order_id,
+            OrderSide.BUY,
+            Quantity.from_str(ORDER_QTY),
+            self.instrument.make_price(buy),
+        )
+        self._record.order_built(**_described(order))
+        self.submit_ib_order(order)
+
+    def on_order_filled(self, event: Any) -> None:
+        if self._order_id is None or event.client_order_id != self._order_id:
+            return
+        if self._close_id is not None or self.instrument is None:
+            return  # the closing order is placed once only
+        # The fill price is live; the bid is delayed. Price from the lower of the two, so the
+        # SELL still crosses if the delayed bid is stale.
+        reference = event.last_px.as_double()
+        if self._bid is not None:
+            reference = min(reference, self._bid.as_double())
+        price = self.instrument.make_price(marketable_limit("SELL", reference))
+        self._close_id = self.client_order_id("SELL")
+        close = self.limit_order(self._close_id, OrderSide.SELL, event.last_qty, price)
+        self._record.close_order_built(**_described(close))
+        self.submit_ib_order(close)
+
+    def _orders_at_stop(self) -> list[tuple[str, Any]]:
+        return [("", self._order_id), ("close_", self._close_id)]
+
+
+def _described(order: Any) -> dict[str, str]:
+    return {
+        "client_order_id": str(order.client_order_id),
+        "instrument_id": str(order.instrument_id),
+        "side": order.side.name,
+        "type": order.order_type.name,
+        "time_in_force": order.time_in_force.name,
+        "quantity": str(order.quantity),
+        "price": str(order.price),
+    }
 
 
 def build(mode: str, host: str, port: int, account: str, record: RunRecord) -> Any:
@@ -169,9 +294,13 @@ def build(mode: str, host: str, port: int, account: str, record: RunRecord) -> A
     for name in [n for n in os.environ if n.startswith(("IB_V2_", "IB_PYO3_"))]:
         del os.environ[name]
     os.environ["IB_V2_RECONCILIATION"] = "1"
-    os.environ["IB_V2_CLOSE_ON_STOP"] = "0"  # this lane never places a second order
-    if mode == "order":
+    # Upstream's close-on-stop sends reduce-only orders, which the adapter refuses; fill mode
+    # closes with its own one opposite order instead.
+    os.environ["IB_V2_CLOSE_ON_STOP"] = "0"
+    if mode in ("order", "fill"):
         os.environ["IB_V2_ENABLE_ORDER_SUBMISSION"] = "1"
+    if mode == "fill":
+        os.environ["IB_V2_CANCEL_ON_ACCEPT"] = "0"  # let the opening order fill
 
     record.data["engine"] = {"nautilus_trader": nautilus_trader.__version__}
     node = build_ib_live_node(
@@ -184,7 +313,7 @@ def build(mode: str, host: str, port: int, account: str, record: RunRecord) -> A
         account_id=account,
         provider_config=instrument_provider_config(load_ids=[INSTRUMENT_ID]),
     )
-    strategy = OneDayLimit.create(record)
+    strategy = (OneRoundTrip if mode == "fill" else OneDayLimit).create(record)
     if str(strategy.instrument_id) != INSTRUMENT_ID:
         raise RuntimeError("the strategy is not on the lane's instrument")
     node.add_strategy(strategy)
