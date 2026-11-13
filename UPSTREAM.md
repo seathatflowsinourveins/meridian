@@ -105,8 +105,9 @@ Notes on the agent runtimes:
 
 ## Assessed and not used
 
-Read for plan 8.6 and 8.7 on 2026-11-12 and not installed, each for the reason given. An
-evidence record can reopen one.
+Read for plan 8.6 and 8.7 on 2026-11-12 and not installed, each for the reason given, without
+an evidence ADR. An evidence record can reopen one: it then gets its row under "Evidence ADRs"
+below and leaves this table.
 
 | Project | Source of the assessment | Why it is not used |
 |---|---|---|
@@ -148,9 +149,11 @@ evidence record can reopen one.
 | `meridian/ibkr_paper.py` | this repo | n/a | 2026-11-12 | the gate before the engine and again after the run, the owner's typed confirmation, and the scrubbed run record | own design |
 | `meridian/ibkr_node.py` | this repo; it subclasses and calls the two upstream files above | n/a | 2026-11-12 | order mode: one DAY LIMIT order through upstream's base strategy; fill mode: one BUY and its one closing SELL, both DAY LIMIT priced past the quote; and the calls that feed the run record | own design |
 
-## Assessed and not adopted (evidence ADRs, plans 8.6 and 8.7)
+## Evidence ADRs (plans 8.6 and 8.7)
 
-Nothing in this table is installed. Each row names the ADR that measured it.
+One row per component that an evidence ADR in `docs/adr/` assessed, whatever it decided: the
+Decision cell gives the ADR's status, and only a row whose status is adopted is installed. None
+is today. What was read and set aside without an ADR is under "Assessed and not used" above.
 
 | Component | Version or commit | Licence | Source URL (read) | Date read | Decision | ADR |
 |---|---|---|---|---|---|---|
