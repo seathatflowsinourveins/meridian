@@ -38,6 +38,26 @@ EXECUTION_CLIENT_NAMES = {
     "LiveNodeBuilder",  # its from_config takes execution factories
     "LiveExecClientConfig",
     "from_config",
+    # The execution engine publishes a command for an external client on the message bus
+    # instead of sending it to an execution client; a message-bus backing can carry it out.
+    "external_clients",
+    "LiveExecutionEngineConfig",
+    "with_exec_engine_config",
+    "MessageBusConfig",
+    "with_msgbus_config",
+    "with_external_msgbus_factory",
+}
+# The only builder calls the lane makes; any other fails the structure test.
+BUILDER_CALLS = {
+    "with_timeout_connection",
+    "with_timeout_reconciliation",
+    "with_timeout_portfolio",
+    "with_timeout_disconnection_secs",
+    "with_delay_post_stop_secs",
+    "with_reconciliation",
+    "add_data_client",
+    "add_simulated_exec_client",
+    "build",
 }
 # Ways around a name check: dynamic code (as calls of the builtins), and IB's client libraries.
 DYNAMIC_BUILTINS = {"eval", "exec", "compile", "__import__"}
@@ -123,6 +143,9 @@ def test_no_lane_file_can_add_an_execution_client_other_than_the_sandbox():
         "import importlib",
         "from ibapi.client import EClient",
         "config = ImportableExecClientConfig(path='x')",
+        "builder.with_exec_engine_config(LiveExecutionEngineConfig(external_clients=[cid]))",
+        "builder.with_msgbus_config(MessageBusConfig())",
+        "builder.with_external_msgbus_factory(factory)",
     ],
 )
 def test_the_source_check_catches_an_added_execution_client(planted):
@@ -171,10 +194,7 @@ def test_the_node_has_ib_data_and_the_sandbox_as_its_only_execution_client(monke
     sandbox_node.build(sandbox_node.ib_data_client("127.0.0.1", 4002))
 
     assert started == [Environment.SANDBOX]
-    called = {name for name, _ in builder.calls}
-    assert called <= {"add_data_client", "add_simulated_exec_client", "build"} | {
-        n for n in called if n.startswith("with_")
-    }
+    assert {name for name, _ in builder.calls} <= BUILDER_CALLS
     assert builder.named("add_exec_client") == []
     ((name, factory, config),) = builder.named("add_simulated_exec_client")
     assert name == "SANDBOX" and isinstance(factory, SandboxExecutionClientFactory)
