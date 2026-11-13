@@ -55,17 +55,17 @@ Carried, each with offline tests (`tests/test_alpaca_{wire,trade_updates,reconci
   "not sent" (refused once) from "sent" (settled only by a documented refusal, POST 403/422 or
   DELETE 422/429, by the stream, or by a later read). A DELETE 204 is an attempt; one
   unresolved cancel per order. Decimal text end to end, whole shares, prices on tick.
-- Startup reads wait for the stream's `listening` acknowledgement. A lost stream, an update that
+- Startup reads wait for the stream's subscription acknowledgement. A lost stream, an update that
   cannot be classified (20 events are; `restated`, corrections, anything new are not) or an answer
-  that cannot be read or mapped (a listing, its pages, a row) is a gap, a failed request is not: no
-  new order until a full read of orders and positions issued after it reaches the engine; open-order
-  checks never move the gate. Executions go on once each, none the engine holds (it infers one a
-  read or its open-order check shows first); a recovery read below the engine's fills is read again.
-- Reconciliation reads the whole order history, fails closed on any gap, withholds and counts
-  ended history in unloaded symbols, counts fills older than the order history, and names the
-  failing stage with reasons from a fixed, value-free list (`reconcile.py`). Engine settings: no
-  missing-order generation, unbounded lookback, unresolved submissions retained, open-order checks
-  at a set cadence, not in-flight (the old node, in-flight at 0, got neither); re-checked on rc9.
+  that cannot be read or mapped (a body not JSON, a listing, its pages, a row, its symbol) is a gap,
+  a failed request is not: no new order until a full read issued after it reaches the engine; an
+  open-order check can stop new orders, not resume them. Executions go on once each, none the engine
+  holds (it infers one a read or check shows first); a recovery read below its fills is reread.
+- Reconciliation reads the whole order history, fails closed on any gap, withholds and counts ended
+  history in unloaded symbols (a row without one refuses), counts fills older than the order
+  history, and names the failing stage with reasons from a fixed, value-free list. Engine settings:
+  no missing-order generation, unbounded lookback, unresolved submissions retained, open-order
+  checks, not in-flight (the old node had neither), none waiting over a minute; re-checked on rc9.
 - No invented fee: connect refuses without a sourced per-fill commission (the old line's was a
   sourced zero, sextant@33cdee7:lanes/paper/shared-node.params.json:L26-47).
 
