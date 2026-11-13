@@ -14,6 +14,7 @@ order history. A failed start must also say why.
 
 import asyncio
 import gc
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -299,6 +300,43 @@ def test_failure_case_3_an_unexplained_newer_fill_still_refuses():
     assert isinstance(error, RuntimeError)
     trace = rig.clients[0].report_trace["fills"]
     assert trace.reason == "historical fill that no order report explains"
+
+
+@pytest.mark.parametrize(
+    ("answer", "reason"),
+    [
+        ("an unexplained fill", "historical fill that no order report explains"),
+        ("a page that is not a list", "Alpaca fill page is not a list"),
+    ],
+)
+def test_a_start_refused_by_its_last_stage_reads_nothing_more_and_keeps_its_record(answer, reason):
+    """The engine runs the three startup stages concurrently. Here the fill stage ends last (its
+    FILL page is slow), after the order and position stages have both been read, and refuses the
+    start: failure case 3's newer unexplained fill, or a page that is not a list. Its read began
+    during startup, so the start decides: no gap and no recovery read while the start is being
+    refused, and the order and position stages keep the record of what they read."""
+    rig = Rig()
+    listed = order_row(client_order_id=f"{PREFIX}a", submitted_at=stamp(1))
+    missing = order_row(client_order_id=f"{PREFIX}b", submitted_at=stamp(40))
+    rig.venue.orders.append(listed)
+    rig.venue.fills += [fill_activity(listed), fill_activity(missing, when=stamp(40))]
+    rig.venue.positions.append(position_row(qty="1"))
+
+    def slow(page):
+        time.sleep(1.0)  # in the request's worker thread: the other stages finish meanwhile
+        return page if answer == "an unexplained fill" else {"activities": page}
+
+    reshaped(rig.venue, "/account/activities/FILL", slow)
+    error, _ = start(rig)
+    assert isinstance(error, RuntimeError)
+    client = rig.clients[0]
+    assert client._started  # the order and position stages were read before the fill stage failed
+    assert client.report_trace["fills"].reason == reason
+    assert (client._gap, client.recoveries) == (0, 0)
+    assert len(rig.venue.listings) == 2  # the order stage's and the fill stage's own
+    orders, positions = client.report_trace["orders"], client.report_trace["positions"]
+    assert (orders.rows, orders.cancelled, orders.failures) == (1, False, 0)
+    assert (positions.rows, positions.cancelled, positions.failures) == (1, False, 0)
 
 
 def test_a_failed_start_records_its_stage_counts_and_first_failure_and_no_value():

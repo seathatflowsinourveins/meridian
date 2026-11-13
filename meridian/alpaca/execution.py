@@ -257,13 +257,16 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         self._log().error(f"Alpaca account view incomplete: {type(error).__name__}: {error}")
         self._schedule_recovery()
 
-    def _note_failures(self, failures: list[tuple[object, BaseException]]) -> None:
-        """After startup, a venue answer the lane cannot read or map is a gap. The caller
-        (`_reading`) passes only such failures: a request that got no answer is not one (the
-        stream still carries the account's changes)."""
+    def _note_failures(
+        self, failures: list[tuple[object, BaseException]], *, after_startup: bool
+    ) -> None:
+        """A venue answer the lane cannot read or map is a gap when its read began after
+        startup; during the startup reads the start decides, and a failed stage refuses it. The
+        caller (`_reading`) passes only such failures: a request that got no answer is not one
+        (the stream still carries the account's changes)."""
         if any(ANOTHER_WRITER in str(error) for _, error in failures):
             self.foreign_writer_seen = True
-        if failures and self._started:
+        if failures and after_startup:
             self._incomplete(failures[0][1])
 
     @contextlib.contextmanager
@@ -273,14 +276,20 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         our rules or mappers refuse), goes through `_note_failures`. A request's own failure is
         not the answer's: each one raised by a request, as `_traced_call` records it in
         `requests` (an HTTP error, a timeout, the budget refusing it before the wire), stays out
-        of it, wrapped in `IncompleteCoverage` or not. Everything propagates unchanged."""
+        of it, wrapped in `IncompleteCoverage` or not. Everything propagates unchanged.
+
+        Whether the read is a startup read is decided as it begins. The engine runs the three
+        startup stages concurrently, so the fill stage can fail after the order and position
+        stages have marked startup done: that failure refuses the start, and is no gap."""
+        after_startup = self._started
         try:
             yield
         except Exception as exc:
             wrapped = exc.failures if isinstance(exc, IncompleteCoverage) else None
             failures = wrapped or [(None, exc)]
             self._note_failures(
-                [(o, e) for o, e in failures if not any(e is request for request in requests)]
+                [(o, e) for o, e in failures if not any(e is request for request in requests)],
+                after_startup=after_startup,
             )
             raise
 
