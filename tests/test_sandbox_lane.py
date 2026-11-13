@@ -103,7 +103,9 @@ LANE_IMPORTS = {
 }
 # Ways around a name check, flagged wherever the lane's code names them:
 # builtins that run a string as code, read a namespace, or import and call what a string names
-# (breakpoint, through PYTHONBREAKPOINT), as names only (re.compile is the lane's own);
+# (breakpoint, through PYTHONBREAKPOINT), as names and, like getattr and its family, as
+# attributes too, since the builtins module is reachable from allowed ones
+# (``re.enum.bltns.eval``); the one such attribute that passes is ``re.compile``, the lane's own;
 DYNAMIC_BUILTINS = {
     "eval",
     "exec",
@@ -117,9 +119,9 @@ DYNAMIC_BUILTINS = {
 # a module or attribute found from a string at run time (importlib's import, the engine's
 # import by path in nautilus_trader.live.config and its plugin loader, sys.modules, the import
 # system's finders, sys.breakpointhook, typing's forward references, which evaluate a string
-# in a named module or the module that owns them), the namespace behind a frame, the
-# collector's object lists, and asyncio's and concurrent.futures' ways to start another
-# process;
+# in a named module or the module that owns them, and operator's attrgetter and methodcaller,
+# which are getattr by other names), the namespace behind a frame, the collector's object
+# lists, and asyncio's and concurrent.futures' ways to start another process;
 RUN_TIME_LOOKUPS = {
     "import_module",
     "resolve_path",
@@ -137,6 +139,8 @@ RUN_TIME_LOOKUPS = {
     "_eval_type",
     "_type_check",
     "_type_convert",
+    "attrgetter",
+    "methodcaller",
     "_getframe",
     "f_globals",
     "f_locals",
@@ -159,7 +163,10 @@ OS_PROCESS = {
 FORBIDDEN_MODULES = {
     "importlib",
     "annotationlib",
+    "operator",  # its attrgetter and methodcaller; typing and pathlib hand it over
     "builtins",
+    "bltns",  # enum's name for builtins: re.enum.bltns
+    "codeop",  # compiles a string to code; traceback hands it over
     "runpy",
     "pkgutil",
     "pydoc",
@@ -176,8 +183,10 @@ FORBIDDEN_MODULES = {
     "ib_async",
     "ib_insync",
 }
-# and any dunder name but these (``__globals__``, ``__dict__``, ``__builtins__``, ``__spec__``
-# and the rest lead from an allowed object to the namespace behind it).
+# and any dunder name but these, read as a name or an attribute or brought in by an import
+# under any name (``__globals__``, ``__dict__``, ``__builtins__``, ``__spec__`` and the rest
+# lead from an allowed object to the namespace behind it: ``from sys import __dict__ as d``).
+# A dunder name a file defines, as a function, a class or a parameter, is not read.
 DUNDERS_ALLOWED = {"__name__", "__doc__", "__init__", "__version__"}
 LOOKUP_NAMES = EXECUTION_CLIENT_NAMES | RUN_TIME_LOOKUPS | OS_PROCESS | FORBIDDEN_MODULES
 # ibkr_paper in a string, other than as ibkr_paper.<allowed name> (a module path for
@@ -228,7 +237,7 @@ def execution_client_hits(source: str) -> list[str]:
             found = [h for a in node.kwd_attrs for h in _attribute_hits(a, node.cls, True)]
         elif isinstance(node, ast.alias):
             parts = {node.name.split(".")[0], node.name.rsplit(".", 1)[-1], node.asname}
-            found = [p for p in parts if p in LOOKUP_NAMES]
+            found = [p for p in parts if p and (p in LOOKUP_NAMES or _is_dunder(p))]
         elif isinstance(node, ast.keyword) and node.arg in EXECUTION_CLIENT_NAMES:
             found = [node.arg]
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
@@ -259,6 +268,10 @@ def _is_dunder(name: str) -> bool:
 def _attribute_hits(attr: str, value: ast.expr, load: bool) -> list[str]:
     """What is wrong with reading (or, without ``load``, setting) ``value.attr``."""
     found = [attr] if attr in LOOKUP_NAMES or _is_dunder(attr) else []
+    if attr in DYNAMIC_BUILTINS | GETATTR_FAMILY and not (
+        attr == "compile" and isinstance(value, ast.Name) and value.id == "re"
+    ):
+        found.append(f"{attr} as an attribute")
     if attr == "ibkr_paper":  # reached through a package or another module
         found.append("ibkr_paper as an attribute")
     if (
@@ -381,6 +394,19 @@ def test_the_source_check_catches_an_added_execution_client(planted):
         "ibkr_paper.gate.__globals__['_run_node'](b, a)",
         "globals()['ibkr_paper']",
         "match sandbox_lane:\n    case object(ibkr_paper=lane):\n        lane._run_node(b, a)",
+        # A namespace brought in by an import under another name.
+        "from sys import __dict__ as d\nd['modules']['meridian.ibkr' + '_paper']._run_node",
+        "from meridian.sandbox_lane import __dict__ as d\nd['ibkr' + '_paper']._run_node",
+        "from meridian.boundary import __builtins__ as b\nb['__import__'](name)",
+        # getattr by another name.
+        "typing.operator.attrgetter('ibkr' + '_paper._run_node')(sandbox_lane)",
+        "from typing import operator as o",
+        "methodcaller('__getattribute__', name)(sandbox_lane)",
+        # The builtins module, and a string compiled to code, reached from allowed modules.
+        "re.enum.bltns.eval(source)",
+        "found.getattr(sandbox_lane, name)",
+        "pattern.compile(source, 'lane', 'exec')",
+        "traceback.codeop.compile_command(source, symbol='exec')",
         # A module or an attribute found from a string at run time, or behind an object.
         "sys.modules['meridian.ibkr_paper']",
         "from sys import modules",
