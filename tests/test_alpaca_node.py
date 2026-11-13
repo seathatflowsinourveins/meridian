@@ -1767,9 +1767,10 @@ def test_an_order_listing_that_gets_no_answer_after_startup_is_not_a_gap(failure
         before = client.report_trace["orders"]
         await until(lambda: client.report_trace["orders"] is not before)
         await until(lambda: client.report_trace["orders"].failures == 1)
+        # Read at once: each check replaces the trace when it starts.
+        box["first"] = client.report_trace["orders"].first
         await asyncio.sleep(0.5)  # a few more failed checks
         box["seen"] = (client.coverage_complete, client.failures, client.recoveries)
-        box["first"] = client.report_trace["orders"].first
         pacer.refuse_kinds.clear()
         box["strategy"].submit_order(box["second"])
         await until(lambda: status(2) == OrderStatus.ACCEPTED)
