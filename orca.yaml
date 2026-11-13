@@ -1,3 +1,14 @@
+# Orca (https://github.com/stablyai/orca): one git worktree per task. Orca reads this file from
+# the new worktree, so a change applies to worktrees made from a branch that carries it.
 scripts:
   setup: |
     uv sync --locked
+# Agents start only once the environment exists.
+setupAgentStartupPolicy: wait-for-setup
+defaultTabs:
+  # The desktop composer gives the first tab to the agent, so it has no command.
+  - title: Agent
+  # Run `uv run pytest` here once setup is done; tab commands do not wait for setup.
+  - title: Tests
+  - title: Git status
+    command: git status --short

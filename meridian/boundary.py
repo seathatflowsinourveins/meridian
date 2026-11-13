@@ -5,20 +5,30 @@ The lane may start only when every check below holds. They run before the engine
 and again after the run, and each one refuses on anything it does not recognise:
 
 1. The IB Gateway's own settings file, ``~/Jts/jts.ini``, has ``tradingMode=p`` under
-   ``[Logon]``. The Gateway writes it at login (seen on this machine: the file changed at the
-   owner's Paper Trading login). No file, no key, a duplicate, or any other value refuses.
+   ``[Logon]``. The Gateway writes it when it logs in. No file, no key, a duplicate, or any
+   other value refuses.
 2. The Gateway installed under ``~/Jts/ibgateway`` is running and listens on exactly one TCP
    port, the paper port 4002 (read from ``/proc``). No Gateway, another port, or an extra
    port refuses.
 3. The Gateway reports exactly one account, and its id has the paper form: a capital D,
-   capital letters, then digits. That is a convention seen in this Gateway's paper login and
-   in the examples of IBKR and NautilusTrader. It is not a documented guarantee: IBKR's API
-   documentation says the API makes no difference between live and paper trading.
+   capital letters, then digits, the form of the paper accounts in the examples of
+   NautilusTrader's IB integration guide. It is a convention, not a documented guarantee:
+   IBKR's API documentation says the API makes no difference between live and paper trading.
 4. Only if the owner has created ``risk/boundary.contract.json``: the account is on its
    allowlist. The file is optional. When present it can only make the check stricter, and a
    file that is present but malformed refuses.
 
-The lane connects to 127.0.0.1 on the paper port and nowhere else.
+The lane connects to 127.0.0.1 on the paper port and nowhere else. The Gateway itself listens
+on every interface (it binds ``*:4002``). Only its own "Allow connections from localhost only"
+setting keeps other hosts out, and that setting sits in the Gateway's encrypted settings, where
+no check here can read it. Check 2 records how the port is bound (``gateway_bind``) but does not
+refuse an every-interface bind, which is the Gateway's normal one.
+
+The Gateway's paths (``JTS_INI``, ``GATEWAY_DIR``) follow ``$HOME`` of the user who runs the
+lane, and checks 1 and 2 read the Gateway's own files and ``/proc`` entries. That works for the
+owner, who runs the Gateway. Under another user, such as ``paper`` at M7, the checks refuse:
+that user cannot read the owner's files or another user's ``/proc`` entries. M7 has to run the
+Gateway and the lane as one user, or give the lane that access.
 
 The allowlist holds SHA-256 hashes, which keeps the account id out of plain sight. It is
 not a secret: an account id is short, so anyone holding the contract can recover it by
@@ -48,7 +58,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONTRACT_PATH = REPO_ROOT / "risk" / "boundary.contract.json"
 SCHEMA = "meridian.boundary/1"
-# The Gateway runs inside this distro and listens on loopback only.
+# The lane reaches the Gateway, which runs inside this distro, over loopback.
 GATEWAY_HOST = "127.0.0.1"
 # IB Gateway's default socket port for a paper login. Nothing widens this set.
 PAPER_PORT = 4002
@@ -63,7 +73,7 @@ CONTRACT_PROBE_CLIENT_ID = 1598
 CONFIRM_WORD = "PAPER"
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}")
 _ACCOUNT_ID = re.compile(r"[A-Za-z0-9]+")
-# A capital D, then capital letters, then digits (check 3 in the module text).
+# The paper form of the guide's examples (check 3): a capital D, capital letters, digits.
 _PAPER_FORM = re.compile(r"D[A-Z]*[0-9]+")
 _TCP_LISTEN = "0A"
 
@@ -81,6 +91,9 @@ class IbkrBoundary:
     # Which Gateway process and listening socket the checks saw. Compared before the engine
     # connects and after the run, so a Gateway restart or a new socket in between refuses.
     gateway_identity: frozenset[str] = frozenset()
+    # How the paper port is bound: "all interfaces", "loopback" or "a specific address"
+    # (never the address itself, which can be a private network address).
+    gateway_bind: str = ""
 
 
 def account_hash(account_id: str) -> str:
@@ -198,9 +211,30 @@ def require_paper_login(path: Path | None = None) -> None:
 # --- check 2: the ports the Gateway listens on --------------------------------------------------
 
 
-def _listening_ports_by_inode(proc: Path) -> dict[str, int]:
-    """Socket inode -> port, for every listening TCP socket (IPv4 and, if present, IPv6)."""
-    found: dict[str, int] = {}
+def bind_scope(address_hex: str) -> str:
+    """How a /proc/net/tcp or tcp6 local address (hex, as the kernel writes it) is bound:
+    "all interfaces", "loopback" or "a specific address". The address itself is not kept."""
+    address = address_hex.upper()
+    if len(address) not in (8, 32) or any(c not in "0123456789ABCDEF" for c in address):
+        raise ValueError("not an IPv4 or IPv6 address in the kernel's hex form")
+    if set(address) == {"0"}:
+        return "all interfaces"
+    if len(address) == 8:  # IPv4, little-endian: the first octet is the last byte
+        return "loopback" if int(address[6:8], 16) == 127 else "a specific address"
+    # IPv6, four little-endian 32-bit words
+    if address == "00000000000000000000000001000000":  # ::1
+        return "loopback"
+    if address.startswith("0000000000000000FFFF0000"):  # ::ffff:a.b.c.d
+        if address[24:32] == "00000000":  # ::ffff:0.0.0.0 takes IPv4 on every interface
+            return "all interfaces"
+        return "loopback" if int(address[30:32], 16) == 127 else "a specific address"
+    return "a specific address"
+
+
+def _listening_ports_by_inode(proc: Path) -> dict[str, tuple[int, str]]:
+    """Socket inode -> (port, bind scope), for every listening TCP socket (IPv4 and, if
+    present, IPv6)."""
+    found: dict[str, tuple[int, str]] = {}
     for name, required in (("tcp", True), ("tcp6", False)):
         table = proc / "net" / name
         try:
@@ -215,12 +249,26 @@ def _listening_ports_by_inode(proc: Path) -> dict[str, int]:
             fields = line.split()
             try:
                 local, state, inode = fields[1], fields[3], fields[9]
-                port = int(local.rsplit(":", 1)[1], 16)
+                address, port_hex = local.rsplit(":", 1)
+                port = int(port_hex, 16)
+                scope = bind_scope(address)
             except (IndexError, ValueError) as e:
                 raise BoundaryError(f"unexpected line in {table}") from e
             if state == _TCP_LISTEN:
-                found[inode] = port
+                found[inode] = (port, scope)
     return found
+
+
+@dataclass(frozen=True)
+class Listening:
+    """What the installed Gateway listens on."""
+
+    ports: frozenset[int]
+    # Each Gateway process by number and start time, each listening socket by inode, port and
+    # bind scope, so a restarted Gateway or a re-opened socket shows up as a change.
+    identity: frozenset[str]
+    # The bind scope of each listening socket.
+    bind: frozenset[str]
 
 
 def _process_start(entry: Path) -> str:
@@ -232,15 +280,9 @@ def _process_start(entry: Path) -> str:
         raise BoundaryError("cannot read the IB Gateway's process start time") from e
 
 
-def gateway_listening(
-    proc: Path | None = None, gateway_dir: Path | None = None
-) -> tuple[frozenset[int], frozenset[str]]:
-    """Ports the installed IB Gateway listens on, and which process and sockets those are.
-
-    The second value names each Gateway process by number and start time, and each listening
-    socket by inode, so a restarted Gateway or a re-opened socket shows up as a change.
-    Raises if no Gateway process runs.
-    """
+def gateway_listening(proc: Path | None = None, gateway_dir: Path | None = None) -> Listening:
+    """Ports the installed IB Gateway listens on, which process and sockets those are, and how
+    they are bound. Raises if no Gateway process runs."""
     proc = PROC if proc is None else proc
     gateway_dir = GATEWAY_DIR if gateway_dir is None else gateway_dir
     prefix = str(gateway_dir.resolve()) + os.sep
@@ -252,6 +294,7 @@ def gateway_listening(
     gateway_running = False
     ports: set[int] = set()
     identity: set[str] = set()
+    bind: set[str] = set()
     for entry in entries:
         if not entry.name.isdigit():
             continue
@@ -274,39 +317,43 @@ def gateway_listening(
                 continue  # closed since the listing
             if target.startswith("socket:[") and target.endswith("]"):
                 inode = target[len("socket:[") : -1]
-                port = listening.get(inode)
-                if port is not None:
+                seen = listening.get(inode)
+                if seen is not None:
+                    port, scope = seen
                     ports.add(port)
-                    identity.add(f"socket {inode} port {port}")
+                    bind.add(scope)
+                    identity.add(f"socket {inode} port {port} bound to {scope}")
     if not gateway_running:
         raise BoundaryError(f"the IB Gateway installed in {gateway_dir} is not running")
-    return frozenset(ports), frozenset(identity)
+    return Listening(frozenset(ports), frozenset(identity), frozenset(bind))
 
 
 def gateway_listen_ports(
     proc: Path | None = None, gateway_dir: Path | None = None
 ) -> frozenset[int]:
     """The TCP ports that processes of the installed IB Gateway listen on. Raises if none run."""
-    return gateway_listening(proc, gateway_dir)[0]
+    return gateway_listening(proc, gateway_dir).ports
 
 
-def require_gateway_on_paper_port_only() -> frozenset[str]:
+def require_gateway_on_paper_port_only() -> Listening:
     """Refuse unless the Gateway listens on the paper port only; return what was seen."""
-    ports, identity = gateway_listening()
-    if ports != PAPER_PORTS:
-        shown = ", ".join(str(p) for p in sorted(ports)) or "no port"
+    seen = gateway_listening()
+    if seen.ports != PAPER_PORTS:
+        shown = ", ".join(str(p) for p in sorted(seen.ports)) or "no port"
         raise BoundaryError(
             f"the IB Gateway listens on {shown}; the lane needs it to listen on the paper port only"
         )
-    return identity
+    return seen
 
 
 def local_paper_checks(contract_path: Path | None = None) -> IbkrBoundary:
     """Checks 1, 2 and the optional contract. Reads local state only; no network."""
     bounds = load_contract(contract_path)
     require_paper_login()
-    identity = require_gateway_on_paper_port_only()
-    return dataclasses.replace(bounds, gateway_identity=identity)
+    seen = require_gateway_on_paper_port_only()
+    return dataclasses.replace(
+        bounds, gateway_identity=seen.identity, gateway_bind=", ".join(sorted(seen.bind))
+    )
 
 
 # --- check 3: the account the Gateway reports -----------------------------------------------

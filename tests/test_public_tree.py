@@ -14,7 +14,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from test_paper_only import REPO_ROOT, git_files
+from test_paper_only import REPO_ROOT, git_files, is_link_to_listed_files, scan_bytes
 
 # Nothing is skipped, this file included: its examples are built from parts.
 NOT_SCANNED: set[str] = set()
@@ -46,13 +46,16 @@ ALLOWLIST_LITERAL = re.compile(
 def tracked_files() -> list[str]:
     deleted = set(git_files("--deleted"))
     listed = git_files("--cached", "--others", "--exclude-standard")
-    return [name for name in listed if name not in NOT_SCANNED and name not in deleted]
+    seen = set(listed)
+    names = [name for name in listed if name not in NOT_SCANNED and name not in deleted]
+    # A link must point at files git lists; it is read as its own text, its target by name.
+    for name in names:
+        is_link_to_listed_files(name, seen)
+    return names
 
 
 def read_text(name: str, root: Path = REPO_ROOT) -> str:
-    path = root / name
-    assert path.is_file(), f"{name} is listed by git but is not a regular file"
-    data = path.read_bytes()
+    data = scan_bytes(name, root)
     assert b"\0" not in data, f"{name} is not plain text (UTF-16 or binary); cannot scan it"
     return data.decode("utf-8", errors="replace")
 
@@ -115,6 +118,12 @@ def test_the_allowlist_and_any_copy_of_it_are_ignored_by_git(name):
         ["git", "check-ignore", "-q", "--no-index", name], cwd=REPO_ROOT, check=False
     )
     assert ignored.returncode == 0, f"git would not ignore {name}"
+
+
+def test_nothing_under_github_is_a_link():
+    # The workflow check reads a link as its own text, so a workflow must be a real file.
+    names = git_files("--cached", "--others", "--exclude-standard", "--", ".github")
+    assert [name for name in names if (REPO_ROOT / name).is_symlink()] == []
 
 
 def test_ci_has_no_fork_reachable_token_secret_or_runner():
