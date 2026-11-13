@@ -51,7 +51,7 @@ A paper-trading harness on NautilusTrader. One repo, one WSL2 distro (`meridian`
 | `.agents/skills/` | skills every agent reads; each has a link in `.claude/skills/` for Claude Code |
 | `orca.yaml`, `.worktreeinclude` | Orca: the setup script and tabs of each new worktree; nothing ignored is copied |
 | `risk/boundary.contract.json` | optional: the owner's allowlist of paper accounts |
-| `evidence/` | scrubbed run records, one per attended run that passed |
+| `evidence/` | scrubbed run records: one per attended run that passed, and the latest offline soak |
 | `runs/` | local run output, ignored by git; may hold account ids |
 
 ## Commands
