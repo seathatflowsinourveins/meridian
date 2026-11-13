@@ -43,6 +43,8 @@ from nautilus_trader.model import (
     ExecutionMassStatus,
     InstrumentId,
     Money,
+    OrderFilled,
+    OrderFillVoided,
     OrderStatus,
     VenueOrderId,
 )
@@ -152,6 +154,15 @@ def _engine_filled(order: Any) -> Decimal:
     return Decimal(0) if order is None else order.filled_qty.as_decimal()
 
 
+def _fill_since(order: Any, ts_ns: int) -> bool:
+    """rc9's `is_order_snapshot_stale` on the engine's own record of the order: a fill or a
+    voided fill stamped at or after `ts_ns` (`crates/execution/src/engine/mod.rs`)."""
+    return order is not None and any(
+        isinstance(event, (OrderFilled, OrderFillVoided)) and event.ts_init >= ts_ns
+        for event in order.events()
+    )
+
+
 class AlpacaPaperExecutionClient(ExecutionClient):
     def __init__(
         self,
@@ -195,11 +206,11 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         self._owed: dict[str, int] = {}  # stream refusals owed to read-settled cancels
         self._cancel_seen: set[str] = set()
         self._forwarded: set[tuple[str, str]] = set()  # (venue id, execution id)
-        # Per venue order: the filled quantity the engine already has, from forwarded
-        # executions or from a mass status it reconciled. A status report claiming more is
-        # not volunteered: the engine would invent a fill that the stream then delivers (from
-        # the stream itself it is a gap). An execution at or below it is not forwarded: a read
-        # already showed the engine that fill.
+        # Per venue order: the filled quantity this client has handed the engine, in forwarded
+        # executions or in a mass status. The engine may hold more (`_known`). A status report
+        # claiming more than both is not volunteered: the engine would invent a fill that the
+        # stream then delivers (from the stream itself it is a gap). An execution at or below
+        # them is not forwarded: a read already showed the engine that fill.
         self._known_filled: dict[str, Decimal] = {}
         # Venue id -> when its latest execution was handed on, or inferred from a recovery read.
         self._last_execution: dict[str, int] = {}
@@ -373,12 +384,26 @@ class AlpacaPaperExecutionClient(ExecutionClient):
             order = None if found is None else self.cache.order(found)
         return order
 
+    def _known(self, venue_id: str, client_order_id: object) -> Decimal:
+        """The order's filled quantity the engine has, or will have once it has processed
+        what this client handed it. The engine can hold more than this client handed it: its
+        routine open-order check (or a query that check sends) infers a fill from an order
+        report this client answered (NautilusTrader 2.0.0rc9, `crates/live/src/execution/
+        manager.rs`, `reconcile_open_order_reports`). The node first processes what this client
+        handed it, then compares and applies those fills in one step (`crates/live/src/node/
+        mod.rs`, `drain_exec_events_before_reconciliation`). After startup only a mass status
+        lowers an order's fills (or a report marked voided, which no Alpaca status maps to), and
+        `_recover_once` never hands over one that would. So the larger of the two is what the
+        engine has."""
+        known = self._known_filled.get(venue_id, Decimal(0))
+        return max(known, _engine_filled(self._engine_order(venue_id, client_order_id)))
+
     def _volunteer(self, report: Any) -> bool:
         """Hand the engine a status report it did not ask for, unless it claims fills the
         engine has not received: those come from the stream, or from a later full read.
         False when it is withheld."""
         venue_id = report.venue_order_id.value
-        if report.filled_qty.as_decimal() > self._known_filled.get(venue_id, Decimal(0)):
+        if report.filled_qty.as_decimal() > self._known(venue_id, report.client_order_id):
             self.withheld_reports += 1
             return False
         self._handle_report(report)
@@ -561,7 +586,8 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         # The engine skips the snapshot of an order whose execution reached it since the read
         # began (SNAPSHOT_MARGIN_NS). For that order this read would show the engine nothing:
         # not a fill it lacks, and not a status the stream did not deliver. Read again. A fill
-        # the engine infers from a recovery read counts as such an execution (_know_fills).
+        # the engine infers from a recovery read counts as such an execution (_know_fills), and
+        # so does any fill in the engine's own record, such as one its open-order check inferred.
         # A read showing an order with less filled than the engine has or was handed is not
         # handed over either: the engine would void fills on a lagging listing or on a
         # correction Alpaca does not document. Read again; new orders stay denied meanwhile.
@@ -569,7 +595,7 @@ class AlpacaPaperExecutionClient(ExecutionClient):
             venue_id = report.venue_order_id.value
             order = self._engine_order(venue_id, report.client_order_id)
             last = self._last_execution.get(venue_id, 0)
-            if last >= ts_init - SNAPSHOT_MARGIN_NS:
+            if last >= ts_init - SNAPSHOT_MARGIN_NS or _fill_since(order, ts_init):
                 self._log().warning(
                     "Alpaca recovery reads again: a fill reached the engine during the read "
                     "or just before it"
@@ -983,11 +1009,11 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         """Hand the engine a status report, or an execution it does not have yet.
 
         A fill update's order row carries the order's filled quantity after that execution.
-        The engine has the order's fills up to `_known_filled`, so an execution is one of:
+        The engine has the order's fills up to `_known`, so an execution is one of:
         - already forwarded (the same execution id again): counted, not handed on;
-        - at or below the known quantity: a startup or recovery read showed the engine this
-          fill first and it inferred it from the order report, so handing the execution on
-          would count it twice. Counted, not handed on;
+        - at or below the known quantity: a startup or recovery read, or the engine's routine
+          open-order check, showed the engine this fill first and it inferred it from the order
+          report, so handing the execution on would count it twice. Counted, not handed on;
         - the next one (it starts exactly at the known quantity): handed on;
         - anything else (an execution before it has not arrived, or the row contradicts
           itself): a gap. It is withheld, because once it were forwarded the missing one would
@@ -1016,7 +1042,7 @@ class AlpacaPaperExecutionClient(ExecutionClient):
             return
         qty = update.qty or Decimal(0)
         after = decimal_text(update.order.get("filled_qty"), "filled quantity")
-        known = self._known_filled.get(venue_id, Decimal(0))
+        known = self._known(venue_id, update.client_order_id)
         if qty <= after <= known:
             self.known_executions += 1
             return

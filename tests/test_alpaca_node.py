@@ -1292,6 +1292,99 @@ def test_a_read_begun_just_after_a_recovery_read_showed_a_fill_is_read_again(
     assert box["holding"] == [("AAPL.ALPACA", filled)]
 
 
+# Open-order checks as FAST_OPEN_CHECKS, acting on an order 0.5 s after its latest event (rc9
+# otherwise defers an order for 5 s after it, `open_check_threshold_ms`).
+PROMPT_OPEN_CHECKS = {**FAST_OPEN_CHECKS, "open_check_threshold_ms": 500}
+
+
+@pytest.mark.parametrize("then", ["next-share", "cancel"])
+def test_a_fill_the_engines_open_order_check_inferred_is_not_counted_again(then):
+    """One share of a 2-share order fills, and the engine's routine open-order check reads it
+    before the stream delivers it: the engine infers that fill from the order report. The
+    stream's execution then sits at the quantity the engine holds, so it is counted as known
+    and not handed on. Then the next share fills and is handed on, or the venue cancels the
+    rest and that update is handed on with no gap. The engine holds what the venue holds."""
+    rig = Rig()
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, row = rig.clients[0], rig.venue.orders[-1]
+        first = one_more_share(rig, row)  # the stream has not delivered it yet
+        await until(lambda: status() == OrderStatus.PARTIALLY_FILLED)  # inferred by a check
+        box["inferred"] = (engine_holds(client), client.known_executions, len(client._forwarded))
+        rig.stream.push(first)
+        await until(lambda: client.known_executions + len(client._forwarded) == 1)
+        await asyncio.sleep(0.3)  # long enough for a forwarded fill to reach the engine
+        box["after_the_stream"] = engine_holds(client)
+        if then == "next-share":
+            rig.stream.push(one_more_share(rig, row))
+            ended = OrderStatus.FILLED
+        else:
+            row.update(status="canceled", canceled_at=row["updated_at"])
+            rig.stream.push(update("canceled", row))
+            ended = OrderStatus.CANCELED
+        await until(lambda: status() in (ended, OrderStatus.FILLED))  # FILLED: counted twice
+        await asyncio.sleep(0.3)  # long enough for a forwarded fill to reach the engine
+        box["end"] = (status(), engine_holds(client), [row["filled_qty"]])
+        box["complete"] = client.coverage_complete
+
+    box = drive(rig, script, on_start=two_share_order, engine=PROMPT_OPEN_CHECKS)
+    client = rig.clients[0]
+    ended, filled = {
+        "next-share": (OrderStatus.FILLED, "2"),
+        "cancel": (OrderStatus.CANCELED, "1"),
+    }[then]
+    assert box["error"] is None
+    assert box["inferred"] == (["1"], 0, 0)  # the check showed the fill, not the stream
+    assert box["after_the_stream"] == ["1"]
+    assert box["end"] == (ended, [filled], [filled]) and box["complete"]
+    assert (client.known_executions, len(client._forwarded)) == (1, int(filled) - 1)
+    assert (client.failures, client.withheld_reports, client.recoveries) == ([], 0, 0)
+    assert box["holding"] == [("AAPL.ALPACA", filled)]
+
+
+def test_a_recovery_read_during_which_an_open_order_check_showed_a_fill_is_read_again():
+    """A share of a 2-share order fills while the stream is away, and the engine's routine
+    open-order check reads it. Before the check's answer is back, the venue cancels the rest
+    (no update reaches the client), the stream returns and recovery begins its read. The engine
+    infers the fill from the check's answer during that read, so it would skip the order's
+    snapshot in it (2.0.0rc9) while the account is called covered. The read is read again,
+    and the engine learns that the order ended."""
+    rig = Rig()
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, row = rig.clients[0], rig.venue.orders[-1]
+        await asyncio.sleep(0.6)  # the checks act on the order from now on
+        rig.venue.open_answer_delay = 0.8
+        rig.venue.positions_delay = 1.2  # the recovery's positions read
+        one_more_share(rig, row)  # its update is lost with the stream
+        listed = len(rig.venue.listings)
+        await until(  # a check's listing of every open order has read the partial fill
+            lambda: any(
+                query["status"] == "open" and "after" not in query
+                for query in rig.venue.listings[listed:]
+            )
+        )
+        row.update(status="canceled", canceled_at=row["updated_at"])  # no update for this
+        rig.stream.push("reconnect")
+        await until(lambda: client.stream_restarts == 1)
+        rig.venue.open_answer_delay = 0.0
+        await until(lambda: status() == OrderStatus.PARTIALLY_FILLED)  # the check's answer
+        read_began = any(query["status"] == "all" for query in rig.venue.listings[listed:])
+        box["inferred_during_the_read"] = read_began and client.recoveries == 0
+        rig.venue.positions_delay = 0.0
+        await until(lambda: client.coverage_complete)
+        await asyncio.sleep(0.3)  # long enough for the engine to reconcile the read
+        box["covered"] = (status(), engine_holds(client), client.recoveries)
+
+    box = drive(rig, script, on_start=two_share_order, engine=PROMPT_OPEN_CHECKS)
+    assert box["error"] is None
+    assert box["inferred_during_the_read"]
+    assert box["covered"] == (OrderStatus.CANCELED, ["1"], 1)
+    assert box["holding"] == [("AAPL.ALPACA", "1")]
+
+
 def test_a_recovery_read_showing_fewer_fills_than_the_engine_has_is_not_handed_over():
     """Both shares of a 2-share order fill and are handed on. The venue then lists the order
     with one share filled (a correction Alpaca does not document, or a listing behind the

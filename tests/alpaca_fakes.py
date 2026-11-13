@@ -172,6 +172,8 @@ class FakeVenue:
         self.failures: dict[tuple[str, str], BaseException] = {}
         self.until_inclusive = True
         self.listing_delay = 0.0  # seconds each GET /orders takes, in its worker thread
+        # Seconds the answer to an open-order listing takes after the venue read its orders.
+        self.open_answer_delay = 0.0
         self.positions_delay = 0.0  # seconds each GET /positions takes, in its worker thread
         self.delete_delay = 0.0  # seconds each DELETE takes, in its worker thread
         self.accept_status = "accepted"
@@ -207,7 +209,10 @@ class FakeVenue:
         if path == "/positions":
             return [dict(row) for row in self.positions]
         if path == "/orders":
-            return self._list(data)
+            rows = self._list(data)
+            if data.get("status") == "open" and self.open_answer_delay:
+                time.sleep(self.open_answer_delay)
+            return rows
         if path == "/orders:by_client_order_id":
             for row in self.orders:
                 if row["client_order_id"] == data.get("client_order_id"):
