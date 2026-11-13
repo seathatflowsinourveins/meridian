@@ -9,17 +9,23 @@ execution client added with ``add_simulated_exec_client``, and upstream's built-
 data, configured the way upstream's IB helper configures its data client (``_common.py``,
 vendored under ``upstream/``).
 
-Own design, and the only changes to that example:
-  - the data client is IB's, for AAPL.XNAS, on the gated Gateway; the node has no execution
-    client but the sandbox, so no order can reach IBKR;
+Own design, and the changes to that example:
+  - the data client is IB's, for AAPL.XNAS, on the gated Gateway, and it does not reconnect on
+    its own after a drop; the node has no execution client but the sandbox, so no order can
+    reach IBKR;
   - the simulated account is a cash account of 100,000 USD on venue XNAS, the instrument's
     venue, with a flat fee of 1.00 USD per order (a round stand-in, not a broker's schedule);
   - ExecTester trades 1 share with DAY orders: it buys at market on the first quote, keeps a
     LIMIT buy resting 500 ticks under the bid, and on stop cancels it and sells the share. Its
     LIMIT sells are off: in a cash account a sell without the share is rejected, and ExecTester
     sends it again on every quote. It has no client id, so its orders route by venue, to the
-    sandbox;
-  - the risk engine is not bypassed (upstream's example bypasses it);
+    sandbox. Its book and trade subscriptions are off (quotes only), it does not post-only, it
+    closes reduce-only on stop, and it claims no external orders;
+  - the risk engine is not bypassed (upstream's example bypasses it), and the node has
+    explicit connection, reconciliation, portfolio and stop timeouts (reconciliation stays
+    off, as in the example);
+  - the lane stops the node from its own timer, so a stop before the minute is up (a Ctrl-C)
+    fails the run;
   - an actor counts the quotes it sees; the run record is read from the cache at the end, and
     the execution clients the engine registered are read from its log.
 
@@ -33,6 +39,7 @@ import contextlib
 import os
 import re
 import sys
+import threading
 import traceback
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -56,7 +63,6 @@ from _common import (  # noqa: E402
     default_aapl_instrument_id,
     instrument_provider_config,
     market_data_type,
-    schedule_node_stop,
 )
 from nautilus_trader.adapters import interactive_brokers as ib  # noqa: E402
 from nautilus_trader.adapters.sandbox import (  # noqa: E402
@@ -99,7 +105,7 @@ DataClient = tuple[str, Any, Any]  # (name, factory, config), as add_data_client
 def ib_data_client(host: str, port: int) -> DataClient:
     """IB's data client, configured as upstream's IB helper (``_common.py``) configures it."""
     # Upstream's helpers read IB_V2_* variables. Start from none, so nothing in the shell (a
-    # market data type, another instrument) changes what this run does.
+    # market data type, a timeout) changes what this run does.
     for name in [n for n in os.environ if n.startswith(("IB_V2_", "IB_PYO3_"))]:
         del os.environ[name]
     config = ib.InteractiveBrokersDataClientConfig(
@@ -110,6 +116,9 @@ def ib_data_client(host: str, port: int) -> DataClient:
         request_timeout=30,
         market_data_type=market_data_type(),  # delayed-frozen, upstream's default
         instrument_provider=instrument_provider_config(load_ids=[INSTRUMENT_ID]),
+        # After a drop, no reconnect to a Gateway the paper checks have not seen: the feed ends
+        # and the run fails on the checks after it.
+        max_reconnect_attempts=0,
     )
     return DATA_CLIENT_NAME, ib.InteractiveBrokersDataClientFactory(), config
 
@@ -206,8 +215,8 @@ def capture(
     instrument_id = InstrumentId.from_str(INSTRUMENT_ID)
     record.data["node"] = {
         "environment": node.environment.name,
-        "data_clients": [data_client[0]],
-        "execution_clients": [SANDBOX_CLIENT_NAME],
+        "configured_data_clients": [data_client[0]],
+        "configured_execution_clients": [SANDBOX_CLIENT_NAME],
         "sandbox_venue": SANDBOX_VENUE,
         "account_type": "CASH",
         "account_id": SANDBOX_ACCOUNT,
@@ -262,6 +271,12 @@ def capture(
     }
 
 
+def registered_clients(log_text: str) -> tuple[list[str], list[str]]:
+    """The execution and data clients the engine says it registered, from its log."""
+    found = REGISTERED.findall(log_text)
+    return [n for k, n in found if k[0] == "E"], [n for k, n in found if k[0] == "D"]
+
+
 @contextlib.contextmanager
 def _output_to(path: Path) -> Iterator[None]:
     """Send everything written to stdout and stderr, by Python or by the engine's Rust core
@@ -303,16 +318,31 @@ def run(data_client: DataClient, record: SandboxRecord, seconds: int = RUN_SECON
     print(f"Engine output goes to {shown} (it can show the account id; it stays on this machine).")
     failure = None
     with _output_to(log):
-        node = counter = None
+        node = counter = timer = None
+        on_time = threading.Event()
         try:
             node, counter = build(data_client)
-            schedule_node_stop(node, seconds)
-            node.run()  # returns once the scheduled stop has shut the node down
+            handle = node.handle()
+
+            def stop() -> None:
+                on_time.set()
+                handle.stop()
+
+            # The lane's own timer, cancelled below: nothing outlives the run to signal later.
+            timer = threading.Timer(seconds, stop)
+            timer.daemon = True
+            timer.start()
+            node.run()  # returns once the node has stopped, by this timer or by anything else
+            if not on_time.is_set():
+                failure = "interrupted: the node stopped before its time"
         except KeyboardInterrupt:
             failure = "interrupted"
         except Exception as e:  # a failed connection or a refused build stops the run
             failure = f"{type(e).__name__}: {e}"
             traceback.print_exc()  # into the log
+        finally:
+            if timer is not None:
+                timer.cancel()
         if node is not None and counter is not None:
             try:
                 capture(node, counter, data_client, record)
@@ -320,9 +350,9 @@ def run(data_client: DataClient, record: SandboxRecord, seconds: int = RUN_SECON
                 failure = failure or f"{type(e).__name__}: {e}"
                 traceback.print_exc()
     if record.data["node"] is not None:  # what the engine itself says it registered
-        found = REGISTERED.findall(log.read_text(encoding="utf-8", errors="replace"))
-        record.data["node"]["registered_execution_clients"] = [n for k, n in found if k[0] == "E"]
-        record.data["node"]["registered_data_clients"] = [n for k, n in found if k[0] == "D"]
+        execution, data = registered_clients(log.read_text(encoding="utf-8", errors="replace"))
+        record.data["node"]["registered_execution_clients"] = execution
+        record.data["node"]["registered_data_clients"] = data
     if failure is not None:
         record.engine_error(failure)  # the text stays in runs/, never in evidence/
         kind = failure.split(":", 1)[0]

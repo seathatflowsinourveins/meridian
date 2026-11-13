@@ -40,6 +40,7 @@ CONFIRM_WORD = boundary.CONFIRM_WORD
 SANDBOX_CLIENT = "SANDBOX"  # the only execution client the node has
 SANDBOX_ACCOUNT = "XNAS-SANDBOX-001"  # the simulated account it books orders on
 REFUSALS = ("OrderDenied", "OrderRejected")
+TERMINAL = ("FILLED", "CANCELED", "EXPIRED")  # denied and rejected fail on their own
 
 
 def _utc_now() -> str:
@@ -106,8 +107,6 @@ class SandboxRecord:
         if d["engine_error"]:
             found.append("the node stopped with an error")
         node = d["node"] or {}
-        if node.get("execution_clients") != [SANDBOX_CLIENT]:
-            found.append("the node had an execution client other than the sandbox")
         if node.get("registered_execution_clients") != [SANDBOX_CLIENT]:
             found.append("the engine did not register the sandbox, and only it, for execution")
         if not d["trader_started"]:
@@ -125,6 +124,8 @@ class SandboxRecord:
             found.append("an order was booked on an account other than the simulated one")
         if any(e["type"] in REFUSALS for e in d["events"]):
             found.append("an order was denied or rejected")
+        if any(o.get("status") not in TERMINAL for o in orders):
+            found.append("an order did not reach a terminal state")
         if orders and "OrderAccepted" not in {e["type"] for e in d["events"]}:
             found.append("the simulated venue accepted no order")
         stop = d["at_stop"]

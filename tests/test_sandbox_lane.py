@@ -1,19 +1,24 @@
 """
 The sandbox lane cannot send an order to IBKR: its node has one data client and the engine's
 sandbox as its only execution client. The build fails if an Interactive Brokers execution
-client, or any other way to add an execution client, appears in the lane's code.
+client, or any other way to add an execution client, appears in the lane's code, or if the node
+the lane builds has anything but the sandbox for execution.
 
 It also runs, offline, on a fake data feed: the strategy's orders reach the simulated venue
-and only it, and nothing is left open at stop. The engine supports one node per process and
-another test builds a real IBKR node, so the real sandbox node runs in a subprocess here.
+and only it, nothing is left open at stop, and only the lane's own lines reach the terminal.
+The engine supports one node per process and another test builds a real IBKR node, so the real
+sandbox node runs in a subprocess here: started only once the structure checks pass, and in an
+empty network namespace where the machine allows one.
 """
 
 import ast
 import json
 import os
+import shutil
 import subprocess
 import sys
 import textwrap
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -67,6 +72,7 @@ FORBIDDEN_MODULES = {"importlib", "ibapi", "ib_async", "ib_insync"}
 # only meridian modules it may import.
 FROM_IBKR_PAPER = {"gate", "scrubbed_json", "RECORD_SCHEMA", "GATEWAY_HINT"}
 MERIDIAN_MODULES = {"boundary", "ib_probe", "ibkr_paper", "sandbox_lane", "sandbox_node"}
+IB_VARIABLES = ("IB_V2_", "IB_PYO3_")
 FAKE = "DUFAKE0001"
 
 
@@ -177,50 +183,100 @@ class RecordingBuilder:
         return [args for called, args in self.calls if called == name]
 
 
-@pytest.fixture
-def clean_environ():
-    """ib_data_client() clears IB_V2_* variables, as the IBKR lane does; restore them after."""
-    saved = dict(os.environ)
-    yield
-    os.environ.clear()
-    os.environ.update(saved)
-
-
-def test_the_node_has_ib_data_and_the_sandbox_as_its_only_execution_client(
-    monkeypatch, clean_environ
-):
+def structure_problems() -> list[str]:
+    """Build the lane's node with a recording builder (nothing real is built, nothing runs)
+    and say what is wrong with it; empty when the sandbox is its only execution client."""
     from nautilus_trader.adapters import interactive_brokers as ib
     from nautilus_trader.adapters.sandbox import SandboxExecutionClientFactory
     from nautilus_trader.common import Environment
 
     from meridian import sandbox_node
 
-    started = []
-    builder = RecordingBuilder()
+    found = [
+        f"source: {hit}"
+        for name in LANE_FILES
+        for hit in execution_client_hits((REPO_ROOT / name).read_text(encoding="utf-8"))
+    ]
+    started, builder = [], RecordingBuilder()
 
     def start(name, trader, environment):
         started.append(environment)
         return builder
 
-    monkeypatch.setattr(sandbox_node, "LiveNode", SimpleNamespace(builder=start))
-    os.environ["IB_V2_MARKET_DATA_TYPE"] = "realtime"  # must not survive into the run
-    sandbox_node.build(sandbox_node.ib_data_client("127.0.0.1", 4002))
-    assert not [n for n in os.environ if n.startswith(("IB_V2_", "IB_PYO3_"))]
+    with pytest.MonkeyPatch.context() as mp:  # puts back the engine and the environment
+        for name in [n for n in os.environ if n.startswith(IB_VARIABLES)]:
+            mp.delenv(name)
+        mp.setenv("IB_V2_MARKET_DATA_TYPE", "realtime")  # must not survive into the run
+        mp.setattr(sandbox_node, "LiveNode", SimpleNamespace(builder=start))
+        sandbox_node.build(sandbox_node.ib_data_client("127.0.0.1", 4002))
+        if [n for n in os.environ if n.startswith(IB_VARIABLES)]:
+            found.append("IB_V2_ variables survive into the run")
 
-    assert started == [Environment.SANDBOX]
-    assert {name for name, _ in builder.calls} <= BUILDER_CALLS
-    assert builder.named("add_exec_client") == []
-    ((name, factory, config),) = builder.named("add_simulated_exec_client")
-    assert name == "SANDBOX" and isinstance(factory, SandboxExecutionClientFactory)
-    assert str(config.venue) == "XNAS"  # the instrument's venue: its orders route here
-    ((data_name, data_factory, data_config),) = builder.named("add_data_client")
-    assert data_name == "IB" and isinstance(data_factory, ib.InteractiveBrokersDataClientFactory)
-    assert (data_config.host, data_config.port, data_config.client_id) == ("127.0.0.1", 4002, 1521)
-    assert builder.named("with_reconciliation") == [(False,)]
-    assert builder.named("with_risk_engine_config") == []  # the risk engine is not bypassed
-    ((strategy, tester),) = builder.node.strategies
-    assert strategy == "ExecTester" and tester.client_id is None  # its orders route by venue
-    assert str(tester.instrument_id) == "AAPL.XNAS" and str(tester.order_qty) == "1"
+    if started != [Environment.SANDBOX]:
+        found.append(f"environment {started}")
+    if extra := {name for name, _ in builder.calls} - BUILDER_CALLS:
+        found.append(f"builder calls outside the lane's own: {sorted(extra)}")
+    if builder.named("with_reconciliation") != [(False,)]:
+        found.append("reconciliation is not off")
+    sims = builder.named("add_simulated_exec_client")
+    if len(sims) != 1 or sims[0][0] != "SANDBOX":
+        found.append(f"simulated execution clients: {[s[0] for s in sims]}")
+    elif not isinstance(sims[0][1], SandboxExecutionClientFactory) or (
+        str(sims[0][2].venue) != "XNAS"  # the instrument's venue: its orders route here
+    ):
+        found.append("the simulated execution client is not the sandbox on XNAS")
+    datas = builder.named("add_data_client")
+    if len(datas) != 1 or not isinstance(datas[0][1], ib.InteractiveBrokersDataClientFactory):
+        found.append("the node does not have exactly one data client, IB's")
+    else:
+        config = datas[0][2]
+        if (config.host, config.port, config.client_id) != ("127.0.0.1", 4002, 1521):
+            found.append("the data client is not on the given endpoint with client id 1521")
+        if config.max_reconnect_attempts != 0:
+            found.append("the data client reconnects on its own after a drop")
+        if config.market_data_type != ib.MarketDataType.DELAYED_FROZEN:
+            found.append("the shell chose the market data type")
+    strategies = builder.node.strategies
+    if [s[0] for s in strategies] != ["ExecTester"] or strategies[0][1].client_id is not None:
+        found.append("the strategy is not one ExecTester that routes its orders by venue")
+    elif (str(strategies[0][1].instrument_id), str(strategies[0][1].order_qty)) != (
+        "AAPL.XNAS",
+        "1",
+    ):
+        found.append("the strategy does not trade 1 share of AAPL.XNAS")
+    return found
+
+
+def test_the_node_has_ib_data_and_the_sandbox_as_its_only_execution_client():
+    assert structure_problems() == []
+
+
+def test_the_structure_check_catches_another_execution_client(monkeypatch):
+    from meridian import sandbox_node
+
+    real = sandbox_node.build
+
+    def build(data_client):
+        built = real(data_client)
+        live: Any = sandbox_node.LiveNode  # the recording builder, inside the check
+        live.builder("X", None, None).add_exec_client("IB", None, None)
+        return built
+
+    monkeypatch.setattr(sandbox_node, "build", build)
+    assert "builder calls outside the lane's own: ['add_exec_client']" in structure_problems()
+
+
+def test_the_structure_check_catches_a_data_client_that_reconnects(monkeypatch):
+    from nautilus_trader.adapters import interactive_brokers as ib
+
+    real = ib.InteractiveBrokersDataClientConfig
+
+    def reconnecting(**kw: Any) -> Any:
+        kw["max_reconnect_attempts"] = 5
+        return real(**kw)
+
+    monkeypatch.setattr(ib, "InteractiveBrokersDataClientConfig", reconnecting)
+    assert "the data client reconnects on its own after a drop" in structure_problems()
 
 
 # --- offline run on the fake feed ----------------------------------------------------------
@@ -243,11 +299,24 @@ RUNNER = textwrap.dedent(
 )
 
 
+def network_fence() -> list[str]:
+    """An empty network namespace where the machine allows one (this distro does; a CI runner
+    may not), so the offline run could not reach a Gateway even if it tried."""
+    if shutil.which("unshare") is None:
+        return []
+    probe = subprocess.run(["unshare", "-rn", "true"], capture_output=True, check=False)
+    return ["unshare", "-rn"] if probe.returncode == 0 else []
+
+
 @pytest.fixture(scope="module")
 def offline_run(tmp_path_factory):
+    # Never start a node whose structure is wrong: an IB execution client in it could connect
+    # to a Gateway on this machine before the structure test had said anything.
+    if problems := structure_problems():
+        pytest.fail(f"not started, the lane's node is not sandbox-only: {problems}")
     tmp = tmp_path_factory.mktemp("sandbox")
     proc = subprocess.run(
-        [sys.executable, "-c", RUNNER, str(tmp), str(REPO_ROOT)],
+        [*network_fence(), sys.executable, "-c", RUNNER, str(tmp), str(REPO_ROOT)],
         capture_output=True,
         text=True,
         timeout=180,
@@ -255,14 +324,14 @@ def offline_run(tmp_path_factory):
         check=False,
     )
     assert proc.returncode == 0, proc.stderr[-3000:]
-    return json.loads(proc.stdout.strip().splitlines()[-1]), tmp
+    return proc, json.loads(proc.stdout.strip().splitlines()[-1]), tmp
 
 
 def test_offline_the_strategys_orders_reach_the_sandbox_and_only_it(offline_run):
-    out, tmp = offline_run
+    _, out, tmp = offline_run
     data = out["data"]
     assert out["passed"], data["problems"]
-    assert data["node"]["execution_clients"] == ["SANDBOX"]
+    assert data["node"]["configured_execution_clients"] == ["SANDBOX"]
     assert data["node"]["registered_execution_clients"] == ["SANDBOX"]  # from the engine's log
     assert data["node"]["registered_data_clients"] == ["IB"]
     assert data["orders"] and {o["execution_client"] for o in data["orders"]} == {"SANDBOX"}
@@ -279,11 +348,16 @@ def test_offline_the_strategys_orders_reach_the_sandbox_and_only_it(offline_run)
     assert data["at_stop"] == {"open_orders": 0, "open_positions": 0}
     assert data["market_data"]["instrument_loaded"] and data["market_data"]["quotes_received"] > 0
     assert data["engine"]["nautilus_trader"] == "2.0.0rc9"
+    assert data["engine_error"] is False
     assert Path(out["path"]).parent == tmp / "evidence"
 
 
-def test_offline_the_engine_output_stays_in_the_local_log(offline_run):
-    out, tmp = offline_run
+def test_offline_only_the_lanes_lines_reach_the_terminal(offline_run):
+    proc, _, tmp = offline_run
+    assert proc.stderr == ""
+    lines = proc.stdout.strip().splitlines()
+    assert len(lines) == 2 and lines[0].startswith("Engine output goes to runs/M2-sandbox-")
+    assert sorted(p.name for p in tmp.iterdir()) == ["evidence", "runs"]
     (log,) = (tmp / "runs").glob("M2-sandbox-*-engine.log")
     assert oct(log.stat().st_mode & 0o777) == "0o600"
     text = log.read_text(encoding="utf-8", errors="replace")
@@ -291,13 +365,127 @@ def test_offline_the_engine_output_stays_in_the_local_log(offline_run):
     assert "Registered ExecutionClient-SANDBOX" in text
 
 
+# --- the engine side, without an engine ---------------------------------------------------
+
+
+class TalkativeNode:
+    """Writes the account the way the engine can (to file descriptors 1 and 2, and through
+    Python), and stops when its handle is told to, or at once if ``early``."""
+
+    def __init__(self, early: bool) -> None:
+        self.early, self.stopped = early, threading.Event()
+
+    def handle(self):
+        return SimpleNamespace(stop=self.stopped.set)
+
+    def run(self) -> None:
+        os.write(1, f"AccountState(account_id=IB-{FAKE})\n".encode())
+        os.write(2, f"native stderr {FAKE}\n".encode())
+        print(f"python stdout {FAKE}")
+        print(f"python stderr {FAKE}", file=sys.stderr)
+        if not self.early:
+            assert self.stopped.wait(10), "the lane's timer never stopped the node"
+
+
+@pytest.mark.parametrize("early", [False, True], ids=["stopped-by-the-timer", "stopped-early"])
+def test_the_engine_output_goes_to_the_log_and_an_early_stop_fails(
+    tmp_path, monkeypatch, capfd, early
+):
+    from meridian import sandbox_node
+
+    monkeypatch.setattr(boundary, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(sandbox_node, "build", lambda data_client: (TalkativeNode(early), None))
+    record = sandbox_lane.SandboxRecord(4002)
+    sandbox_node.run(("IB", None, None), record, seconds=1)
+    out, err = capfd.readouterr()
+    assert FAKE not in out + err  # nothing the engine wrote reaches the terminal
+    (log,) = (tmp_path / "runs").glob("*-engine.log")
+    text = log.read_text(encoding="utf-8")
+    for piece in ("AccountState", "native stderr", "python stdout", "python stderr"):
+        assert piece in text
+    assert record.data["engine_error"] is early
+    assert ("stopped before its time" in record.local.get("engine_error", "")) is early
+    assert FAKE not in json.dumps(record.data)
+
+
+class StubOrder:
+    def __init__(self, cid: str, status: str, account: str | None) -> None:
+        self.client_order_id, self.account_id = cid, account
+        self.side = self.order_type = self.time_in_force = SimpleNamespace(name="X")
+        self.status = SimpleNamespace(name=status)
+        self.quantity = self.filled_qty = "1"
+
+    def events(self) -> list:
+        return []
+
+
+def test_capture_records_what_the_cache_holds():
+    from meridian import sandbox_node
+
+    orders = [StubOrder("O-1", "CANCELED", "IB-X"), StubOrder("O-2", "SUBMITTED", None)]
+    cache = SimpleNamespace(
+        instrument=lambda iid: None,
+        orders=lambda: orders,
+        client_id=lambda cid: "IB" if cid == "O-1" else "SANDBOX",
+        orders_open=lambda: [orders[1]],
+        positions_open=lambda: [object()],
+    )
+    node: Any = SimpleNamespace(environment=SimpleNamespace(name="SANDBOX"), cache=cache)
+    counter: Any = SimpleNamespace(started=True, quotes=0)
+    record = sandbox_lane.SandboxRecord(4002)
+    sandbox_node.capture(node, counter, ("IB", None, None), record)
+    assert [(o["execution_client"], o["account_id"]) for o in record.data["orders"]] == [
+        ("IB", "IB-X"),
+        ("SANDBOX", None),
+    ]
+    registered = sandbox_node.registered_clients(
+        "Registered ExecutionClient-SANDBOX\nRegistered DataClient-IB\n"
+        "Registered ExecutionClient-IB\n"
+    )
+    assert registered == (["SANDBOX", "IB"], ["IB"])
+    record.data["node"]["registered_execution_clients"] = registered[0]
+    found = record.problems()
+    for expected in (
+        "the engine did not register the sandbox, and only it, for execution",
+        "the instrument never arrived from IB",
+        "no quote arrived from IB",
+        "an order went to an execution client other than the sandbox",
+        "an order was booked on an account other than the simulated one",
+        "an order did not reach a terminal state",
+        "an order or a position was still open at stop",
+    ):
+        assert expected in found
+
+
 # --- the gate before and after a run ------------------------------------------------------
+
+
+def fake_bounds(**changes: Any) -> Any:
+    """Bounds as the gate returns them. A changed field (a restarted Gateway, a contract)
+    makes them unequal, as it makes the real ones unequal."""
+    fields = {
+        "host": "127.0.0.1",
+        "port": 4012,  # not 4002, so a test can see where the data client is sent
+        "paper_accounts_sha256": None,
+        "gateway_identity": frozenset({"pid 100", "listen 127.0.0.1:4012"}),
+    }
+    return SimpleNamespace(**(fields | changes))
+
+
+CHANGES = {
+    "account": (fake_bounds(), "DUFAKE0002"),
+    "restart": (
+        fake_bounds(gateway_identity=frozenset({"pid 101", "listen 127.0.0.1:4012"})),
+        FAKE,
+    ),
+    "contract": (fake_bounds(paper_accounts_sha256=frozenset({"ab" * 32})), FAKE),
+}
 
 
 @pytest.fixture
 def gated(monkeypatch, tmp_path):
     """A gate that passes with a fake paper account, and a node that never runs."""
-    bounds: Any = SimpleNamespace(host="127.0.0.1", port=4002, paper_accounts_sha256=None)
+    bounds = fake_bounds()
     answers = [(bounds, FAKE)]
     monkeypatch.setattr(sandbox_lane.ibkr_paper, "gate", lambda: answers[0])
     monkeypatch.setattr(boundary, "REPO_ROOT", tmp_path)
@@ -321,15 +509,20 @@ def test_without_a_terminal_the_lane_refuses(monkeypatch, gated):
     assert gated.runs == []
 
 
-def test_the_owner_confirms_and_the_gate_runs_again(monkeypatch, gated):
-    monkeypatch.setattr(sandbox_lane, "owner_confirms", lambda: True)
-    assert sandbox_lane.main(["run"]) == 0
-    assert gated.runs == [(gated.bounds, FAKE)]
+@pytest.mark.parametrize(
+    ("typed", "goes_on"), [("yes", False), ("paper", False), ("", False), ("PAPER", True)]
+)
+def test_the_lane_goes_on_only_when_the_owner_types_the_word(monkeypatch, gated, typed, goes_on):
+    monkeypatch.setattr(sandbox_lane, "_at_terminal", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt: typed)
+    assert sandbox_lane.main(["run"]) == (0 if goes_on else 2)
+    assert gated.runs == ([(gated.bounds, FAKE)] if goes_on else [])
 
 
-def test_a_gateway_change_during_the_prompt_refuses(monkeypatch, gated):
+@pytest.mark.parametrize("change", sorted(CHANGES))
+def test_a_gateway_change_during_the_prompt_refuses(monkeypatch, gated, change):
     def confirm():
-        gated.answers[0] = (gated.bounds, "DUFAKE0002")  # another account by the time it answers
+        gated.answers[0] = CHANGES[change]  # what the gate sees by the time the owner answers
         return True
 
     monkeypatch.setattr(sandbox_lane, "owner_confirms", confirm)
@@ -337,31 +530,65 @@ def test_a_gateway_change_during_the_prompt_refuses(monkeypatch, gated):
     assert gated.runs == []
 
 
-def test_the_paper_checks_run_again_after_the_run(monkeypatch, tmp_path):
+@pytest.fixture
+def lane_run(monkeypatch, tmp_path):
+    """_run_node with the engine replaced by a clean run, noting where it was sent."""
     from meridian import sandbox_node
 
-    bounds: Any = SimpleNamespace(host="127.0.0.1", port=4002, paper_accounts_sha256=None)
-    after = iter([(bounds, "DUFAKE0002")])  # the Gateway reports another account afterwards
-    monkeypatch.setattr(sandbox_lane.ibkr_paper, "gate", lambda: next(after))
+    sent = []
     monkeypatch.setattr(boundary, "REPO_ROOT", tmp_path)
-    monkeypatch.setattr(sandbox_node, "ib_data_client", lambda host, port: ("IB", None, None))
+    monkeypatch.setattr(
+        sandbox_node, "ib_data_client", lambda host, port: sent.append((host, port)) or ("IB",)
+    )
     monkeypatch.setattr(sandbox_node, "run", lambda data_client, record: fill(record))
-    assert sandbox_lane._run_node(bounds, FAKE) == 1
-    assert not (tmp_path / "evidence").exists()
+    monkeypatch.setattr(sandbox_lane.ibkr_paper, "gate", lambda: (fake_bounds(), FAKE))
+    return SimpleNamespace(sent=sent, tmp=tmp_path)
 
 
-def test_a_probe_failure_after_the_run_fails_it(monkeypatch, tmp_path):
-    from meridian import sandbox_node
+def test_a_clean_run_goes_to_the_gated_endpoint_and_writes_evidence(lane_run):
+    bounds = fake_bounds()
+    assert sandbox_lane._run_node(bounds, FAKE) == 0
+    assert lane_run.sent == [(bounds.host, bounds.port)]
+    assert len(list((lane_run.tmp / "evidence").glob("M2-sandbox-*-run.json"))) == 1
 
+
+@pytest.mark.parametrize("change", sorted(CHANGES))
+def test_a_gateway_change_during_the_run_fails_it(monkeypatch, lane_run, change):
+    monkeypatch.setattr(sandbox_lane.ibkr_paper, "gate", lambda: CHANGES[change])
+    seen = []
+    original = sandbox_lane.SandboxRecord.write
+
+    def write(self, forbidden, root=None):
+        written = original(self, forbidden, root)
+        seen.extend(self.data["problems"])
+        return written
+
+    monkeypatch.setattr(sandbox_lane.SandboxRecord, "write", write)
+    assert sandbox_lane._run_node(fake_bounds(), FAKE) == 1
+    assert seen == ["after the run the paper checks did not pass again for the same account"]
+    assert not (lane_run.tmp / "evidence").exists()
+
+
+def test_a_probe_failure_after_the_run_fails_it(monkeypatch, lane_run):
     def probe_fails():
         raise ib_probe.ProbeError("no answer")
 
-    bounds: Any = SimpleNamespace(host="127.0.0.1", port=4002, paper_accounts_sha256=None)
     monkeypatch.setattr(sandbox_lane.ibkr_paper, "gate", probe_fails)
-    monkeypatch.setattr(boundary, "REPO_ROOT", tmp_path)
-    monkeypatch.setattr(sandbox_node, "ib_data_client", lambda host, port: ("IB", None, None))
-    monkeypatch.setattr(sandbox_node, "run", lambda data_client, record: fill(record))
-    assert sandbox_lane._run_node(bounds, FAKE) == 1
+    assert sandbox_lane._run_node(fake_bounds(), FAKE) == 1
+    assert not (lane_run.tmp / "evidence").exists()
+
+
+def test_the_record_is_scrubbed_of_the_gated_account(monkeypatch, lane_run):
+    from meridian import sandbox_node
+
+    def leaky(data_client, record):
+        fill(record)
+        record.data["orders"][0]["client_order_id"] = f"O-{FAKE}"  # the engine echoed it
+
+    monkeypatch.setattr(sandbox_node, "run", leaky)
+    with pytest.raises(RuntimeError):
+        sandbox_lane._run_node(fake_bounds(), FAKE)
+    assert not (lane_run.tmp / "evidence").exists()
 
 
 # --- the record ----------------------------------------------------------------------------
@@ -373,8 +600,8 @@ def fill(record: sandbox_lane.SandboxRecord) -> sandbox_lane.SandboxRecord:
         engine={"nautilus_trader": "2.0.0rc9"},
         node={
             "environment": "SANDBOX",
-            "data_clients": ["IB"],
-            "execution_clients": ["SANDBOX"],
+            "configured_data_clients": ["IB"],
+            "configured_execution_clients": ["SANDBOX"],
             "registered_execution_clients": ["SANDBOX"],
             "registered_data_clients": ["IB"],
         },
@@ -427,8 +654,12 @@ FAILURES = {
     "paper checks failed after": lambda r: r.paper_checks_after_run(False),
     "no check after": lambda r: r.data["boundary"].update(paper_checks_passed_after_run=None),
     "engine error": lambda r: r.engine_error("RuntimeError: disconnected"),
-    "another execution client": lambda r: r.data["node"].update(
-        execution_clients=["SANDBOX", "IB"]
+    "no node captured": lambda r: r.data.update(node=None),
+    "the engine registered no client": lambda r: r.data["node"].update(
+        registered_execution_clients=[]
+    ),
+    "the engine registered another client": lambda r: r.data["node"].update(
+        registered_execution_clients=["SANDBOX", "IB"]
     ),
     "trader never started": lambda r: r.data.update(trader_started=False),
     "no instrument": lambda r: r.data["market_data"].update(instrument_loaded=False),
@@ -436,9 +667,7 @@ FAILURES = {
     "no order": lambda r: r.data.update(orders=[]),
     "an order claimed by IB": lambda r: r.data["orders"][0].update(execution_client="IB"),
     "an order on another account": lambda r: r.data["orders"][0].update(account_id="IB-X"),
-    "the engine registered another client": lambda r: r.data["node"].update(
-        registered_execution_clients=["SANDBOX", "IB"]
-    ),
+    "an order not terminal": lambda r: r.data["orders"][0].update(status="SUBMITTED"),
     "a rejected order": lambda r: r.data["events"].append(
         {"type": "OrderRejected", "client_order_id": "O-2", "ts_event_utc": "t"}
     ),
