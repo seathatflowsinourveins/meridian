@@ -9,10 +9,9 @@ A paper-trading harness on NautilusTrader. One repo, one WSL2 distro (`meridian`
   key name appears. That scan is a tripwire; the boundary itself is `meridian/boundary.py`.
 - **`risk/` and `*.contract.json` belong to the owner.** Read them. Never create or edit them.
 - **Only the engine places orders**, in a run the owner starts and attends in a terminal Orca
-  did not start. No agent, script or tool call submits, changes or cancels an order directly,
-  and no agent starts the lane in any mode. The modes that place orders ask for a typed word at
-  a terminal and refuse without one; do not work around that. That check only proves a terminal, and any Orca
-  session can type into an Orca terminal (`orca-ide terminal send`): this rule keeps agents out.
+  did not start. No agent, script or tool call submits, changes or cancels an order, and no
+  agent starts the lane in any mode or works around its typed-word check. That check only
+  proves a terminal, and any Orca session can type into one (`orca-ide terminal send`).
 - **Never read, print, copy or move a credential or key value.**
 - **Account ids stay out of the repo and out of `evidence/`.** The allowlist holds SHA-256
   hashes. A hash of a short id can be reversed by trying every id, so treat
@@ -24,9 +23,8 @@ A paper-trading harness on NautilusTrader. One repo, one WSL2 distro (`meridian`
   `tests/test_public_tree.py` fails the build if an IBKR-style account id appears.
 - **CI stays fork-safe:** no self-hosted runner, no `pull_request_target` workflow, no secret a
   fork's pull request could reach. The same test checks the workflow files.
-- **A branch from outside the owner's own sessions** (a fork's pull request) is read as a diff on
-  GitHub and never checked out in an Orca worktree or an agent session: its setup script, hooks
-  and agent config would run as the owner before anyone has read them.
+- **A branch from outside the owner's sessions** (a fork's pull request) is read on GitHub, never
+  opened in an Orca worktree or agent session: its setup and hooks would run as the owner unread.
 - Ask the owner before adding a paid service or an account.
 
 ## Working rules
@@ -65,17 +63,15 @@ uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run 
 
 ## Agents and worktrees
 
-- Four agent runtimes run in this distro, started through Orca, one git worktree per task.
-  Claude Code leads (`claude-fable-5-2`: planning, merging, hard problems); Claude workers run
-  `claude-opus-5-5`. Codex (`gpt-6-astra`, or `gpt-6.1-sol` for bulk work) and Antigravity are
-  workers and reviewers. DeepSeek Harness takes mechanical tasks only.
+- Four agent runtimes run here through Orca, one git worktree per task: Claude Code leads
+  (`claude-fable-5-2`; its workers run `claude-opus-5-5`), Codex (`gpt-6-astra`, `gpt-6.1-sol`
+  for bulk) and Antigravity work and review, DeepSeek Harness takes mechanical tasks only.
 - Work is reviewed by a different model family before it merges (`/codex:review` in Claude
   Code). Findings are fixed in the pull request or closed with a reason.
-- Orca's `orca-cli` and `orchestration` skills are in `.agents/skills/`. On Linux the command is
-  `orca-ide`. The runtime is the `orca-serve` user service on 127.0.0.1:6790; if it is not
-  running, report that or run `systemctl --user start orca-serve`. Never run `orca-ide open`,
-  `orca-ide serve` or `serve service install`: a server started without `--bind 127.0.0.1`
-  can listen on every interface. Any server an agent starts binds 127.0.0.1.
+- Orca's `orca-cli` and `orchestration` skills are in `.agents/skills/`; the command is
+  `orca-ide`. Its runtime is the `orca-serve` user service on 127.0.0.1:6790: if it is down,
+  report that or run `systemctl --user start orca-serve`, never `orca-ide open`, `serve` or
+  `serve service install`, which can listen on every interface. Agents' servers bind 127.0.0.1.
 - MCP servers are off machine-wide for Claude Code and Codex. A skill, plugin or MCP server is
   added only by an evidence record (plan 8.6), and none gets an order tool or broker connector.
 
@@ -117,9 +113,8 @@ mode every check runs again after PAPER is typed, and a change to the Gateway in
 
 - `uv.lock` is committed. New releases wait 7 days (`exclude-newer`); the engine is the one
   named exception and is pinned exactly.
-- The agent runtimes start from checksummed releases pinned in `deploy/wsl/setup.sh` and then
-  update themselves (the owner's choice) in sessions the owner starts: Orca's launches switch
-  the updaters off. `setup.sh agents-check` verifies them.
+- The agent runtimes start from checksummed pins in `deploy/wsl/setup.sh` and update themselves
+  in sessions the owner starts (Orca's launches do not); `setup.sh agents-check` verifies them.
 - NautilusTrader 2.0 is a release-candidate line with breaking changes between candidates.
   Read its release notes before moving the pin, and never answer an API question from memory:
   read the installed package or the tagged source.
