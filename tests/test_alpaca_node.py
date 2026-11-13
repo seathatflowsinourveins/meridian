@@ -1862,8 +1862,9 @@ def test_an_order_listing_that_gets_no_answer_after_startup_is_not_a_gap(failure
 
 def report_read(client, row: dict, read: str):
     """A report the engine can ask for after startup, for the lane's order `row`: its open-order
-    check's listing, a targeted or strategy query, and its position checks and the fills they
-    ask for (when position checks are set)."""
+    check's listing, a targeted or strategy query, its position checks (when set), and fills,
+    which those checks ask for and so does a targeted query of an ended order with fills the
+    engine lacks (in an open-order check over all orders)."""
     scope = SimpleNamespace(
         open_only=read == "open-orders", start=None, end=None, instrument_id=None
     )

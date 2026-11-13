@@ -940,7 +940,11 @@ class AlpacaPaperExecutionClient(ExecutionClient):
             params.pop("symbols", None)
             if getattr(command, "instrument_id", None) is not None:
                 params["symbol"] = command.instrument_id.symbol.value
-            # After startup the engine asks for fills only in its position checks, if set.
+            # After startup the engine asks for fills in its position checks, if set, and in an
+            # open-order check over all orders (`open_check_open_only` off): it queries an ended
+            # order whose report shows fills it lacks, and reads fills with it (rc9
+            # `crates/live/src/execution/manager.rs`, `reconcile_open_order_reports`). This
+            # returns no fill report, so the engine leaves that order as it holds it.
             with self._reading(requests):
                 # The whole order history first: a fill in the window may be an older order's,
                 # and its oldest submission bounds how far back the FILL pages need reading.
