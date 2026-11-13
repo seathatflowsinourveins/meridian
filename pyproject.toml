@@ -23,7 +23,8 @@ exclude-newer-package = { nautilus-trader = false }
 
 [tool.ruff]
 line-length = 100
-extend-exclude = ["upstream"]
+# docs/adr/data: the scripts an ADR measured with, kept byte for byte as they ran.
+extend-exclude = ["upstream", "docs/adr/data"]
 
 [tool.ruff.lint]
 select = ["E", "F", "UP", "B", "SIM", "I"]
