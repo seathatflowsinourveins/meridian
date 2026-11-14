@@ -14,8 +14,9 @@ from nautilus_trader.model import TraderId
 from meridian.alpaca import factories
 from meridian.alpaca.budget import ActionKind
 from meridian.alpaca.credentials import PaperKeys
+from meridian.alpaca.pacing import load_controls
 from meridian.alpaca.wire import AccountGateway
-from meridian.order_budget.controls import NAMES
+from meridian.order_budget.controls import NAMES, OPTIONAL
 from meridian.order_budget.pacer import AccountPacer
 from meridian.order_budget.rows import control_rows
 
@@ -30,6 +31,128 @@ def owner_rows(tmp_path):
     path = tmp_path / "synthetic-owner-rows.json"
     path.write_text(json.dumps(rows))
     return path, rows
+
+
+@pytest.mark.parametrize("paper_defaults", [0, 1, len(NAMES)])
+def test_rows_load_with_scope_counts(tmp_path, paper_defaults):
+    path, rows = owner_rows(tmp_path)
+    for row in rows[:paper_defaults]:
+        row["scope"] = "PAPER_DEFAULT"
+    original = json.dumps(rows)
+    path.write_text(original)
+    loaded = load_controls(str(path))
+    assert loaded.paper_default_rows == paper_defaults
+    assert loaded.reviewed_rows == len(NAMES) - paper_defaults
+    assert loaded.unavailable_rows == 0
+    assert not loaded.controls.fixture
+    assert set(loaded.controls.values) == NAMES
+    assert path.read_text() == original
+    pacer = pacer_for(path, Clock())
+    assert pacer.controls == loaded.controls and pacer.bucket.tokens == 0
+
+
+@pytest.mark.parametrize(
+    "unavailable", [(name,) for name in sorted(OPTIONAL)] + [tuple(sorted(OPTIONAL))]
+)
+def test_unavailable_optional_rows_load_with_separate_counts(tmp_path, unavailable):
+    path, rows = owner_rows(tmp_path)
+    rows[0]["scope"] = "PAPER_DEFAULT"
+    for row in rows:
+        if row["name"] in unavailable:
+            row.update(scope="UNAVAILABLE", value=None)
+    original = json.dumps(rows)
+    path.write_text(original)
+    loaded = load_controls(str(path))
+    assert loaded.unavailable_rows == len(unavailable)
+    assert loaded.paper_default_rows == 1
+    assert loaded.reviewed_rows == len(NAMES) - len(unavailable) - 1
+    assert all(loaded.controls[name] is None for name in unavailable)
+    assert not loaded.controls.fixture
+    assert path.read_text() == original
+    assert pacer_for(path, Clock()).controls == loaded.controls
+
+
+@pytest.mark.parametrize(
+    ("name", "valued"),
+    [
+        (name, valued)
+        for name in sorted(NAMES)
+        for valued in (False, True)
+        if valued or name not in OPTIONAL
+    ],
+)
+def test_unavailable_rows_refuse_outside_m2_optional_nulls(tmp_path, name, valued):
+    path, rows = owner_rows(tmp_path)
+    values = {row["name"]: row["value"] for row in rows}
+    for row in rows:
+        if row["name"] in OPTIONAL:
+            row.update(scope="UNAVAILABLE", value=None)
+    path.write_text(json.dumps(rows))
+    # Accept missing optional authority, then reject its use outside M2's domain.
+    assert load_controls(str(path)).unavailable_rows == len(OPTIONAL)
+    row = next(row for row in rows if row["name"] == name)
+    row.update(scope="UNAVAILABLE", value=values[name] if valued else None)
+    row["source"] = "synthetic-private-value"
+    path.write_text(json.dumps(rows))
+    with pytest.raises(ValueError) as caught:
+        load_controls(str(path))
+    assert str(caught.value) == "order budget rows invalid"
+    assert caught.value.__context__ is None and caught.value.__cause__ is None
+    rendered = "".join(traceback.format_exception(caught.value))
+    assert "synthetic-private-value" not in rendered and str(path) not in rendered
+
+
+@pytest.mark.parametrize(
+    ("name", "field", "value"),
+    [
+        ("reserve_per_open_position", "scope", "FIXTURE_ONLY"),
+        ("reserve_per_open_position", "scope", "synthetic-private-value"),
+        ("cancel_timeout_s", "value", "synthetic-private-value"),
+        ("cancel_timeout_s", "source", None),
+        ("request_budget", "value", 201),  # exceeds the cited venue limit
+    ],
+)
+def test_paper_default_rows_revalidate_without_disclosure(
+    tmp_path, capsys, caplog, name, field, value
+):
+    path, rows = owner_rows(tmp_path)
+    for row in rows:
+        row["scope"] = "PAPER_DEFAULT"
+    rows[-1]["scope"] = "REVIEWED"
+    path.write_text(json.dumps(rows))
+    # Establish accepted paper defaults, then invalidate one row on the next load.
+    assert load_controls(str(path)).paper_default_rows == len(NAMES) - 1
+    row = next(row for row in rows if row["name"] == name)
+    row[field] = value
+    row["unit"] = "synthetic-private-value"
+    path.write_text(json.dumps(rows))
+    with pytest.raises(ValueError) as caught:
+        load_controls(str(path))
+    assert str(caught.value) == "order budget rows invalid"
+    assert caught.value.__context__ is None and caught.value.__cause__ is None
+    output = capsys.readouterr()
+    rendered = (
+        "".join(traceback.format_exception(caught.value)) + output.out + output.err + caplog.text
+    )
+    assert "synthetic-private-value" not in rendered and str(path) not in rendered
+
+
+@pytest.mark.parametrize(("name", "value"), [("window_s", "6"), ("broker_limit", 201)])
+def test_rows_refuse_wrong_venue_limit_without_disclosure(tmp_path, capsys, caplog, name, value):
+    path, rows = owner_rows(tmp_path)
+    row = next(row for row in rows if row["name"] == name)
+    row["value"] = value
+    row["source"] = "synthetic-private-value"
+    path.write_text(json.dumps(rows))
+    with pytest.raises(ValueError) as caught:
+        load_controls(str(path))
+    assert str(caught.value) == "order budget rows invalid"
+    assert caught.value.__context__ is None and caught.value.__cause__ is None
+    output = capsys.readouterr()
+    rendered = (
+        "".join(traceback.format_exception(caught.value)) + output.out + output.err + caplog.text
+    )
+    assert "synthetic-private-value" not in rendered and str(path) not in rendered
 
 
 def configured(path, **kwargs):
