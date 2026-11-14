@@ -38,8 +38,28 @@ SYNTHETIC = PaperKeys("synthetic-key-id", "synthetic-secret")
 def test_the_paper_host_is_the_only_alpaca_host_this_package_names():
     assert constants.PAPER_TRADING_URL == "https://paper-api.alpaca.markets"
     assert constants.PAPER_TRADE_STREAM_URL == "wss://paper-api.alpaca.markets/stream"
-    hosts = {host for path in PACKAGE.glob("*.py") for host in HOST.findall(path.read_text())}
-    assert hosts == {"paper-api.alpaca.markets"}
+    citations = (
+        "https://docs.alpaca.markets/us/docs/paper-trading",
+        "https://alpaca.markets/support/commission-clearing-fees",
+    )
+    allowed_hosts = {
+        "*": {"paper-api.alpaca.markets"},
+        "commission.py": {"docs.alpaca.markets", "alpaca.markets"},
+    }
+    # Include the bare support-site host as well as subdomains in this check.
+    alpaca_host = re.compile(r"(?:[a-z0-9-]+\.)*alpaca\.markets")
+    for path in PACKAGE.glob("*.py"):
+        text = path.read_text()
+        assert set(alpaca_host.findall(text)) <= allowed_hosts.get(path.name, allowed_hosts["*"]), (
+            path.name
+        )
+        if path.name == "commission.py":
+            for url in citations:
+                citation = f'url="{url}"'
+                assert text.count(citation) == 1
+                text = text.replace(citation, "")
+            # Only those cited URLs belong here: no API, broker, data or stream host.
+            assert not alpaca_host.findall(text), path.name
 
 
 def test_both_sdk_clients_are_built_on_the_paper_host():
