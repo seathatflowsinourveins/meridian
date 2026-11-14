@@ -1,8 +1,8 @@
 # Architecture decision records
 
-One ADR per addition to an agent runtime's ecosystem (plan 8.6) and per memory or retrieval
-layer (plan 8.7): the evidence for adding it, or for not adding it. A decision that is not an
-addition goes in `docs/HANDBOOK.md` instead.
+One ADR per addition to an agent runtime's ecosystem, or per stack admitted by selection
+(plan 8.6; below), and per memory or retrieval layer (plan 8.7): the evidence for adding it,
+or for not adding it. A decision that is not an addition goes in `docs/HANDBOOK.md` instead.
 
 ## Format
 
@@ -31,6 +31,11 @@ It covers, in this order (plan 8.6), under these headings or plainer ones:
    completely.
 
 An ADR that adds something also adds its row to `UPSTREAM.md`, in the same commit.
+
+A stack ADR (the owner's decision, 2026-11-13) covers several additions to one runtime, one
+maintained, leading upstream per job, admitted on upstream quality without a with-and-without
+run per item. Its section 6 is **Selection**; sections 2 to 4 and 8 are one row per component
+in `data/NNNN-stack.md`; section 5 is measured once for the whole stack.
 
 Revisits append a dated kept/replaced/re-measured line in `data/NNNN-revisits.md`, then
 update this index; never silently edit prior evidence. Dates check the Decision prerequisites.

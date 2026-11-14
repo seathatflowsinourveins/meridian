@@ -7,6 +7,10 @@ State: **in use**; **add** (install, integrate or build on, one pull request eac
 Research tools install into a `research` dependency group and test tools into `dev`; neither
 is in the order path.
 
+2026-11-13: the owner decided that a stack of additions to one runtime can be admitted by
+selection (maintained, leading, one upstream per job) in one ADR, without a with-and-without
+run per item (`docs/adr/README.md`).
+
 ### Layer 1, base system
 | Job | Rests on | State |
 |---|---|---|
@@ -63,7 +67,7 @@ is in the order path.
 |---|---|---|
 | Lead, and Opus workers | `anthropics/claude-code` | in use |
 | Workers and review | `openai/codex` | in use |
-| Mechanical tasks | `deepseek-ai/deepseek-harness` with `ccch1mneyyy/dsh-TUI` | in use |
+| Worker (mechanical tasks only until 2026-11-13) | `deepseek-ai/deepseek-harness` with `ccch1mneyyy/dsh-TUI` | in use |
 
 ### Layer 6, orchestration and review
 | Job | Rests on | State |
