@@ -25,7 +25,7 @@
 
 [adr]
 max_lines_each = 60 # plan 8.6
-max_count = 20 # plan 8.6
+max_count = 21 # plan 8.6; 20 to 21 for ADR 0021 (IBC), the lead's decision under the landing brief of 2026-11-14
 
 [totals]
 agent_instruction_lines = 31 # every AGENTS.md and CLAUDE.md, at any depth

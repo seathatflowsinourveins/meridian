@@ -69,3 +69,4 @@ this table; the row's first cell links the file by name, as in `[NNNN](NNNN-shor
 | [0018](0018-codex-worker-stack.md) | Codex worker stack: oh-my-codex, ponytail, OpenAI's docs server (stack ADR) | adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0019](0019-claude-omc-stack.md) | Claude lifecycle stack | adopted by selection, 2026-11-13 | 2026-11-14 | 2027-02-12 |
 | [0020](0020-open-code-review.md) | open-code-review as a second reviewer, in delegation mode (plan 8.6) | adopted, 2026-11-14 | 2026-11-14 | 2027-02-12 |
+| [0021](0021-ibgateway-ibc-paper-login.md) | IBC for the IB Gateway's paper login without a person | not adopted, 2026-11-14 | 2026-11-14 | 2027-02-12 |
