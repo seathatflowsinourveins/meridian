@@ -57,9 +57,17 @@ Ponytail's hooks without trust entries (`ponytail@meridian-ponytail:<file>:<even
 - oh-my-codex's six MCP servers and its team mode: marked legacy upstream; Orca is the fleet.
 - Excluded by the boundary: `openai/plugins` `public-equity-investing`, the one catalogue plugin with a broker connector (Alpaca), an app connector; `apps` stays pinned off.
 
+## Selection (section 6)
+
+One maintained, leading upstream per job:
+- `Yeachan-Heo/oh-my-codex` 0.22.6 for workflows (plans, long goals, review, verification), user scope, no MCP, team mode and prompt triage off.
+- `DietrichGebert/ponytail` 5.3.3 at its release commit, as a Codex plugin from a local marketplace.
+- Two MCP servers: OpenAI's documentation server `openaiDeveloperDocs`, and `oraios/serena` 2.1.0 with seven navigation and diagnostics tools on the project's own pyright. `kenn-io/agentsview` reads `~/.codex/sessions/`, so it is Codex's cost report too.
+- Three single skill folders follow the DeepSeek Harness stack (ADR 0016). The deferred, refused and no-pick items are below, with reasons and triggers.
+
 ## Always-on context (section 5)
 
-Three `codex exec` "reply OK" runs before the machine step and three after (M1 of [ab-codex.md](ab-codex.md); 16,285 tokens before in ADR 0008): `ALWAYS_ON_BEFORE` and `ALWAYS_ON_AFTER`, measured by the lead on the machine.
+Three `codex exec` "reply OK" runs before the machine step and three after (M1 of [ab-codex.md](ab-codex.md); 16,285 tokens before in ADR 0008): `ALWAYS_ON_BEFORE` and `ALWAYS_ON_AFTER`, measured by the lead on the machine. ADR 0008 measured oh-my-codex alone at +7,611 to +8,075.
 
 ## Removal of the whole stack
 
