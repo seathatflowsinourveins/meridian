@@ -1,102 +1,126 @@
 # Ecosystem manifest
 
-Taken from the plan approved by the owner on 2026-11-13.
-
-State: **in use**; **add** (install, integrate or build on, one pull request each);
-**measure** (a harness addition, adopted only on an ADR's with-and-without result); **watch**.
-Research tools install into a `research` dependency group and test tools into `dev`; neither
-is in the order path.
+The architecture approved by the owner on 2026-11-13, checked at its source on origin/main
+(and, for a row in build, on the branch it names) on 2026-11-14. The eight approved layers,
+with simulation added as Layer 3.5 under trading; one maintained, leading upstream per job. A
+row's state is one of
+**in use** (with the pull request or commit that brought it), **in build** (with its branch or
+open pull request), **measured, not adopted** (with its ADR), **planned** (with its milestone)
+or **watch**. "Rests on" names the upstream repository; "Pin" the exact version or commit, from
+`UPSTREAM.md`, `pyproject.toml`, `uv.lock` or the pins in `deploy/wsl/setup.sh`; "Where" the
+file or ADR here; "Checked" the date the row was checked at its source. A row whose state cannot
+be established says so. A row that predates pull requests names the commit that brought it.
+Research tools install into a `research` dependency group and test tools into `dev`; neither is
+in the order path.
 
 2026-11-13: the owner decided that a stack of additions to one runtime can be admitted by
 selection (maintained, leading, one upstream per job) in one ADR, without a with-and-without
 run per item (`docs/adr/README.md`).
 
+2026-11-14: every row checked at its source on main, and the since-landed work added: the simulation layer under trading (Layer 3.5), the DeepSeek Harness stack and the Claude Code and Codex workflow layers in build, the second reviewer, the lead skill and its merge gate, the upstream gate, the weekly watch, the pinned secret scan, the plotting library and the screener's holder; the admitted stars moved to their layers.
+
 ### Layer 1, base system
-| Job | Rests on | State |
-|---|---|---|
-| Distro, services | WSL2, Ubuntu 26.04, systemd | in use |
-| Python toolchain | `astral-sh/uv` | in use |
-| GitHub | `cli/cli` | in use |
-| Backups of run records | `restic/restic` | add, when the unattended runs produce state |
+| Job | Rests on | Pin | State | Where | Checked |
+|---|---|---|---|---|---|
+| Distro, services | WSL 3.0.3.0, Ubuntu 26.04.1, systemd 259 | `3.0.3.0`, `26.04.1`, `259` | in use (commit 62746f1) | deploy/wsl/meridian.user-data; UPSTREAM.md | 2026-11-14 |
+| Python toolchain | `astral-sh/uv` | `0.13.7` | in use (PR #1) | deploy/wsl/setup.sh; UPSTREAM.md | 2026-11-14 |
+| GitHub | `cli/cli` | `2.104.0` | in use (PR #1) | deploy/wsl/setup.sh; UPSTREAM.md | 2026-11-14 |
+| Backups of run records | `restic/restic` | not pinned | planned (after M7, when the unattended runs produce state) | none | 2026-11-14 |
 
 ### Layer 2, toolchain and CI
-| Job | Rests on | State |
-|---|---|---|
-| Lint and format | `astral-sh/ruff` | in use |
-| Types | `microsoft/pyright` | in use |
-| Tests | `pytest-dev/pytest` | in use |
-| Property tests of trailing and re-entry invariants | `HypothesisWorks/hypothesis` | add (`dev`) |
-| Tests at session edges and half days | `adamchainz/time-machine` | add (`dev`) |
-| Secret scan | `gitleaks/gitleaks` | in use |
-| CI | `actions/checkout`, `astral-sh/setup-uv`, `dependabot/dependabot-core` | in use |
-| Settings and logs of the unattended service | `pydantic/pydantic` with `pydantic/pydantic-settings`, `hynek/structlog` | add, replacing hand-written loaders |
-| Engineering standards | `nautechsystems/nautilus_engineering` | compare with ours, then an ADR |
+| Job | Rests on | Pin | State | Where | Checked |
+|---|---|---|---|---|---|
+| Lint and format | `astral-sh/ruff` | `0.17.3` | in use (commit 95df775) | pyproject.toml; uv.lock; UPSTREAM.md | 2026-11-14 |
+| Types | `microsoft/pyright` | `1.1.414` | in use (commit 95df775) | pyproject.toml; uv.lock; UPSTREAM.md | 2026-11-14 |
+| Tests | `pytest-dev/pytest` | `9.2.0` | in use (commit 95df775) | pyproject.toml; uv.lock; UPSTREAM.md | 2026-11-14 |
+| Property tests of trailing and re-entry invariants | `HypothesisWorks/hypothesis` | `6.170.15` | in use (PR #34) | pyproject.toml; uv.lock; UPSTREAM.md; tests/test_dev_dependencies.py | 2026-11-14 |
+| Tests at session edges and half days | `adamchainz/time-machine` | `3.6.0` | in use (PR #34) | pyproject.toml; uv.lock; UPSTREAM.md; tests/test_dev_dependencies.py | 2026-11-14 |
+| Secret scan, pinned install | `gitleaks/gitleaks` | `8.30.1`, `551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb` | in use (PR #39; CI from commit 850abc5) | .github/workflows/ci.yml; deploy/wsl/setup.sh; UPSTREAM.md | 2026-11-14 |
+| CI | `actions/checkout`, `astral-sh/setup-uv`, `dependabot/dependabot-core` | `v7.0.1`, `3d3c42e5aac5ba805825da76410c181273ba90b1`, `v10.3.3`, `68559e99cc807c1eb7e9238fd43a15bba460eec2` | in use (commit 850abc5) | .github/workflows/ci.yml; .github/workflows/landscape.yml; .github/dependabot.yml; UPSTREAM.md | 2026-11-14 |
+| Settings and logs of the unattended service | `pydantic/pydantic` with `pydantic/pydantic-settings`, `hynek/structlog` | not pinned | planned (M7) | none | 2026-11-14 |
+| Engineering standards | `nautechsystems/nautilus_engineering` | not pinned | watch | none | 2026-11-14 |
+| Upstream gate: every code area and dependency names its upstream | own design on `pytest-dev/pytest` | `9.2.0` | in use (PR #37) | upstream-map.toml; UPSTREAM.md; tests/test_upstream_gate.py; tests/test_ecosystem_manifest.py | 2026-11-14 |
 
 ### Layer 3, trading
-| Job | Rests on | State |
-|---|---|---|
-| Engine: orders, emulated trailing stops, fast exit, brackets, risk, backtest, sandbox, indicators, statistics, tearsheets | `nautechsystems/nautilus_trader` | in use, pinned 2.0.0rc9; follow each release |
-| Alpaca: orders, trade stream, quotes around the clock, screener, clock and calendar | `alpacahq/alpaca-py` | in use, pinned 0.45.0 |
-| IBKR | the engine's own Interactive Brokers adapter, IB Gateway | in use |
-| Feature and replay computation | `pola-rs/polars` | add (`research`) |
-| Reference data, calendars, fundamentals | `openbq-org/OpenBB` | add (`research`) |
-| Filings and point-in-time fundamentals | `dgunning/edgartools` | add (`research`) |
-| Symbol universe with sector tags | `JerBouma/FinanceDatabase` | add (`research`) |
-| Movers and ranking universe | alpaca-py's `ScreenerClient` first; `deepentropy/tvscreener` as advisory input that broker data must confirm | add |
-| Parameter sweeps before the engine's backtest confirms | `polakowo/vectorbt` | add (`research`) |
-| Purged and combinatorial cross-validation; basket sizing | `skfolio/skfolio` | add (`research`), M5 |
-| Deflated Sharpe, overfitting probability; method | `stefan-jansen/machine-learning-for-trading` and its `ml4t-diagnostic` package | add (`research`), M5 |
-| Exchange sessions and holidays in replay | `gerrymanoim/exchange_calendars` (live sessions use Alpaca's own clock) | add |
-| Replay data checks | `unionai-oss/pandera` | add (`research`) |
-| Ranking models | `microsoft/qlib` | measure under purged cross-validation against a plain baseline, M4 |
-| Forecast features | `google-research/timesfm` | measure the same way, M5 |
-| LLM research signal, offline and advisory | `TauricResearch/TradingAgents` | measure the same way; never in the order path |
-| Agent-to-engine interface | `nautechsystems/nautilus_agents` | watch: no host side at rc9 |
+| Job | Rests on | Pin | State | Where | Checked |
+|---|---|---|---|---|---|
+| Engine: orders, emulated trailing stops, fast exit, brackets, risk, backtest, sandbox, indicators, statistics, tearsheets | `nautechsystems/nautilus_trader` | `2.0.0rc9`, `da6b57aefdd62b44f675e434ffcfefca7f4025dd` | in use (commit 95df775) | pyproject.toml; uv.lock; UPSTREAM.md | 2026-11-14 |
+| Alpaca: orders, trade stream, quotes around the clock, screener, clock and calendar | `alpacahq/alpaca-py` | `0.45.0` | in use (PR #5) | pyproject.toml; uv.lock; UPSTREAM.md | 2026-11-14 |
+| IBKR | the engine's own Interactive Brokers adapter (`nautechsystems/nautilus_trader`), IB Gateway | `2.0.0rc9`, `10.50.1g` | in use (commit 850abc5; fill mode PR #2) | UPSTREAM.md; deploy/wsl/setup.sh; meridian/ibkr_node.py | 2026-11-14 |
+| Feature and replay computation | `pola-rs/polars` | `2.1.0` | in use (PR #34) | pyproject.toml; uv.lock; UPSTREAM.md; tests/test_research_dependencies.py | 2026-11-14 |
+| Reference data, calendars, fundamentals | `openbq-org/OpenBB` | `2.0.1` | in use (PR #34) | pyproject.toml; uv.lock; UPSTREAM.md; tests/test_research_dependencies.py | 2026-11-14 |
+| Filings and point-in-time fundamentals | `dgunning/edgartools` | `5.62.1` | in use (PR #34) | pyproject.toml; uv.lock; UPSTREAM.md; tests/test_research_dependencies.py | 2026-11-14 |
+| Symbol universe with sector tags | `JerBouma/FinanceDatabase` | `2.5.1` | in use (PR #34) | pyproject.toml; uv.lock; UPSTREAM.md; tests/test_research_dependencies.py | 2026-11-14 |
+| Movers and ranking universe: holds the job | `alpacahq/alpaca-py` (`ScreenerClient`) | `0.45.0` | in build (branch seathatflowsinourveins/m4-movers) | branch seathatflowsinourveins/m4-movers:meridian/alpaca/screener.py; branch seathatflowsinourveins/m4-movers:docs/adr/data/m4-universe.md | 2026-11-14 |
+| Advisory mover input: not adopted | `deepentropy/tvscreener` | not pinned | watch | none | 2026-11-14 |
+| Parameter sweeps before the engine's backtest confirms | `polakowo/vectorbt` | `1.2.0` | in use (PR #34) | pyproject.toml; uv.lock; UPSTREAM.md; tests/test_research_dependencies.py | 2026-11-14 |
+| Purged and combinatorial cross-validation; basket sizing | `skfolio/skfolio` | `1.12.7` | in use (PR #34; M5 evaluation pending) | pyproject.toml; uv.lock; UPSTREAM.md; tests/test_research_dependencies.py | 2026-11-14 |
+| Deflated Sharpe, overfitting probability; method | `stefan-jansen/machine-learning-for-trading` and its `ml4t-diagnostic` package | `0.2.0` | in use (PR #34; M5 evaluation pending) | pyproject.toml; uv.lock; UPSTREAM.md; tests/test_research_dependencies.py | 2026-11-14 |
+| Exchange sessions and holidays in replay | `gerrymanoim/exchange_calendars` (live sessions use Alpaca's own clock) | `4.13.2` | in use (PR #34) | pyproject.toml; uv.lock; UPSTREAM.md; tests/test_research_dependencies.py | 2026-11-14 |
+| Replay data checks | `unionai-oss/pandera` | `0.35.0` | in use (PR #34) | pyproject.toml; uv.lock; UPSTREAM.md; tests/test_research_dependencies.py | 2026-11-14 |
+| Ranking models | `microsoft/qlib` | not pinned | planned (M4) | none | 2026-11-14 |
+| Forecast features | `google-research/timesfm` | not pinned | planned (M5) | none | 2026-11-14 |
+| LLM research signal, offline and advisory | `TauricResearch/TradingAgents` | not pinned | planned (M5; never in the order path) | none | 2026-11-14 |
+| Agent-to-engine interface | `nautechsystems/nautilus_agents` | not pinned | watch (no host side at rc9) | none | 2026-11-14 |
+
+### Layer 3.5, simulation
+| Job | Rests on | Pin | State | Where | Checked |
+|---|---|---|---|---|---|
+| Offline one-order practice on the engine's native simulated exchange | `nautechsystems/nautilus_trader` | `2.0.0rc9` | in use (PR #22) | meridian/alpaca_sim.py; tests/test_alpaca_sim.py; UPSTREAM.md | 2026-11-14 |
+| Strategy-template simulation on the engine's native `BacktestEngine` | `nautechsystems/nautilus_trader` | `2.0.0rc9` | in use (PR #31) | meridian/strategy_template/sim.py; tests/test_strategy_template.py; UPSTREAM.md | 2026-11-14 |
+| Engine statistics and tearsheet export | `nautechsystems/nautilus_trader` | `2.0.0rc9` | in build (branch seathatflowsinourveins/m5-engine-stats) | branch seathatflowsinourveins/m5-engine-stats:meridian/strategy_template/report.py; branch seathatflowsinourveins/m5-engine-stats:docs/adr/data/m5-engine-stats.md | 2026-11-14 |
+| Native simulation end to end | `nautechsystems/nautilus_trader` | `2.0.0rc9` | in build (branch seathatflowsinourveins/m5-native-sim) | pyproject.toml; docs/adr/data/m5-native-sim.md (in build) | 2026-11-14 |
 
 ### Layer 4, display
-| Job | Rests on | State |
-|---|---|---|
-| Owner-built page: candles, trail lines, fill markers | `tradingview/lightweight-charts` | add, M6 |
-| Results views | the engine's Plotly tearsheets | add, M5 |
-| Live order and fill blotter | `perspective-dev/perspective` | add, M6, if a static page is not enough |
-| TradingView Desktop, attended | `tradesdontlie/tradingview-mcp` (inside the kit) | in use on the Windows side |
-| Building and testing the page | `bigskysoftware/htmx`, `microsoft/playwright` | add, M6 |
+| Job | Rests on | Pin | State | Where | Checked |
+|---|---|---|---|---|---|
+| Owner-built page: candles, trail lines, fill markers | `tradingview/lightweight-charts` | not pinned | planned (M6) | none | 2026-11-14 |
+| Results views: the engine's own tearsheet | `plotly/plotly.py` | `7.1.0` | in build (branch seathatflowsinourveins/m5-engine-stats) | uv.lock; branch seathatflowsinourveins/m5-engine-stats:pyproject.toml; branch seathatflowsinourveins/m5-engine-stats:docs/adr/data/m5-engine-stats.md | 2026-11-14 |
+| Live order and fill blotter | `perspective-dev/perspective` | not pinned | planned (M6, if a static page is not enough) | none | 2026-11-14 |
+| TradingView Desktop, attended | `tradesdontlie/tradingview-mcp` (inside the kit) | not pinned | not established on main (the 22:02 plan records in use on the Windows side; no file here records it) | none | 2026-11-14 |
+| Building and testing the page | `bigskysoftware/htmx`, `microsoft/playwright` | not pinned | planned (M6) | none | 2026-11-14 |
 
 ### Layer 5, runtimes
-| Job | Rests on | State |
-|---|---|---|
-| Lead, and Opus workers | `anthropics/claude-code` | in use |
-| Workers and review | `openai/codex` | in use |
-| Worker (mechanical tasks only until 2026-11-13) | `deepseek-ai/deepseek-harness` with `ccch1mneyyy/dsh-TUI` | in use |
+| Job | Rests on | Pin | State | Where | Checked |
+|---|---|---|---|---|---|
+| Lead, and Opus workers | `anthropics/claude-code` | `2.1.325` | in use (PR #1; pin moved in PR #35) | deploy/wsl/setup.sh; UPSTREAM.md | 2026-11-14 |
+| Workers and review | `openai/codex` | `0.167.2` | in use (PR #1) | deploy/wsl/setup.sh; UPSTREAM.md | 2026-11-14 |
+| Worker: full worker since 2026-11-13, mechanical tasks only before | `deepseek-ai/deepseek-harness` with `ccch1mneyyy/dsh-TUI` | `0.2.2-rc.1`, `0.20.0` | in use (PR #1; role in PR #38) | deploy/wsl/setup.sh; UPSTREAM.md | 2026-11-14 |
 
 ### Layer 6, orchestration and review
-| Job | Rests on | State |
-|---|---|---|
-| Fleet, one worktree per task | `stablyai/orca` | in use |
-| Cross-family review | `openai/codex-plugin-cc` and `codex review` | in use (the plugin has been quiet since July: watched) |
-| A second reviewer with a published benchmark | `alibaba/open-code-review` | in use, delegation mode only (ADR 0020, 2026-11-14) |
-| Named fallbacks, not installed | `max-sixty/worktrunk` (if Orca is dropped), `coleam00/Archon` (if command-ended gates are needed) | watch |
+| Job | Rests on | Pin | State | Where | Checked |
+|---|---|---|---|---|---|
+| Fleet, one worktree per task | `stablyai/orca` | `1.4.258` | in use (PR #45) | deploy/wsl/setup.sh; UPSTREAM.md | 2026-11-14 |
+| Cross-family review | `openai/codex-plugin-cc` and `codex review` | `1.0.6`, `db52e28f4d9ded852ab3942cea316258ae4ef346` | in use (PR #1; quiet since July, watched) | deploy/wsl/setup.sh; UPSTREAM.md | 2026-11-14 |
+| A second reviewer with a published benchmark | `alibaba/open-code-review` | `1.13.9` | in use (PR #47; ADR 0020; delegation mode only) | deploy/wsl/setup.sh; UPSTREAM.md; docs/adr/0020-open-code-review.md | 2026-11-14 |
+| The lead's procedure and merge gate | git 2.53.0, `cli/cli` | `2.53.0`, `2.104.0` | in use (PR #39) | .agents/skills/lead/SKILL.md; UPSTREAM.md; tests/test_lead_gate.py | 2026-11-14 |
+| Weekly landscape watch and upkeep | GitHub REST 2026-03-10, `stablyai/orca` automations | `2026-03-10`, `1.4.258` | in use (PR #32; automation PR #41) | .github/workflows/landscape.yml; deploy/landscape_watch.py; UPSTREAM.md | 2026-11-14 |
+| Named fallbacks, not installed | `max-sixty/worktrunk` (if Orca is dropped), `coleam00/Archon` (if command-ended gates are needed) | not pinned | watch | none | 2026-11-14 |
 
 ### Layer 7, skills and context
-| Job | Rests on | State |
-|---|---|---|
-| Skill format | `agentskills/agentskills`, Orca's two skills, the built-in "You should know" | in use |
-| The few-line instruction file | the four maintained sources named in section 1 | add |
-| Shell-output compression | `rtk-ai/rtk` | measure |
-| Status line: context, plan limits, activity, and token and cost accounting | `jarrodwatts/claude-hud` (ADR 0015) | in use |
-| Write-less-code skill | `DietrichGebert/ponytail` | measure |
-
-2026-11-14: token and cost accounting is held by claude-hud, adopted on 2026-11-13 (ADR 0015): the
-session's cost, a daily and weekly ledger, session tokens and both usage windows, all from
-Claude Code's own status payload. `ccusage/ccusage` is not installed: one upstream per job. It
-would add per-model reports over past transcripts, which nothing here needs yet.
+| Job | Rests on | Pin | State | Where | Checked |
+|---|---|---|---|---|---|
+| Skill format | `agentskills/agentskills`, `stablyai/orca`'s two skills | `1.4.257` | in use (PR #1; layout PR #39) | .agents/skills/NOTICE.md; tests/test_skills_layout.py; UPSTREAM.md | 2026-11-14 |
+| The few-line instruction file | `anthropics/claude-plugins-official`, `mattpocock/skills`, `walkinglabs/learn-harness-engineering`, `Piebald-AI/claude-code-system-prompts` | not pinned | in use (PR #39) | AGENTS.md; docs/LANES.md; UPSTREAM.md | 2026-11-14 |
+| Side-agent omission notes | the built-in "You should know" in Claude Code 2.1.322 and later | `2.1.322` | in use (PR #17; ADR 0014) | docs/adr/0014-claude-you-should-know.md; UPSTREAM.md | 2026-11-14 |
+| Shell-output compression | `rtk-ai/rtk` | `1.2.0` | measured, not adopted (ADR 0017, on branch seathatflowsinourveins/adr-0015-rtk) | branch seathatflowsinourveins/adr-0015-rtk:docs/adr/0017-rtk-shell-output.md | 2026-11-14 |
+| Status line: context, plan limits, activity, and token and cost accounting | `jarrodwatts/claude-hud` (holds it; ccusage is not installed: one upstream per job) | `0.15.0`, `b86e1c3e5255880578de4b7cc87dc383228c2a18` | in use (PR #40; ADR 0015) | deploy/wsl/setup.sh; UPSTREAM.md; docs/adr/0015-claude-hud.md | 2026-11-14 |
+| Token and cost accounting for DeepSeek Harness | `kenn-io/agentsview` (reads dsh's sessions) | `0.47.0` | in build (PR #44; ADR 0016) | branch seathatflowsinourveins/dsh-stack:docs/adr/data/0016-stack.md | 2026-11-14 |
+| Write-less-code skill | `DietrichGebert/ponytail` (holds it on Codex); `Yeachan-Heo/oh-my-claudecode`'s ai-slop-cleaner (holding it on Claude Code) | `5.3.3` | in build (branch seathatflowsinourveins/codex-stack; branch seathatflowsinourveins/claude-omc-stack; ADR 0018, ADR 0019) | branch seathatflowsinourveins/codex-stack:UPSTREAM.md; branch seathatflowsinourveins/claude-omc-stack:docs/adr/data/0019-stack.md | 2026-11-14 |
+| Workflow layer for Claude Code | `Yeachan-Heo/oh-my-claudecode` | `5.8.4` | in build (branch seathatflowsinourveins/claude-omc-stack; ADR 0019) | branch seathatflowsinourveins/claude-omc-stack:UPSTREAM.md; branch seathatflowsinourveins/claude-omc-stack:docs/adr/data/0019-stack.md | 2026-11-14 |
+| Workflow layer for Codex | `Yeachan-Heo/oh-my-codex` | `0.22.6` | in build (branch seathatflowsinourveins/codex-stack; ADR 0018) | branch seathatflowsinourveins/codex-stack:UPSTREAM.md; branch seathatflowsinourveins/codex-stack:docs/adr/data/0018-stack.md | 2026-11-14 |
+| DeepSeek Harness skills: spec, self-review, source reading, test first, root cause, proof before done, research, the pull request body | `addyosmani/agent-skills`, `obra/superpowers`, `mattpocock/skills` (single folders at a pin) | `0.6.15`, `8bfcc1f9916f2eea55494d8c1fa7f4bde867dd9e`, `7.0.2`, `22f0b463e7a5e579904dd6211a520321035526f7`, `1.3.2`, `d1478fcb140db0b93c0c8df17bcfd311844749d0` | in build (PR #44; ADR 0016) | branch seathatflowsinourveins/dsh-stack:docs/adr/data/0016-stack.md | 2026-11-14 |
+| Structural search for DeepSeek Harness | `ast-grep/ast-grep` | `0.51.2` | in build (PR #44; ADR 0016) | branch seathatflowsinourveins/dsh-stack:docs/adr/data/0016-stack.md | 2026-11-14 |
+| Code navigation for DeepSeek Harness | the `lsp` tool of `deepseek-ai/deepseek-harness` on the worktree's pyright | `0.2.2-rc.1` | in build (PR #44; ADR 0016) | branch seathatflowsinourveins/dsh-stack:docs/adr/data/0016-stack.md | 2026-11-14 |
+| Completion gate for DeepSeek Harness | own design: `deploy/wsl/dsh-check-gate.sh` | not pinned | in build (PR #44; ADR 0016) | branch seathatflowsinourveins/dsh-stack:deploy/wsl/dsh-check-gate.sh | 2026-11-14 |
+| Code navigation for Codex | `oraios/serena` (the official dsh lsp holds dsh's job) | `2.1.0` | in build (branch seathatflowsinourveins/codex-stack; ADR 0018) | branch seathatflowsinourveins/codex-stack:UPSTREAM.md; branch seathatflowsinourveins/codex-stack:docs/adr/data/0018-stack.md | 2026-11-14 |
 
 ### Layer 8, memory and retrieval
-| Job | Rests on | State |
-|---|---|---|
-| Memory and code search | files in git, ripgrep, pyright | in use (they beat the measured alternative, ADR 0001) |
-| Shared task state | `gastownhall/beads` | measure, only when workers collide over task state |
-| A corpus of broker documents | `microsoft/markitdown`, `VectifyAI/PageIndex` | add, when there is a corpus |
+| Job | Rests on | Pin | State | Where | Checked |
+|---|---|---|---|---|---|
+| Memory and code search | files in git, ripgrep, `microsoft/pyright` | `1.1.414` | in use (ADR 0001; they beat the measured alternative) | docs/adr/0001-semble-code-search.md; UPSTREAM.md | 2026-11-14 |
+| Shared task state | `gastownhall/beads` | not pinned | watch (measure only when workers collide over task state) | none | 2026-11-14 |
+| A corpus of broker documents | `microsoft/markitdown`, `VectifyAI/PageIndex` | not pinned | planned (when there is a corpus; no milestone) | none | 2026-11-14 |
 
 ## Placement of the starred repositories
 
@@ -104,7 +128,7 @@ The owner's starred list was read on 2026-11-13 with `gh api user/starred --pagi
 
 - Starred repositories returned by the command: 393
 - Rows with `starred` = yes: 393
-- Rows with `starred` = no: 17
+- Rows with `starred` = no: 19
 
 | repository | group | in architecture | starred |
 |---|---|---|---|
@@ -149,6 +173,7 @@ The owner's starred list was read on 2026-11-13 with `gh api user/starred --pagi
 | `tradesdontlie/tradingview-mcp` | Layer 4, display | yes | yes |
 | `bigskysoftware/htmx` | Layer 4, display | yes | yes |
 | `microsoft/playwright` | Layer 4, display | yes | yes |
+| `plotly/plotly.py` | Layer 4, display | yes | no |
 | `anthropics/claude-code` | Layer 5, runtimes | yes | yes |
 | `openai/codex` | Layer 5, runtimes | yes | no |
 | `deepseek-ai/deepseek-harness` | Layer 5, runtimes | yes | yes |
@@ -160,15 +185,31 @@ The owner's starred list was read on 2026-11-13 with `gh api user/starred --pagi
 | `coleam00/Archon` | Layer 6, orchestration and review | yes | yes |
 | `agentskills/agentskills` | Layer 7, skills and context | yes | yes |
 | `rtk-ai/rtk` | Layer 7, skills and context | yes | yes |
-| `ccusage/ccusage` | Context and status tools | no | no |
 | `DietrichGebert/ponytail` | Layer 7, skills and context | yes | yes |
+| `obra/superpowers` | Layer 7, skills and context | yes | yes |
+| `Yeachan-Heo/oh-my-codex` | Layer 7, skills and context | yes | yes |
+| `addyosmani/agent-skills` | Layer 7, skills and context | yes | yes |
+| `Yeachan-Heo/oh-my-claudecode` | Layer 7, skills and context | yes | yes |
+| `kenn-io/agentsview` | Layer 7, skills and context | yes | yes |
+| `jarrodwatts/claude-hud` | Layer 7, skills and context | yes | yes |
+| `oraios/serena` | Layer 7, skills and context | yes | yes |
+| `ast-grep/ast-grep` | Layer 7, skills and context | yes | no |
 | `gastownhall/beads` | Layer 8, memory and retrieval | yes | yes |
 | `microsoft/markitdown` | Layer 8, memory and retrieval | yes | yes |
 | `VectifyAI/PageIndex` | Layer 8, memory and retrieval | yes | yes |
-| `obra/superpowers` | Measured here and not adopted | no | yes |
+| `ccusage/ccusage` | Context and status tools | no | no |
+| `ranxianglei/billion-context` | Context and status tools | no | yes |
+| `JuliusBrussee/caveman` | Context and status tools | no | yes |
+| `yamadashy/repomix` | Context and status tools | no | yes |
+| `OthmanAdi/planning-with-files` | Context and status tools | no | yes |
+| `ayghri/i-have-adhd` | Context and status tools | no | yes |
+| `toon-format/toon` | Context and status tools | no | yes |
+| `getagentseal/codeburn` | Context and status tools | no | yes |
+| `graykode/abtop` | Context and status tools | no | yes |
+| `sirmalloc/ccstatusline` | Context and status tools | no | yes |
+| `Maciek-roboblog/Claude-Code-Usage-Monitor` | Context and status tools | no | yes |
 | `EveryInc/compound-engineering-plugin` | Measured here and not adopted | no | yes |
 | `openai/plugins` | Measured here and not adopted | no | yes |
-| `Yeachan-Heo/oh-my-codex` | Measured here and not adopted | no | yes |
 | `trailofbits/skills` | Measured here and not adopted | no | yes |
 | `awesome-dsh-plugin/awesome-dsh-plugin` | Measured here and not adopted | no | yes |
 | `MinishLab/semble` | Measured here and not adopted | no | yes |
@@ -302,9 +343,7 @@ The owner's starred list was read on 2026-11-13 with `gh api user/starred --pagi
 | `weave-os/router` | Gateways | no | yes |
 | `NVIDIA-NeMo/Switchyard` | Gateways | no | yes |
 | `affaan-m/ECC` | Skill packs and frameworks | no | yes |
-| `addyosmani/agent-skills` | Skill packs and frameworks | no | yes |
 | `wshobson/agents` | Skill packs and frameworks | no | yes |
-| `Yeachan-Heo/oh-my-claudecode` | Skill packs and frameworks | no | yes |
 | `SuperClaude-Org/SuperClaude_Framework` | Skill packs and frameworks | no | yes |
 | `tw93/Waza` | Skill packs and frameworks | no | yes |
 | `mindfold-ai/Trellis` | Skill packs and frameworks | no | yes |
@@ -326,18 +365,6 @@ The owner's starred list was read on 2026-11-13 with `gh api user/starred --pagi
 | `google-labs-code/stitch-skills` | Skill packs and frameworks | no | yes |
 | `obsidianmd/obsidian-skills` | Skill packs and frameworks | no | yes |
 | `phuryn/pm-skills` | Skill packs and frameworks | no | yes |
-| `ranxianglei/billion-context` | Context and status tools | no | yes |
-| `JuliusBrussee/caveman` | Context and status tools | no | yes |
-| `yamadashy/repomix` | Context and status tools | no | yes |
-| `OthmanAdi/planning-with-files` | Context and status tools | no | yes |
-| `ayghri/i-have-adhd` | Context and status tools | no | yes |
-| `toon-format/toon` | Context and status tools | no | yes |
-| `kenn-io/agentsview` | Context and status tools | no | yes |
-| `getagentseal/codeburn` | Context and status tools | no | yes |
-| `graykode/abtop` | Context and status tools | no | yes |
-| `jarrodwatts/claude-hud` | Layer 7, skills and context | yes | yes |
-| `sirmalloc/ccstatusline` | Context and status tools | no | yes |
-| `Maciek-roboblog/Claude-Code-Usage-Monitor` | Context and status tools | no | yes |
 | `drona23/claude-token-efficient` | Guides and catalogues, read but not installed | no | yes |
 | `shanraisshan/claude-code-best-practice` | Guides and catalogues, read but not installed | no | yes |
 | `shanraisshan/codex-cli-best-practice` | Guides and catalogues, read but not installed | no | yes |
@@ -439,7 +466,6 @@ The owner's starred list was read on 2026-11-13 with `gh api user/starred --pagi
 | `opendatalab/MinerU` | Document stacks, for a later corpus | no | yes |
 | `HKUDS/RAG-Anything` | Document stacks, for a later corpus | no | yes |
 | `andrewyng/context-hub` | Document stacks, for a later corpus | no | yes |
-| `oraios/serena` | Code graphs and search servers | no | yes |
 | `colbymchenry/codegraph` | Code graphs and search servers | no | yes |
 | `DeusData/codebase-memory-mcp` | Code graphs and search servers | no | yes |
 | `tirth8205/code-review-graph` | Code graphs and search servers | no | yes |
