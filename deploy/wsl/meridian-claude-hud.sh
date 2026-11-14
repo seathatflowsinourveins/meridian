@@ -5,6 +5,7 @@
 #      figures. Detached, so a slow or stopped Orca never delays the line;
 #   2. print claude-hud's lines, or one plain line if claude-hud is missing or prints nothing.
 # It never fails and never writes to stderr: Claude Code blanks the line on a non-zero exit.
+# claude-hud gets MERIDIAN_HUD_TIMEOUT seconds (5 unless set) before the plain line is used.
 # The installed name holds "claude-hud" (claude-hud's own doctor looks for it) and not
 # "agent-hooks/claude-statusline" (Orca would take the command for its own and may rewrite it).
 payload=
@@ -16,7 +17,7 @@ fi
 hud="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}/plugins/claude-hud/statusline.mjs"
 out=
 if [ -n "${payload}" ] && [ -r "${hud}" ]; then
-  out=$(printf '%s' "${payload}" | timeout 5 node "${hud}" 2>/dev/null) || :
+  out=$(printf '%s' "${payload}" | timeout "${MERIDIAN_HUD_TIMEOUT:-5}" node "${hud}" 2>/dev/null) || :
 fi
 if [ -z "${out}" ] && [ -n "${payload}" ]; then
   out=$(printf '%s' "${payload}" | jq -r '
