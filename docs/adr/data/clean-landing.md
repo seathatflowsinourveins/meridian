@@ -354,3 +354,19 @@ the same head; unchanged retries remain quiet. An older ledger entry without a d
 prove which record it published, so the current record is posted once to establish its key.
 Regression coverage follows clean review → rereview → closure → reopen/retry → land and
 checks that the published replacement contains the findings and dispositions used by land.
+
+## A third builder: DeepSeek Harness
+
+`AGENTS.md` names DeepSeek Harness as a builder beside Codex and Claude Opus, but the gate
+knew only `codex` and `claude`, so a DeepSeek-built branch could not pass with a truthful
+record. `REVIEWERS` in `gate.py` now maps each builder to the families that may review it,
+default first: `codex` → `claude`, `claude` → `codex`, `deepseek` → `claude` or `codex`;
+`REVIEW_MODELS` and `MODEL_PREFIXES` give each reviewer family its model and the prefix a
+record's model must carry. A further builder is one `REVIEWERS` line. `register`, `trial`,
+`review`, `auto` (and through the stored state `open`, `land`, `close`, `pending`) accept
+`deepseek` and store it as given in the registration, trial state and published record.
+`review` and `auto` take `--reviewer codex|claude`: a reviewer outside the builder's row (its
+own family, or `deepseek`, which reviews nothing) is refused before any check or model call,
+and `validate_record` refuses a record whose reviewer is outside that row for all three.
+A reused review in `auto` must also be from the requested reviewer, or a new one runs.
+Registrations and trial states written before this change carry no new field and still read.

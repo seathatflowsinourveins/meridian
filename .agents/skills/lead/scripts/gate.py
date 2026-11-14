@@ -1,9 +1,9 @@
 """The lead's merge gate: one landing at a time, a tested tree, a pinned squash-merge (own design).
 
-    gate.py register BRANCH --builder codex|claude --task TASK_ID
-    gate.py auto BRANCH --builder codex|claude TITLE BODY
-    gate.py trial BRANCH [--builder codex|claude]
-    gate.py review BRANCH --builder codex|claude
+    gate.py register BRANCH --builder codex|claude|deepseek --task TASK_ID
+    gate.py auto BRANCH --builder codex|claude|deepseek [--reviewer codex|claude] TITLE BODY
+    gate.py trial BRANCH [--builder codex|claude|deepseek]
+    gate.py review BRANCH --builder codex|claude|deepseek [--reviewer codex|claude]
     gate.py close BRANCH NUMBER REASON [--also NUMBER REASON ...]
     gate.py open BRANCH TITLE BODY [REVIEW.json]
     gate.py land BRANCH [SQUASH]
@@ -57,6 +57,11 @@ CHECKS = [
     ["uv", "run", "pytest", "-q"],
     ["gitleaks", "git", "--redact", "--no-banner", "--log-opts=origin/main..HEAD", "."],
 ]
+# Each builder family and the families that may review its branch, the default first. A new
+# builder is one line here; a new reviewer also needs its command in Gate.review.
+REVIEWERS = {"codex": ("claude",), "claude": ("codex",), "deepseek": ("claude", "codex")}
+REVIEW_MODELS = {"claude": "claude-opus-5-5", "codex": "gpt-6-astra"}
+MODEL_PREFIXES = {"claude": "claude-", "codex": "gpt-"}  # a record's model names its family
 OUTER_FLOCK_CURE = "run the gate without an outer flock; it takes the lock itself"
 GREEN = {"pass", "skipping"}  # `gh pr checks --json bucket`; everything else is not green
 REVIEW_SCHEMA = {
@@ -589,21 +594,36 @@ class Gate:
         path = self._state_file(branch).with_suffix(".dispatch.json")
         return json.loads(path.read_text()) if path.exists() else {}
 
+    @staticmethod
+    def known_builder(builder: str | None) -> None:
+        if builder is not None and builder not in REVIEWERS:
+            raise Refused(f"builder must be one of {', '.join(REVIEWERS)}, not {builder}")
+
+    @staticmethod
+    def reviewer(builder: str, requested: str | None = None) -> str:
+        """The family that reviews this builder's branch: the default, or the one requested."""
+        Gate.known_builder(builder)
+        allowed = REVIEWERS[builder]
+        if requested is None:
+            return allowed[0]
+        if requested not in allowed:
+            raise Refused(
+                f"reviewer must be from another model family than the builder's ({builder}): "
+                f"{' or '.join(allowed)}, not {requested}"
+            )
+        return requested
+
     def builder(self, branch: str, requested: str | None) -> str | None:
         registered = self.registration(branch).get("builder")
-        if requested not in {None, "codex", "claude"} or registered not in {
-            None,
-            "codex",
-            "claude",
-        }:
-            raise Refused("builder must be codex or claude")
+        self.known_builder(requested)
+        self.known_builder(registered)
         if registered and requested not in {None, registered}:
             raise Refused(f"builder differs from dispatch registration: {registered}")
         return registered or requested
 
     def register(self, branch: str, builder: str, task: str) -> None:
-        if builder not in {"codex", "claude"}:
-            raise Refused("builder must be codex or claude")
+        if builder is None:
+            raise Refused("register needs a builder")
         self.builder(branch, builder)
         git(self.repo, "check-ref-format", "--branch", branch)
         self._state_file(branch).with_suffix(".dispatch.json").write_text(
@@ -664,14 +684,13 @@ class Gate:
         if not isinstance(record, dict) or record.get("tested") != st["tested"]:
             raise Refused("review commit is not the tested commit; run review again")
         builder = st.get("builder")
-        if builder not in {"codex", "claude"}:
+        if builder not in REVIEWERS:
             raise Refused("builder is unknown; register it at dispatch or run review --builder")
-        other = "claude" if builder == "codex" else "codex"
-        if record.get("reviewer") != other or record.get("builder") != builder:
-            raise Refused("reviewer must be from the other model family, not the builder's family")
+        reviewer = record.get("reviewer")
+        if reviewer not in REVIEWERS[builder] or record.get("builder") != builder:
+            raise Refused("reviewer must be from another model family, not the builder's family")
         model = record.get("model")
-        prefix = "claude-" if other == "claude" else "gpt-"
-        if not isinstance(model, str) or not model.startswith(prefix):
+        if not isinstance(model, str) or not model.startswith(MODEL_PREFIXES[reviewer]):
             raise Refused("review model must name the reviewer's family")
         findings = record.get("findings")
         if not isinstance(findings, list) or not isinstance(record.get("summary"), str):
@@ -725,15 +744,15 @@ class Gate:
             self.say(f"recorded {len(dispositions)} dispositions for {st['tested'][:12]}")
 
     @guarded()
-    def review(self, branch: str, builder: str) -> Path:
+    def review(self, branch: str, builder: str, reviewer: str | None = None) -> Path:
+        reviewer = self.reviewer(builder, reviewer)
         st, wt = self._tested(branch, builder)
         st["builder"] = builder
         # Revoke the published approval before a new reviewer can fail or find defects.
         # A new successful review must pass through open again before land can use it.
         st.pop("review", None)
         self._save(branch, st)
-        reviewer = "claude" if builder == "codex" else "codex"
-        model = "claude-opus-5-5" if reviewer == "claude" else "gpt-6-astra"
+        model = REVIEW_MODELS[reviewer]
         final_file = self._state_file(branch).with_suffix(".final.txt")
         final_file.unlink(missing_ok=True)
         # Remove any previous successful review before starting a new attempt.
@@ -846,10 +865,13 @@ class Gate:
         self.validate_review(st, path)
         return path
 
-    def auto(self, branch: str, builder: str, title: str, body: Path) -> bool:
+    def auto(
+        self, branch: str, builder: str, title: str, body: Path, reviewer: str | None = None
+    ) -> bool:
         step = "inputs"
         try:
             body.read_text()  # Validate readability/encoding before checks, models or reservation.
+            self.reviewer(builder, reviewer)  # an impossible pairing refuses before anything runs
             step = "reservation"
             with self.reservation(branch, create=True, automatic=True):
                 try:
@@ -882,14 +904,15 @@ class Gate:
                         raise WorkerFailure("; ".join(failures))
                     step = "review"
                     review = self.review_file(branch)
+                    earlier = json.loads(review.read_text()) if review.exists() else {}
                     if (
-                        review.exists()
-                        and json.loads(review.read_text()).get("tested")
-                        == self.state(branch)["tested"]
+                        earlier
+                        and earlier.get("tested") == self.state(branch)["tested"]
+                        and reviewer in {None, earlier.get("reviewer")}
                     ):
                         self.validate_review(self.state(branch), review)
                     else:
-                        self.review(branch, builder)
+                        self.review(branch, builder, reviewer)
                     step = "open"
                     self.open(branch, title, body)
                     step = "land"
@@ -1178,8 +1201,9 @@ def main(argv: list[str]) -> int:
         sub = subs.add_parser(name)
         sub.add_argument("branch")
         if name in {"trial", "review", "auto", "register"}:
-            sub.add_argument("--builder", choices=["codex", "claude"], required=name != "trial")
+            sub.add_argument("--builder", choices=list(REVIEWERS), required=name != "trial")
         if name in {"review", "auto"}:
+            sub.add_argument("--reviewer", choices=list(REVIEW_MODELS))
             sub.add_argument("--review-level", choices=["medium", "high"], default="medium")
             sub.add_argument("--review-timeout", type=positive_seconds, default=900.0)
         if name in {"open", "auto"}:
@@ -1217,9 +1241,10 @@ def main(argv: list[str]) -> int:
             case "trial":
                 return 0 if gate.trial(args.branch, args.builder) else 1
             case "review":
-                gate.review(args.branch, args.builder)
+                gate.review(args.branch, args.builder, args.reviewer)
             case "auto":
-                return 0 if gate.auto(args.branch, args.builder, args.title, args.body) else 1
+                done = gate.auto(args.branch, args.builder, args.title, args.body, args.reviewer)
+                return 0 if done else 1
             case "register":
                 gate.register(args.branch, args.builder, args.task)
             case "pending":

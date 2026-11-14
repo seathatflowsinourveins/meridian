@@ -2188,3 +2188,185 @@ def test_review_digest_uses_canonical_public_record(repo: Path, tmp_path: Path):
     g.open("feature", "title", path, path, wait=False)
     g.open("feature", "title", path, path, wait=False)
     assert len([c for c in fake.calls if c[:2] == ["pr", "comment"]]) == 2
+
+
+# --- a DeepSeek-built branch -------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "requested,reviewer,model",
+    [
+        (None, "claude", "claude-opus-5-5"),
+        ("claude", "claude", "claude-opus-5-5"),
+        ("codex", "codex", "gpt-6-astra"),
+    ],
+)
+def test_a_deepseek_built_branch_lands_through_auto_with_either_reviewer(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    requested: str | None,
+    reviewer: str,
+    model: str,
+):
+    g, fake = make(repo, ["pass"], builder="deepseek")
+    calls = fake_reviewer(monkeypatch)
+    (tmp_path / "body.md").write_text("body")
+    assert g.auto("feature", "deepseek", "title", tmp_path / "body.md", requested)
+    assert [cmd[0] for cmd, _ in calls] == [reviewer]
+    st = g.state("feature")
+    assert st["builder"] == "deepseek" and st["merged"]
+    published = json.loads(g._state_file("feature").with_suffix(".public-review.json").read_text())
+    for record in (st["review"], published):
+        assert record["builder"] == "deepseek"
+        assert record["reviewer"] == reviewer and record["model"] == model
+    assert g.registration("feature")["builder"] == "deepseek"
+    assert g.registration("feature")["landed"] == st["tested"]
+    assert any(call[:2] == ["pr", "merge"] for call in fake.calls)
+
+
+def test_an_unknown_builder_is_refused_everywhere(repo: Path, tmp_path: Path):
+    g, fake = make(repo, ["pass"])
+    output = []
+    g.say = output.append
+    for call in (
+        lambda: g.register("other", "gemini", "task-2"),
+        lambda: g.trial("feature", "gemini"),
+        lambda: g.reviewer("gemini"),
+    ):
+        with pytest.raises(gate.Refused, match="builder must be one of codex, claude, deepseek"):
+            call()
+    (tmp_path / "body").write_text("body")
+    assert not g.auto("feature", "gemini", "title", tmp_path / "body")
+    assert output[-1].startswith("LEAD ACTION: feature: inputs failed: builder must be one of")
+    assert not g._state_file("feature").exists() and fake.calls == []
+    assert not g._state_file("other").with_suffix(".dispatch.json").exists()
+
+
+@pytest.mark.parametrize(
+    "builder,reviewer",
+    [
+        ("codex", "codex"),
+        ("claude", "claude"),
+        ("deepseek", "deepseek"),
+        ("codex", "deepseek"),
+        ("claude", "deepseek"),
+    ],
+)
+def test_a_reviewer_outside_the_builders_row_is_refused_before_any_model(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    builder: str,
+    reviewer: str,
+):
+    g, fake = make(repo, ["pass"], builder=builder)
+    assert g.trial("feature")
+    calls = fake_reviewer(monkeypatch)
+    with pytest.raises(gate.Refused, match="another model family than the builder's"):
+        g.review("feature", builder, reviewer)
+    output = []
+    g.say = output.append
+    (tmp_path / "body").write_text("body")
+    assert not g.auto("feature", builder, "title", tmp_path / "body", reviewer)
+    assert output[-1].startswith("LEAD ACTION: feature: inputs failed: reviewer must be")
+    assert calls == [] and fake.calls == []
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["review", "feature", "--builder", "deepseek", "--reviewer", "deepseek"],
+        ["auto", "feature", "--builder", "gemini", "title", "body.md"],
+        ["register", "feature", "--builder", "gemini", "--task", "task-1"],
+    ],
+)
+def test_the_cli_offers_only_known_builders_and_reviewers(argv: list[str]):
+    with pytest.raises(SystemExit) as exit_:
+        gate.main(argv)
+    assert exit_.value.code == 2
+
+
+@pytest.mark.parametrize("builder", ["codex", "claude", "deepseek"])
+def test_a_record_reviewed_by_the_builders_own_family_is_refused(
+    repo: Path, tmp_path: Path, builder: str
+):
+    g, fake = make(repo, ["pass"], builder=builder)
+    assert g.trial("feature")
+    path = review_record(g, tmp_path)
+    record = json.loads(path.read_text())
+    record.update(builder=builder, reviewer=builder, model=f"{builder}-model")
+    path.write_text(json.dumps(record))
+    with pytest.raises(gate.Refused, match="another model family"):
+        g.open("feature", "title", tmp_path / "body.md", path, wait=False)
+    assert fake.calls == []
+
+
+def test_a_deepseek_record_from_either_family_opens(repo: Path, tmp_path: Path):
+    g, fake = make(repo, ["pass"], builder="deepseek")
+    assert g.trial("feature")
+    path = review_record(g, tmp_path)
+    record = json.loads(path.read_text())
+    for reviewer, model in gate.REVIEW_MODELS.items():
+        record.update(builder="deepseek", reviewer=reviewer, model=model)
+        path.write_text(json.dumps(record))
+        assert g.validate_review(g.state("feature"), path)["reviewer"] == reviewer
+    record["builder"] = "claude"  # a record must name the registered builder
+    path.write_text(json.dumps(record))
+    with pytest.raises(gate.Refused, match="another model family"):
+        g.validate_review(g.state("feature"), path)
+
+
+def test_register_and_pending_carry_a_deepseek_builder(repo: Path, monkeypatch: pytest.MonkeyPatch):
+    g, _ = make(repo, ["pass"], builder="deepseek")
+    registration = json.loads(g._state_file("feature").with_suffix(".dispatch.json").read_text())
+    assert registration == {"branch": "feature", "builder": "deepseek", "task": "task-1"}
+    with pytest.raises(gate.Refused, match="dispatch registration: deepseek"):
+        g.register("feature", "codex", "task-1")
+    real_run = subprocess.run
+
+    def run(args, **kwargs):
+        if args[1:3] == ["orchestration", "task-list"]:
+            data = {"ok": True, "result": {"tasks": [{"id": "task-1"}]}}
+            return subprocess.CompletedProcess(args, 0, json.dumps(data), "")
+        return real_run(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    output = []
+    g.say = output.append
+    g.gh = lambda _args: "[]"
+    assert g.pending()
+    assert json.loads(output[-1])["builder"] == "deepseek"
+
+
+@pytest.mark.parametrize("builder", ["codex", "claude"])
+def test_registration_and_trial_state_written_before_deepseek_still_read(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, builder: str
+):
+    g, fake = make(repo, ["pass"], builder=builder)
+    assert g.trial("feature")
+    # The files as the two-builder gate wrote them: no field was added for the third builder.
+    dispatch = g._state_file("feature").with_suffix(".dispatch.json")
+    dispatch.write_text(json.dumps({"branch": "feature", "builder": builder, "task": "task-1"}))
+    state = g.state("feature")
+    assert set(state) == {"main", "tested", "tree", "checks", "passed", "builder"}
+    g._save("feature", state)
+    calls = fake_reviewer(monkeypatch)
+    record = json.loads(g.review("feature", builder).read_text())
+    assert record["reviewer"] == gate.REVIEWERS[builder][0] == calls[0][0][0]
+    (tmp_path / "body.md").write_text("body")
+    g.open("feature", "title", tmp_path / "body.md", wait=False)
+    g.land("feature")
+    assert g.state("feature")["merged"]
+
+
+def test_auto_reuses_a_review_only_from_the_requested_reviewer(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    g, _ = make(repo, ["pass"], builder="deepseek")
+    (tmp_path / "body.md").write_text("body")
+    calls = fake_reviewer(monkeypatch, review_output("a candidate"))
+    assert not g.auto("feature", "deepseek", "title", tmp_path / "body.md")
+    assert json.loads(g.review_file("feature").read_text())["reviewer"] == "claude"
+    later = fake_reviewer(monkeypatch)
+    assert g.auto("feature", "deepseek", "title", tmp_path / "body.md", "codex")
+    assert [cmd[0] for cmd, _ in calls + later] == ["claude", "codex"]
+    assert g.state("feature")["review"]["reviewer"] == "codex"
