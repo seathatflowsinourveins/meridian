@@ -1,9 +1,9 @@
 """
 The Alpaca lane is paper only by construction, and its keys arrive only as systemd credentials.
 
-These checks sit beside the build-failing scan in `test_paper_only.py`, which reads every file
-git can see, this package and the unit included. Strings that would trip that scan are built
-from parts here, so this file never holds them.
+These checks sit beside the tripwire in `test_paper_only.py`, which reads every file git can
+see, this package and the unit included. Its exact folded-string allowance names this file's
+existing negative fixtures; other recognizable host and switch markers fail the scan.
 """
 
 import re
@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from test_paper_only import REPO_ROOT, files_to_scan, findings, scan_bytes
+from test_paper_only import REPO_ROOT, files_to_scan, findings, folded_strings, scan_bytes
 
 from meridian.alpaca import constants
 from meridian.alpaca.credentials import (
@@ -48,7 +48,9 @@ def assert_package_hosts(package: Path) -> None:
     data_host = "stream.data.alpaca.markets"
     for path in package.glob("*.py"):
         text = path.read_text()
+        folded = list(folded_strings(text))
         hosts = set(HOST.findall(text))
+        hosts.update(host for value in folded for host in HOST.findall(value))
         allowed = {constants.PAPER_HOST} | MODULE_EXTRA_HOSTS.get(path.name, set())
         assert hosts <= allowed, f"unexpected Alpaca host in {path.name}"
         if path.name == "commission.py":
@@ -61,6 +63,9 @@ def assert_package_hosts(package: Path) -> None:
                 text = text.replace(citation, "")
             # Only the cited URLs belong here, never an API, broker, data or stream host.
             assert not HOST.findall(text), f"unexpected Alpaca host in {path.name}"
+            assert not any(HOST.search(value) for value in folded), (
+                f"unexpected Alpaca host in {path.name}"
+            )
     assert data_host in HOST.findall((package / "data.py").read_text())
 
 
@@ -284,3 +289,27 @@ def test_the_stream_checks_where_its_socket_landed_before_signing_in(
     else:
         asyncio.run(stream._connect())
         assert closed == []
+
+
+@pytest.mark.parametrize("key_id", [b"AK-synthetic-one", b"AK", b"AK" + b"0" * 20])
+@pytest.mark.parametrize("ending", [b"", b"\n", b"\r\n"])
+def test_credential_loader_refuses_live_shaped_ids_without_disclosure(tmp_path, key_id, ending):
+    # The documented hint is about the id, not the secret; no real keys are used.
+    write(tmp_path, KEY_ID, b"PK-synthetic-paper" + ending)
+    write(tmp_path, SECRET_KEY, b"AK-synthetic-secret")
+    assert load_paper_keys({"CREDENTIALS_DIRECTORY": str(tmp_path)}).key_id == "PK-synthetic-paper"
+    write(tmp_path, KEY_ID, key_id + ending)
+    write(tmp_path, SECRET_KEY, b"synthetic-secret")
+    with pytest.raises(PaperKeysUnavailable) as info:
+        load_paper_keys({"CREDENTIALS_DIRECTORY": str(tmp_path)})
+    assert str(info.value) == "credential alpaca-paper-key-id has a refused key-id shape"
+
+
+def test_offline_credential_check_hides_refused_key_shape(tmp_path, monkeypatch, capsys):
+    write(tmp_path, KEY_ID, b"AK-synthetic-private")
+    write(tmp_path, SECRET_KEY, b"synthetic-secret")
+    monkeypatch.setenv("CREDENTIALS_DIRECTORY", str(tmp_path))
+    assert main() == 1
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert output.err == "refused: credential alpaca-paper-key-id has a refused key-id shape\n"
