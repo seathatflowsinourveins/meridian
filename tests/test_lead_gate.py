@@ -2127,3 +2127,64 @@ def test_rereview_revokes_stored_approval_before_model_and_requires_reopen(
         assert g.state("feature")["review"] == json.loads(g.review_file("feature").read_text())
         g.land("feature")
         assert g.holder() is None
+
+
+def test_changed_rereview_posts_closed_findings_once_on_same_commit(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    g, fake = make(repo, ["pass"])
+    snapshots = []
+
+    def gh(args):
+        if args[:2] == ["pr", "comment"]:
+            snapshots.append(json.loads(Path(args[-1]).read_text()))
+        return fake(args)
+
+    g.gh = gh
+    assert g.trial("feature")
+    fake_reviewer(monkeypatch)
+    g.review("feature", "codex")
+    body = tmp_path / "body"
+    body.write_text("body")
+    g.open("feature", "title", body, wait=False)
+    fake.existing_pr = True
+    fake_reviewer(monkeypatch, review_output("candidate from rereview"))
+    with pytest.raises(gate.ReviewPending):
+        g.review("feature", "codex")
+    g.close("feature", [(1, "existing guard excludes the failure scenario")])
+    g.open("feature", "title", body, wait=False)
+    g.open("feature", "title", body, wait=False)
+    assert len(snapshots) == 2
+    assert snapshots[0]["tested"] == snapshots[1]["tested"]
+    assert snapshots[0]["findings"] == []
+    assert "candidate from rereview" in snapshots[1]["findings"][0]["text"]
+    assert snapshots[1]["findings"][0]["status"] == (
+        "closed: existing guard excludes the failure scenario"
+    )
+    ledger = json.loads(g._state_file("feature").with_suffix(".posted.json").read_text())
+    assert len(ledger) == 2 and ledger[0]["tested"] == ledger[1]["tested"]
+    assert ledger[0]["review_sha256"] != ledger[1]["review_sha256"]
+    assert g.state("feature")["review"] == snapshots[1]
+    g.land("feature")
+    assert any(call[:2] == ["pr", "merge"] for call in fake.calls)
+
+
+def test_review_digest_uses_canonical_public_record(repo: Path, tmp_path: Path):
+    g, fake = make(repo, ["pass"])
+    assert g.trial("feature")
+    path = review_record(g, tmp_path)
+    record = json.loads(path.read_text())
+    record["summary"] = "See /home/first-owner/private.txt"
+    path.write_text(json.dumps(record))
+    g.open("feature", "title", path, path, wait=False)
+    fake.existing_pr = True
+    record["summary"] = "See /home/second-owner/private.txt"
+    path.write_text(json.dumps(dict(reversed(list(record.items())))))
+    g.open("feature", "title", path, path, wait=False)
+    assert len([c for c in fake.calls if c[:2] == ["pr", "comment"]]) == 1
+    # A pre-digest ledger cannot establish which review it published: post once to upgrade it.
+    ledger = g._state_file("feature").with_suffix(".posted.json")
+    ledger.write_text(json.dumps([{"pr": 7, "tested": g.state("feature")["tested"]}]))
+    g.open("feature", "title", path, path, wait=False)
+    g.open("feature", "title", path, path, wait=False)
+    assert len([c for c in fake.calls if c[:2] == ["pr", "comment"]]) == 2

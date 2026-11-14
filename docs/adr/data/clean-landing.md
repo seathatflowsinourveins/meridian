@@ -343,3 +343,14 @@ Gate refusal for a plain external flock now gives the cure: “run the gate with
 flock; it takes the lock itself”, including release when no gate owner exists. The external
 flock regression checks both messages while preserving exclusion. The existing setup.sh
 upstream-map entry still covers this authorized prompt edit; the coverage tests pass.
+
+## Publishing changed reviews on the same tested commit
+
+The comment ledger now keys on PR, tested commit and SHA-256 of the public review bytes.
+Public JSON uses sorted keys before hashing and posting, so private-path changes that scrub
+to identical text or JSON key reordering do not create duplicate comments. A changed review,
+including new candidates and their closing reasons after rereview, is posted once even at
+the same head; unchanged retries remain quiet. An older ledger entry without a digest cannot
+prove which record it published, so the current record is posted once to establish its key.
+Regression coverage follows clean review → rereview → closure → reopen/retry → land and
+checks that the published replacement contains the findings and dispositions used by land.

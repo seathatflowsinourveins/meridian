@@ -1048,7 +1048,9 @@ class Gate:
         public_body = self._state_file(branch).with_suffix(".body.md")
         public_review = self._state_file(branch).with_suffix(".public-review.json")
         public_body.write_text(self.public_text(body.read_text()))
-        public_review.write_text(json.dumps(self.public_value(record), indent=2) + "\n")
+        public_review.write_text(
+            json.dumps(self.public_value(record), indent=2, sort_keys=True) + "\n"
+        )
         title = self.public_text(title)
         push = subprocess.run(
             ["git", "-C", str(self.repo), "push", "-q", "origin", f"refs/heads/{branch}"],
@@ -1087,7 +1089,11 @@ class Gate:
             pr = int(url.rstrip("/").rsplit("/", 1)[-1])
         posted_file = self._state_file(branch).with_suffix(".posted.json")
         posted = json.loads(posted_file.read_text()) if posted_file.exists() else []
-        key = {"pr": pr, "tested": st["tested"]}
+        key = {
+            "pr": pr,
+            "tested": st["tested"],
+            "review_sha256": hashlib.sha256(public_review.read_bytes()).hexdigest(),
+        }
         if key not in posted:
             self.gh(["pr", "comment", str(pr), "--body-file", str(public_review)])
             posted.append(key)
