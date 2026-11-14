@@ -30,7 +30,7 @@ max_count = 20 # plan 8.6
 [totals]
 agent_instruction_lines = 31 # every AGENTS.md and CLAUDE.md, at any depth
 prose_lines = 2000 # owner-delegated M3 allowance: attended commands, quote-size convention and run criteria
-config_lines = 450 # M3 systemd unit and pinned adapter; owner-approved allowance for #5
+config_lines = 520 # 450 before the owner's harness plan of 2026-11-13: its upstream map, dependency groups, weekly watch and unattended units come to 507
 workflows = 2 # lead delegation: weekly landscape issue automation alongside fork-safe CI
 skills = 6 # Orca's two (#1), and room for plan 8.6's first skill candidates
 
