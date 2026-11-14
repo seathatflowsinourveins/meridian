@@ -53,3 +53,4 @@ this table; the row's first cell links the file by name, as in `[NNNN](NNNN-shor
 | [0011](0011-dsh-goalloop-agentteams.md) | dsh-goalloop-agentteams completion gate for DeepSeek Harness (plan 8.6) | deferred, 2026-11-13 |
 | [0012](0012-dsh-early-stop-guard.md) | dsh-early-stop-guard for DeepSeek Harness (plan 8.6) | not adopted, 2026-11-13 |
 | [0013](0013-antigravity-cli-reading.md) | Antigravity CLI documentation reading (plan 8.6) | not adopted, 2026-11-13 |
+| [0014](0014-claude-you-should-know.md) | You should know for Claude Code (plan 8.6) | adopted, 2026-11-13 |

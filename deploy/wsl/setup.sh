@@ -266,6 +266,10 @@ claude_settings() {
       disableClaudeAiConnectors: true,
       syncClaudeAiSkills: false,
       syncClaudeAiPlugins: false,
+      enabledPlugins: {
+        "codex@openai-codex": true,
+        "cc-plugin-you-should-know@builtin": true
+      },
       autoUpdatesChannel: "latest",
       minimumVersion: $floor
     }
@@ -331,7 +335,7 @@ cmd_claude() {
 check_claude() {
   version_ge "$(claude_version)" "${CLAUDE_VERSION}" \
     || fail "Claude Code is older than ${CLAUDE_VERSION} or missing (run: deploy/wsl/setup.sh claude)"
-  # The one plugin allowed is the Codex review plugin (setup.sh codex-bridge).
+  # Only Codex review (setup.sh codex-bridge) and the built-in You should know are allowed.
   jq -e --arg model "${CLAUDE_MODEL}" --arg floor "${CLAUDE_VERSION}" '
     .disableClaudeAiConnectors == true and .syncClaudeAiPlugins == false
     and .syncClaudeAiSkills == false and .minimumVersion == $floor
@@ -342,7 +346,7 @@ check_claude() {
     and (["Edit(//**/risk/**)", "Edit(//**/*.contract.json)", "Read(//**/.env)", "Read(//**/.env.*)"]
       - (.permissions.deny // []) == [])
     and ([.enabledPlugins // {} | to_entries[] | select(.value == true) | .key]
-      - ["codex@openai-codex"] == [])
+      - ["codex@openai-codex", "cc-plugin-you-should-know@builtin"] == [])
   ' "${HOME}/.claude/settings.json" >/dev/null \
     || fail "~/.claude/settings.json is not what deploy/wsl/setup.sh claude writes"
   check_claude_managed
