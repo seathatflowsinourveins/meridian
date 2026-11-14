@@ -58,8 +58,11 @@ Carried, each with offline tests (`tests/test_alpaca_{wire,trade_updates,reconci
 - Startup reads wait for the stream's subscription acknowledgement. A lost stream, a frame the SDK
   cannot decode or route, an update none of the 20 classified events covers (`restated`, anything
   new) or an answer that cannot be read or mapped (a body not JSON, a listing, its pages, a row, its
-  symbol) is a gap, a failed read is not: no new order until a full read issued after it reaches the
-  engine; an open-order check can stop new orders, not resume them. Executions go on once each, none
+  symbol) is a gap, a failed read is not: no new order until the engine cache reflects a full read
+  issued after it (each reported order's status and filled quantity, each net position including flat).
+  An equal read needs no mutation; an empty read must find the cache flat.
+  Nonconvergence at the request timeout is a new gap.
+  An open-order check can stop new orders, not resume them. Executions go on once each, none
   the engine holds (it infers one a read or check shows first); a read below its fills is reread.
 - Reconciliation reads the whole order history, fails closed on any gap, withholds and counts ended
   history in unloaded symbols (a symbol missing, not in the venue's form or not its engine order's
