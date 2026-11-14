@@ -220,3 +220,31 @@ def test_transport_timeout_latches_failure(data, monkeypatch):
         await r.client._disconnect()
 
     asyncio.run(check())
+
+
+@pytest.mark.parametrize("when", [SESSION_TIMES[0][0], SESSION_TIMES[2][0]])
+def test_subscription_wakes_reader_waiting_for_calendar(data, monkeypatch, when):
+    """One quote on a quiet symbol must not wait behind the closed-session poll."""
+    from types import SimpleNamespace
+
+    async def check():
+        r = rig(data, monkeypatch)
+        r.clock.ns = timestamp_ns(when, "synthetic")
+        r.client.session_now = lambda: None  # Execution has not supplied its calendar yet.
+        await r.client._connect()
+        try:
+            await settle()  # The reader is now waiting with no open feed.
+            assert not r.calls
+            r.client.session_now = lambda: session_ns(r.clock.ns)
+            current = r.client.session_now()
+            assert current is not None
+            r.socket.protocol.uri.path = data.FEED_PATHS[current.feed]
+            await r.client._subscribe_quotes(SimpleNamespace(instrument_ids=[AAPL]))
+            r.socket.frames.put_nowait(QUOTE.replace("2026-11-02T14:30:00.123456789Z", when))
+            await settle()
+            assert len(r.ticks) == 1
+            assert r.client.quote_age_ns(AAPL) == 0
+        finally:
+            await r.client._disconnect()
+
+    asyncio.run(check())
