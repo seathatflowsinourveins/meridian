@@ -1002,8 +1002,12 @@ dsh_lsp_packages() {
 }
 
 ast_grep_version() { "${HOME}/.local/bin/ast-grep" --version 2>/dev/null </dev/null | sed -n 's/^ast-grep //p'; }
+# agentsview_version PATH: the version a regular, executable agentsview file at PATH reports.
+# The private binary is asked, not the launcher: a standalone agentsview the owner put at
+# ~/.local/bin/agentsview must not stand in for the install the launcher points at.
 agentsview_version() {
-  "${HOME}/.local/bin/agentsview" --version 2>/dev/null </dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1
+  [ -f "$1" ] && [ -x "$1" ] || return 0
+  "$1" --version 2>/dev/null </dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1
 }
 
 # ast-grep and agentsview: the release asset at its checksum, one named member installed. Only
@@ -1020,7 +1024,7 @@ dsh_release_binaries() {
     install -D -m 0755 "${tmp}/x/ast-grep" "${HOME}/.local/bin/ast-grep"
     rm -rf "${tmp}"
   fi
-  if [ "$(agentsview_version)" != "${AGENTSVIEW_VERSION}" ]; then
+  if [ "$(agentsview_version "${HOME}/.local/libexec/meridian/agentsview")" != "${AGENTSVIEW_VERSION}" ]; then
     tmp="$(mktemp -d)"
     curl -fsSLo "${tmp}/agentsview.tar.gz" "${AGENTSVIEW_URL}"
     echo "${AGENTSVIEW_SHA256}  ${tmp}/agentsview.tar.gz" | sha256sum -c -
@@ -1133,7 +1137,10 @@ PY
   done
   [ "$(ast_grep_version)" = "${AST_GREP_VERSION}" ] || fail "ast-grep is not ${AST_GREP_VERSION} (${run})"
   [ ! -e "${HOME}/.local/bin/sg" ] || fail "~/.local/bin/sg exists: it would shadow the system's sg"
-  [ "$(agentsview_version)" = "${AGENTSVIEW_VERSION}" ] && grep -q 'AGENTSVIEW_TELEMETRY_ENABLED=0' "${HOME}/.local/bin/agentsview" \
+  [ "$(agentsview_version "${HOME}/.local/libexec/meridian/agentsview")" = "${AGENTSVIEW_VERSION}" ] \
+    && grep -qF "exec '${HOME}/.local/libexec/meridian/agentsview'" "${HOME}/.local/bin/agentsview" \
+    && grep -q 'AGENTSVIEW_TELEMETRY_ENABLED=0' "${HOME}/.local/bin/agentsview" \
+    && [ "$("${HOME}/.local/bin/agentsview" --version 2>/dev/null </dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)" = "${AGENTSVIEW_VERSION}" ] \
     || fail "agentsview is not ${AGENTSVIEW_VERSION} behind its telemetry-off wrapper (${run})"
   cmp -s "$(dirname "$(readlink -f "$0")")/dsh-check-gate.sh" "${HOME}/.dsh/hooks/dsh-check-gate.sh" \
     && jq -e --arg command "${HOME}/.dsh/hooks/dsh-check-gate.sh" \

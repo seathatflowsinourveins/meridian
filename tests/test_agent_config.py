@@ -8,10 +8,13 @@ agent files git may list are the skills in ``.agents/skills/`` and their links i
 owner's own sessions, which carries its own tests: AGENTS.md keeps such branches out of worktrees.
 """
 
+import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
+import tarfile
 import time
 import tomllib
 
@@ -607,17 +610,36 @@ def gate_repo(tmp_path, meridian=True):
     if meridian:
         (repo / "meridian/boundary.py").write_text("")
         (repo / "size-budget.toml").write_text("")
-    git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
-    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
     (repo / "README").write_text("x\n")
-    subprocess.run([*git, "add", "-A"], check=True)
-    subprocess.run([*git, "commit", "-qm", "base"], check=True)
-    # A stand-in for uv: the gate's check line passes or fails as the test says.
+    commit(repo, "base")
+    # A stand-in for uv: the gate's check line passes or fails as the test says, and each call
+    # is logged, so a test can tell a skipped check from one that ran.
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    (bin_dir / "uv").write_text('#!/bin/sh\necho "uv $*"\n[ ! -e "$GATE_FAIL" ] || exit 1\n')
+    (bin_dir / "uv").write_text(
+        '#!/bin/sh\necho "uv $*" | tee -a "$GATE_LOG"\n[ ! -e "$GATE_FAIL" ] || exit 1\n'
+    )
     (bin_dir / "uv").chmod(0o755)
     return repo, bin_dir
+
+
+def commit(repo, message):
+    git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-qm", message], check=True)
+
+
+def mark_origin_main(repo):
+    # The repository's origin/main is its current commit, as after a fetch.
+    subprocess.run(
+        ["git", "-C", str(repo), "update-ref", "refs/remotes/origin/main", "HEAD"], check=True
+    )
+
+
+def checks_run(repo) -> int:
+    log = repo.parent / "uv.log"
+    return log.read_text().count("uv sync") if log.exists() else 0
 
 
 def run_gate(repo, bin_dir, session="session-1", fail=None) -> dict | None:
@@ -625,6 +647,7 @@ def run_gate(repo, bin_dir, session="session-1", fail=None) -> dict | None:
         "PATH": f"{bin_dir}:/usr/bin:/bin",
         "HOME": str(repo.parent),
         "GATE_FAIL": str(fail or repo.parent / "never"),
+        "GATE_LOG": str(repo.parent / "uv.log"),
     }
     result = subprocess.run(
         ["bash", str(GATE)],
@@ -673,7 +696,43 @@ def test_a_pass_lets_the_turn_end_and_resets_the_count(tmp_path):
     flag.write_text("")
     blocked(run_gate(repo, bin_dir, fail=flag))
     assert run_gate(repo, bin_dir) is None, "a passing check line was blocked"
+    (repo / "README").write_text("changed again\n")
     assert "block 1 of 2" in blocked(run_gate(repo, bin_dir, fail=flag))["reason"]
+
+
+def test_the_gate_checks_committed_work_ahead_of_origin_main(tmp_path):
+    repo, bin_dir = gate_repo(tmp_path)
+    mark_origin_main(repo)
+    flag = tmp_path / "fail"
+    flag.write_text("")
+    assert run_gate(repo, bin_dir, fail=flag) is None, "work equal to origin/main was blocked"
+    assert checks_run(repo) == 0
+    (repo / "README").write_text("delivered\n")
+    commit(repo, "the work")
+    # A clean tree with a commit ahead of origin/main: the gate runs and blocks the failure.
+    assert "block 1 of 2" in blocked(run_gate(repo, bin_dir, fail=flag))["reason"]
+    flag.unlink()
+    assert run_gate(repo, bin_dir) is None and checks_run(repo) == 2
+    # The same state after a pass is not checked again, even with the check line now failing.
+    flag.write_text("")
+    assert run_gate(repo, bin_dir, fail=flag) is None, "a state that passed was blocked"
+    assert checks_run(repo) == 2, "a state that passed was checked again"
+    # A new commit after the pass is a new state: the gate runs again.
+    (repo / "README").write_text("delivered, then fixed\n")
+    commit(repo, "a follow-up")
+    blocked(run_gate(repo, bin_dir, fail=flag))
+    assert checks_run(repo) == 3
+
+
+def test_without_origin_main_only_a_dirty_tree_counts(tmp_path):
+    repo, bin_dir = gate_repo(tmp_path)
+    (repo / "README").write_text("delivered\n")
+    commit(repo, "the work")
+    flag = tmp_path / "fail"
+    flag.write_text("")
+    assert run_gate(repo, bin_dir, fail=flag) is None and checks_run(repo) == 0
+    (repo / "README").write_text("uncommitted\n")
+    blocked(run_gate(repo, bin_dir, fail=flag))
 
 
 def test_the_gate_script_is_executable_in_git():
@@ -685,3 +744,76 @@ def test_the_gate_script_is_executable_in_git():
         text=True,
     ).stdout
     assert entry.startswith("100755 "), f"the gate script is not executable in git: {entry!r}"
+
+
+def run_release_binaries(tmp_path):
+    # dsh_release_binaries on a fixture home: curl is a stand-in that serves a fake agentsview
+    # release whose checksum the run is given; ast-grep is already at its pin.
+    version = setup_pin("AGENTSVIEW_VERSION")
+    fake = tmp_path / "release" / "agentsview"
+    fake.parent.mkdir(exist_ok=True)
+    fake.write_text(f'#!/bin/sh\necho "agentsview v{version} (fake)"\n')
+    fake.chmod(0o755)
+    tarball = tmp_path / "release" / "agentsview.tar.gz"
+    with tarfile.open(tarball, "w:gz") as archive:
+        archive.add(fake, arcname="agentsview")
+    bin_dir = tmp_path / "fakebin"
+    bin_dir.mkdir(exist_ok=True)
+    (bin_dir / "curl").write_text(
+        f'#!/bin/sh\necho "$@" >> "{tmp_path}/curl.log"\ncp "{tarball}" "$2"\n'
+    )
+    (bin_dir / "curl").chmod(0o755)
+    ast_grep = tmp_path / ".local/bin/ast-grep"
+    ast_grep.parent.mkdir(parents=True, exist_ok=True)
+    ast_grep.write_text(f'#!/bin/sh\necho "ast-grep {setup_pin("AST_GREP_VERSION")}"\n')
+    ast_grep.chmod(0o755)
+    one_liner = re.search(r"^ast_grep_version\(\) \{.*\}$", SETUP, re.M)
+    assert one_liner, "setup.sh has no ast_grep_version"
+    functions = "\n".join(
+        [one_liner[0]]
+        + [
+            f"{f}() {{\n{setup_function_body(f)}\n}}"
+            for f in ("agentsview_version", "dsh_release_binaries")
+        ]
+    ).replace("${HOME}", "${fixture_root}")
+    digest = hashlib.sha256(tarball.read_bytes()).hexdigest()
+    subprocess.run(
+        [
+            "bash",
+            "-eu",
+            "-o",
+            "pipefail",
+            "-c",
+            f"fixture_root=$1\nAST_GREP_VERSION={setup_pin('AST_GREP_VERSION')}\n"
+            f"AGENTSVIEW_VERSION={version}\nAGENTSVIEW_SHA256={digest}\nAGENTSVIEW_URL=fake\n"
+            'fail() { echo "$*" >&2; exit 1; }\n' + functions + "\ndsh_release_binaries",
+            "test-release",
+            str(tmp_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "TMPDIR": str(tmp_path)},
+    )
+    launcher = tmp_path / ".local/bin/agentsview"
+    return launcher, subprocess.run([str(launcher), "--version"], capture_output=True, text=True)
+
+
+def test_a_standalone_agentsview_at_the_pin_does_not_skip_the_private_install(tmp_path):
+    # A standalone agentsview at ~/.local/bin, at the pinned version, is not the private binary.
+    standalone = tmp_path / ".local/bin/agentsview"
+    standalone.parent.mkdir(parents=True)
+    standalone.write_text(f'#!/bin/sh\necho "agentsview v{setup_pin("AGENTSVIEW_VERSION")}"\n')
+    standalone.chmod(0o755)
+    launcher, result = run_release_binaries(tmp_path)
+    assert (tmp_path / ".local/libexec/meridian/agentsview").is_file(), "the install was skipped"
+    assert result.returncode == 0 and "(fake)" in result.stdout, result.stderr
+    assert "AGENTSVIEW_TELEMETRY_ENABLED=0" in launcher.read_text()
+
+
+def test_an_installed_private_agentsview_at_the_pin_is_not_downloaded_again(tmp_path):
+    run_release_binaries(tmp_path)
+    (tmp_path / "curl.log").unlink()
+    _, result = run_release_binaries(tmp_path)
+    assert result.returncode == 0
+    assert not (tmp_path / "curl.log").exists(), "the pinned private binary was downloaded again"
