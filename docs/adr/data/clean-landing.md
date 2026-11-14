@@ -124,3 +124,23 @@ commands, so a holder is necessary. The real task listing supplies neither build
 branch, and Claude's empty-diff fallback requires explicit scope in the prompt. No claim
 is made that the new auto command was exercised against real GitHub: that is forbidden
 for this worker and is the lead's later smoke test.
+
+## Four fixes added from the first production landing
+
+The coordinator's first real landing of #37 exposed four defects in the old gate; this
+worker did not reproduce them against real GitHub. Each has an offline regression test:
+
+1. GitHub may not have registered checks immediately after a push. JSON checks map only
+   gh's specific missing-checks error to an empty list; both open and land retry until a
+   check appears, for at most 120 seconds, with an explicit timeout. Open watches only
+   after registration. Authentication errors are not retried as missing checks. The fake
+   can return no checks on its first calls; tests cover both delayed success and timeout.
+2. Child checks remove inherited `VIRTUAL_ENV` and set `NO_COLOR=1`. Recorded summaries
+   prefer stdout, falling back to stderr for stderr-only commands such as gitleaks.
+   All PR body/review/title/squash text is copied through a home-path and ANSI scrubber;
+   original review evidence remains local. Tests inject an unrelated virtual environment,
+   a stderr warning, and Linux/macOS/tilde paths in every outbound text channel.
+3. Reopening an existing PR invokes `gh pr edit` with the current title and body. Local
+   `gh pr edit --help` confirms those flags; the regression asserts the edited file's text.
+4. Gitleaks' stderr summary and local check log have ANSI colour escapes removed. The
+   regression emits actual escapes and checks the stored summary/log are plain text.

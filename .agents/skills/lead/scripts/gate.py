@@ -40,6 +40,7 @@ import re
 import socket
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from functools import wraps
@@ -72,7 +73,10 @@ def git(repo: Path, *args: str) -> str:
 def real_gh(args: Sequence[str]) -> str:
     out = subprocess.run(["gh", *args], capture_output=True, text=True)
     # `gh pr checks` exits non-zero while a check fails or is pending, and still prints its JSON.
-    reported = list(args[:2]) == ["pr", "checks"] and "--json" in args and out.stdout.strip()
+    json_checks = list(args[:2]) == ["pr", "checks"] and "--json" in args
+    reported = json_checks and out.stdout.strip()
+    if json_checks and out.returncode and "no checks reported" in out.stderr.lower():
+        return "[]"
     if out.returncode != 0 and not reported:
         raise Refused(f"gh {' '.join(args[:2])} failed: {out.stderr.strip()[-200:]}")
     return out.stdout.strip()
@@ -167,6 +171,8 @@ class Gate:
         self.lock_path = Path.home() / ".cache/meridian/landing.lock"
         self._connection: socket.socket | None = None
         self._finish = False
+        self.check_timeout = 120.0
+        self.check_interval = 2.0
 
     # --- state and lock ------------------------------------------------------------------------
     def _state_file(self, branch: str) -> Path:
@@ -304,24 +310,49 @@ class Gate:
         self.say(f"{'PASS' if ok else 'FAIL'} {branch}: tested {tested[:12]} on main {main[:12]}")
         return ok
 
+    def public_text(self, text: str) -> str:
+        """Remove terminal controls and home paths before anything becomes PR text."""
+        plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
+        homes = rf"(?:{re.escape(str(Path.home()))}|/home/[^/\s]+|/Users/[^/\s]+|~)"
+        return re.sub(homes + r"(?:/[^\s`\"'<>]*)+", "[local path]", plain)
+
     def _run_checks(self, wt: Path, branch: str) -> list[dict]:
         log = self._state_file(branch).with_suffix(".log")
         results = []
+        env = {key: value for key, value in os.environ.items() if key != "VIRTUAL_ENV"}
+        env["NO_COLOR"] = "1"
         with log.open("w") as out:
             for cmd in [*self.setup, *self.checks]:
                 try:
-                    run = subprocess.run(cmd, cwd=wt, capture_output=True, text=True)
+                    run = subprocess.run(cmd, cwd=wt, capture_output=True, text=True, env=env)
                     code, text = run.returncode, run.stdout + run.stderr
+                    summary = run.stdout.strip() or run.stderr.strip()
                 except FileNotFoundError:
                     code, text = 127, f"{cmd[0]}: not found"
-                out.write(f"$ {' '.join(cmd)}\n{text}\n")
-                last = (text.strip().splitlines() or [""])[-1][:120]
+                    summary = text
+                out.write(f"$ {' '.join(cmd)}\n{self.public_text(text)}\n")
+                last = (self.public_text(summary).strip().splitlines() or [""])[-1][:120]
                 if cmd in self.checks:
                     results.append({"check": " ".join(cmd), "passed": code == 0, "last": last})
                 self.say(f"  {'ok  ' if code == 0 else 'FAIL'} {' '.join(cmd)}: {last}")
                 if code and cmd in self.setup:
                     return [{"check": " ".join(cmd), "passed": False, "last": last}]
         return results
+
+    def wait_checks(self, pr: int) -> list[dict]:
+        deadline = time.monotonic() + self.check_timeout
+        while True:
+            checks = json.loads(self.gh(["pr", "checks", str(pr), "--json", "name,bucket"]))
+            if checks:
+                return checks
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise Refused(
+                    f"no CI checks appeared for PR #{pr} within {self.check_timeout:g}s; "
+                    "retry open or land after GitHub registers checks"
+                )
+            self.say(f"waiting for GitHub to register CI checks for PR #{pr}")
+            time.sleep(min(self.check_interval, remaining))
 
     def registration(self, branch: str) -> dict:
         path = self._state_file(branch).with_suffix(".dispatch.json")
@@ -608,7 +639,12 @@ class Gate:
         if git(self.repo, "rev-parse", f"refs/heads/{branch}") != st["tested"]:
             raise Refused(f"{branch} moved since its trial; run trial again")
         review = review or self.review_file(branch)
-        self.validate_review(st, review)
+        record = self.validate_review(st, review)
+        public_body = self._state_file(branch).with_suffix(".body.md")
+        public_review = self._state_file(branch).with_suffix(".public-review.json")
+        public_body.write_text(self.public_text(body.read_text()))
+        public_review.write_text(self.public_text(json.dumps(record, indent=2)) + "\n")
+        title = self.public_text(title)
         push = subprocess.run(
             ["git", "-C", str(self.repo), "push", "-q", "origin", f"refs/heads/{branch}"],
             capture_output=True,
@@ -622,6 +658,7 @@ class Gate:
         found = json.loads(self.gh(["pr", "list", "--head", branch, "--json", "number"]) or "[]")
         if found:
             pr = int(found[0]["number"])
+            self.gh(["pr", "edit", str(pr), "--title", title, "--body-file", str(public_body)])
         else:
             url = self.gh(
                 [
@@ -634,16 +671,17 @@ class Gate:
                     "--title",
                     title,
                     "--body-file",
-                    str(body),
+                    str(public_body),
                 ]
             )
             pr = int(url.rstrip("/").rsplit("/", 1)[-1])
-        self.gh(["pr", "comment", str(pr), "--body-file", str(review)])
-        st["review"] = json.loads(review.read_text())
+        self.gh(["pr", "comment", str(pr), "--body-file", str(public_review)])
+        st["review"] = record
         st["pr"] = pr
         self._save(branch, st)
         self.say(f"PR #{pr} open at {st['tested'][:12]}; review record posted")
         if wait:
+            self.wait_checks(pr)
             self.gh(["pr", "checks", str(pr), "--watch", "--interval", "30"])
         return pr
 
@@ -657,13 +695,13 @@ class Gate:
             raise Refused("no pull request recorded; run open first")
         if "review" not in st:
             raise Refused("no validated review recorded; run open first")
-        checks = json.loads(self.gh(["pr", "checks", str(st["pr"]), "--json", "name,bucket"]))
+        checks = self.wait_checks(st["pr"])
         red = [c["name"] for c in checks if c["bucket"] not in GREEN]
         if not checks or red:
             raise Refused(f"CI is not green ({', '.join(red) or 'no checks reported'})")
         args = ["pr", "merge", str(st["pr"]), "--squash", "--match-head-commit", st["tested"]]
         if squash is not None:
-            subject, _, rest = squash.read_text().partition("\n")
+            subject, _, rest = self.public_text(squash.read_text()).partition("\n")
             args += ["--subject", subject, "--body", rest.strip()]
         # Last step before the merge call: main as it is now must still give the tested tree.
         main = self._main()

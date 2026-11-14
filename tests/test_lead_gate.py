@@ -52,6 +52,8 @@ class FakeGh:
 
     def __init__(self, origin: Path, ci: list[str]) -> None:
         self.origin, self.ci, self.calls, self.branch = origin, ci, [], ""
+        self.empty_checks = 0
+        self.existing_pr = False
         self.on_checks: Callable[[], None] = lambda: None  # runs as CI is read
         self.after_merge: Callable[[], None] = lambda: None  # runs right after the merge
 
@@ -59,12 +61,15 @@ class FakeGh:
         args = list(args)
         self.calls.append(args)
         if args[:2] == ["pr", "list"]:
-            return "[]"
+            return '[{"number": 7}]' if self.existing_pr else "[]"
         if args[:2] == ["pr", "create"]:
             self.branch = args[args.index("--head") + 1]
             return "https://github.invalid/o/r/pull/7"
         if args[:2] == ["pr", "checks"] and "--json" in args:
             self.on_checks()
+            if self.empty_checks:
+                self.empty_checks -= 1
+                return "[]"
             return json.dumps([{"name": f"c{i}", "bucket": b} for i, b in enumerate(self.ci)])
         if args[:2] == ["pr", "merge"]:
             head = sh(self.origin, "rev-parse", f"refs/heads/{self.branch}")
@@ -117,6 +122,8 @@ def make(
         check = ["test", "-f", "b.txt"] if passing else ["test", "-f", "missing.txt"]
     g = gate.Gate(repo, gh=fake, setup=[], checks=[check])
     g.say = lambda _line: None
+    g.check_timeout = 0
+    g.check_interval = 0
     g.register("feature", "codex", "task-1")
     return g, fake
 
@@ -135,7 +142,13 @@ def test_a_tested_tree_lands_and_main_equals_it(repo: Path, tmp_path: Path):
     (tmp_path / "body.md").write_text("body\n")
     assert g.open("feature", "t", tmp_path / "body.md", review_record(g, tmp_path), wait=False) == 7
     g.land("feature")
-    assert ["pr", "comment", "7", "--body-file", str(tmp_path / "review.json")] in fake.calls
+    assert [
+        "pr",
+        "comment",
+        "7",
+        "--body-file",
+        str(g._state_file("feature").with_suffix(".public-review.json")),
+    ] in fake.calls
     assert g.holder() is None
 
 
@@ -167,7 +180,7 @@ def test_refuses_when_ci_is_not_green(repo: Path, tmp_path: Path, ci: list[str])
     assert g.trial("feature")
     (tmp_path / "b.md").write_text("b\n")
     g.open("feature", "t", tmp_path / "b.md", review_record(g, tmp_path), wait=False)
-    with pytest.raises(gate.Refused, match="CI is not green"):
+    with pytest.raises(gate.Refused, match="CI is not green|no CI checks appeared"):
         g.land("feature")
     assert not any(c[:2] == ["pr", "merge"] for c in fake.calls)
 
@@ -377,7 +390,13 @@ def test_review_records_final_message_and_opposite_family(
         assert cmd[cmd.index("--output-format") + 1] == "json"
     (tmp_path / "body.md").write_text("body")
     g.open("feature", "title", tmp_path / "body.md", wait=False)
-    assert ["pr", "comment", "7", "--body-file", str(path)] in fake.calls
+    assert [
+        "pr",
+        "comment",
+        "7",
+        "--body-file",
+        str(g._state_file("feature").with_suffix(".public-review.json")),
+    ] in fake.calls
 
 
 @pytest.mark.parametrize(
@@ -656,3 +675,135 @@ def test_trigger_script_uses_package_detector(tmp_path: Path):
     result = json.loads(run.stdout)
     assert result["selected"] == {"skill": "package owns detection", "priority": 99}
     assert result["matches"] == [result["selected"]]
+
+
+@pytest.mark.parametrize("stage", ["open", "land"])
+def test_waits_for_github_to_register_checks(repo: Path, tmp_path: Path, stage: str):
+    g, fake = make(repo, ["pass"])
+    assert g.trial("feature")
+    path = review_record(g, tmp_path)
+    g.check_timeout = 1
+    if stage == "land":
+        g.open("feature", "title", path, path, wait=False)
+    fake.empty_checks = 2
+    before = len(fake.calls)
+    if stage == "open":
+        g.open("feature", "title", path, path)
+    else:
+        g.land("feature")
+    checks = [call for call in fake.calls[before:] if call[:2] == ["pr", "checks"]]
+    assert len([call for call in checks if "--json" in call]) == 3
+    if stage == "open":
+        assert "--watch" in checks[-1]
+
+
+@pytest.mark.parametrize("stage", ["open", "land"])
+def test_no_checks_timeout_is_clear_and_never_watches_or_merges(
+    repo: Path,
+    tmp_path: Path,
+    stage: str,
+):
+    g, fake = make(repo, [])
+    assert g.trial("feature")
+    path = review_record(g, tmp_path)
+    if stage == "land":
+        g.open("feature", "title", path, path, wait=False)
+    with pytest.raises(gate.Refused, match="no CI checks appeared.*within 0s"):
+        if stage == "open":
+            g.open("feature", "title", path, path)
+        else:
+            g.land("feature")
+    assert not any("--watch" in call or call[:2] == ["pr", "merge"] for call in fake.calls)
+
+
+def test_real_gh_recognizes_only_the_missing_checks_error(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda args, **_kwargs: subprocess.CompletedProcess(
+            args, 1, "", "no checks reported on the branch"
+        ),
+    )
+    assert gate.real_gh(["pr", "checks", "7", "--json", "name,bucket"]) == "[]"
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda args, **_kwargs: subprocess.CompletedProcess(args, 1, "", "authentication failed"),
+    )
+    with pytest.raises(gate.Refused, match="authentication failed"):
+        gate.real_gh(["pr", "checks", "7", "--json", "name,bucket"])
+
+
+def test_checks_remove_main_venv_and_record_stdout_summary(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("VIRTUAL_ENV", "/home/example/main/.venv")
+    g, _ = make(
+        repo,
+        ["pass"],
+        check=[
+            sys.executable,
+            "-c",
+            "import os,sys; assert 'VIRTUAL_ENV' not in os.environ; "
+            "print('42 checks passed'); print('a stderr warning',file=sys.stderr)",
+        ],
+    )
+    assert g.trial("feature")
+    assert g.state("feature")["checks"][0]["last"] == "42 checks passed"
+
+
+def test_gitleaks_stderr_summary_is_plain_text(repo: Path):
+    g, _ = make(
+        repo,
+        ["pass"],
+        check=[
+            sys.executable,
+            "-c",
+            "import sys; print('\\x1b[32mno leaks found\\x1b[0m',file=sys.stderr)",
+        ],
+    )
+    assert g.trial("feature")
+    assert g.state("feature")["checks"][0]["last"] == "no leaks found"
+    assert "\x1b" not in g._state_file("feature").with_suffix(".log").read_text()
+
+
+def test_reopen_updates_existing_pr_title_and_body(repo: Path, tmp_path: Path):
+    g, fake = make(repo, ["pass"])
+    assert g.trial("feature")
+    review = review_record(g, tmp_path)
+    body = tmp_path / "body.md"
+    body.write_text("old head and tree")
+    g.open("feature", "old title", body, review, wait=False)
+    fake.existing_pr = True
+    body.write_text("new head and tree")
+    g.open("feature", "new title", body, review, wait=False)
+    edits = [call for call in fake.calls if call[:2] == ["pr", "edit"]]
+    assert len(edits) == 1 and edits[0][2:5] == ["7", "--title", "new title"]
+    assert Path(edits[0][-1]).read_text() == "new head and tree"
+    assert len([call for call in fake.calls if call[:2] == ["pr", "create"]]) == 1
+
+
+def test_every_posted_text_is_free_of_home_paths(repo: Path, tmp_path: Path):
+    g, fake = make(repo, ["pass"])
+    assert g.trial("feature")
+    path = review_record(g, tmp_path)
+    record = json.loads(path.read_text())
+    record["summary"] = f"Source {Path.home()}/source.py and /home/example/work/source.py"
+    path.write_text(json.dumps(record))
+    body = tmp_path / "body.md"
+    body.write_text("Built in /home/example/work, /Users/example/work and ~/work.")
+    g.open("feature", "Fix /home/example/work/source.py", body, path, wait=False)
+    squash = tmp_path / "squash.txt"
+    squash.write_text("Source /home/example/work/source.py\n\nBody /Users/example/work/source.py")
+    g.land("feature", squash)
+    for call in fake.calls:
+        for flag in ("--title", "--body", "--subject", "--body-file"):
+            if flag not in call:
+                continue
+            text = call[call.index(flag) + 1]
+            if flag == "--body-file":
+                text = Path(text).read_text()
+            assert "/home/" not in text and "/Users/" not in text and "~/" not in text
+            assert str(Path.home()) not in text
+    assert json.loads(path.read_text())["summary"] == record["summary"]  # local evidence preserved
