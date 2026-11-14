@@ -1,11 +1,12 @@
 """Only admitted agent configuration is committed; setup stays runnable.
 
 Claude Code, Codex, Antigravity and DeepSeek Harness each load configuration from the folder they
-start in: MCP servers, hooks, plugins and feature switches. Claude Code and Codex have MCP off
-machine-wide (``deploy/wsl/meridian.user-data``); Antigravity has no such setting. So the only
-agent files git may list are shared skills and their Claude links, plus ADR 0019's exact
-OMC stage schedule (checked below). Runtime state remains forbidden. This catches accidental
-commits; branches outside the owner's sessions stay out under docs/HANDBOOK.md (Rules).
+start in: MCP servers, hooks, plugins and feature switches. Claude Code has MCP off machine-wide
+and Codex allows only the servers ADR 0018 names (``deploy/wsl/meridian.user-data``);
+Antigravity has no such setting. So the only agent files git may list are shared skills and
+their Claude links, plus ADR 0019's exact OMC stage schedule (checked below). Runtime state
+remains forbidden. This catches accidental commits; branches outside the owner's sessions stay
+out under docs/HANDBOOK.md (Rules).
 """
 
 import hashlib
@@ -31,13 +32,15 @@ DEPLOY = REPO_ROOT / "deploy" / "wsl"
 GH_NEWEST_FIX = (2, 97, 0)
 
 # Folders the four agents (or Gemini CLI, whose layout Antigravity shares) read in a project.
-# Also the project folders of serena (the MCP server dsh runs, ADR 0016) and beads.
+# Also the project folders of serena (the MCP server dsh runs, ADR 0016, and Codex's, ADR 0018),
+# oh-my-codex (ADR 0018) and beads.
 AGENT_FOLDERS = (
     ".agents/",
     ".claude/",
     ".codex/",
     ".gemini/",
     ".dsh/",
+    ".omx/",
     ".serena/",
     ".beads/",
     ".omc/",
@@ -80,6 +83,7 @@ def test_no_agent_configuration_is_committed():
         ".agents/plugins/x/plugin.json",
         ".gemini/settings.json",
         ".dsh/cordis.patch.yml",
+        ".omx/setup-scope.json",
         ".serena/project.yml",
         ".beads/issues.db",
         ".omc/state/run.json",
@@ -381,6 +385,26 @@ def setup_function_body(name):
     return (DEPLOY / "setup.sh").read_text().split(f"{name}() {{\n", 1)[1].split("\n}", 1)[0]
 
 
+def setup_constant(name):
+    found = re.search(
+        rf"^{name}=(\S+|'[^']*'|\"[^\"]*\")$", (DEPLOY / "setup.sh").read_text(), re.M
+    )
+    assert found, f"setup.sh has no {name}"
+    return found[1].strip("'\"")
+
+
+DOCS_MCP = setup_constant("CODEX_DOCS_MCP")
+PONYTAIL = f"ponytail@{setup_constant('PONYTAIL_MARKET')}"
+SERENA_ARGS = setup_constant("SERENA_MCP_ARGS")
+SERENA_TOOLS = setup_constant("SERENA_TOOLS")
+SERENA = {
+    "command": "serena",
+    "args": ["start-mcp-server", "--project-from-cwd", "--context=codex"],
+    "startup_timeout_sec": 15,
+    "env": {"SERENA_USAGE_REPORTING": "false"},
+}
+
+
 def run_config_writer(name, tmp_path, helpers=(), model="model"):
     # Extract only configuration writers; no installer, agent or service is started.
     # Replace the home reference in the extracted code, leaving the real HOME untouched.
@@ -394,7 +418,8 @@ def run_config_writer(name, tmp_path, helpers=(), model="model"):
             "-o",
             "pipefail",
             "-c",
-            f"fixture_root=$1\nCODEX_MODEL=model\nDSH_MODEL={model}\n"
+            f"fixture_root=$1\nCODEX_MODEL=model\nDSH_MODEL={model}\nCODEX_DOCS_MCP={DOCS_MCP}\n"
+            f"SERENA_MCP_ARGS='{SERENA_ARGS}'\nSERENA_TOOLS='{SERENA_TOOLS}'\n"
             'fail() { echo "$*" >&2; exit 1; }\n' + functions + f"\n{name}",
             "test-config",
             str(tmp_path),
@@ -403,6 +428,129 @@ def run_config_writer(name, tmp_path, helpers=(), model="model"):
         capture_output=True,
         text=True,
     )
+
+
+def write_codex_config(tmp_path):
+    run_config_writer("codex_config", tmp_path, ("codex_config_file", "codex_setting"))
+
+
+ORCA_EVENTS = (
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PermissionRequest",
+    "PostToolUse",
+    "SubagentStart",
+    "SubagentStop",
+    "Stop",
+    "Interrupt",
+)
+OMX_EVENTS = (
+    "SessionStart",
+    "PreToolUse",
+    "PostToolUse",
+    "UserPromptSubmit",
+    "PreCompact",
+    "PostCompact",
+    "SubagentStop",
+    "Stop",
+)
+
+
+def hook_label(event):
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower()
+
+
+def codex_trust_hash(event, handler, matcher=None):
+    # Codex's hook trust identity, written out again for the fixtures (hooks crate, discovery.rs
+    # `hook_hash`, and config/src/fingerprint.rs at rust-v0.167.2 and rust-v0.169.0).
+    timeout = handler.get("timeout")
+    if event in ("SessionEnd", "Interrupt"):
+        timeout = min(max(timeout or 1, 1), 3)
+    else:
+        timeout = max(600 if timeout is None else timeout, 1)
+    normalized = {"type": "command", "command": handler["command"], "timeout": timeout}
+    normalized["async"] = bool(handler.get("async"))
+    if "statusMessage" in handler:
+        normalized["statusMessage"] = handler["statusMessage"]
+    identity = {"event_name": hook_label(event), "hooks": [normalized]}
+    if matcher is not None and event not in ("UserPromptSubmit", "Stop", "Interrupt"):
+        identity["matcher"] = matcher
+    text = json.dumps(identity, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(text.encode()).hexdigest()
+
+
+def bundle_hash(root):
+    # codex-rs/hooks/src/engine/plugin_fingerprint.rs: names and contents, depth first, sorted.
+    digest = hashlib.sha256(b"codex-plugin-bundle-v1")
+    pending = [root]
+    while pending:
+        path = pending.pop()
+        name = str(path.relative_to(root)).encode() if path != root else b""
+        digest.update(len(name).to_bytes(8, "little") + name)
+        if path.is_dir():
+            digest.update(b"directory")
+            pending.extend(sorted(path.iterdir(), key=lambda p: p.name.encode(), reverse=True))
+        else:
+            data = path.read_bytes()
+            digest.update(b"file" + len(data).to_bytes(8, "little") + data)
+    return "sha256:" + digest.hexdigest()
+
+
+PONYTAIL_HOOKS = {
+    "SessionStart": [
+        {
+            "matcher": "startup|resume",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "node a.js",
+                    "timeout": 15,
+                    "statusMessage": "Loading",
+                }
+            ],
+        }
+    ],
+    "SubagentStart": [{"hooks": [{"type": "command", "command": "node b.js", "timeout": 15}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "node c.js", "timeout": 15}]}],
+}
+
+
+def codex_home(tmp_path, ponytail_trusted=0, orca=True):
+    # What setup leaves in ~/.codex: Orca's 9 hooks (on a fresh distro, not yet: Orca is set up
+    # after Codex), then oh-my-codex's 8 in the group after them, each with its trust entry at
+    # its current hash, the ponytail plugin's installed copy, and oh-my-codex's user file.
+    write_codex_config(tmp_path)
+    run_config_writer("omx_config", tmp_path)
+    home = tmp_path / ".codex"
+    hooks: dict[str, list] = {}
+    for event in ORCA_EVENTS if orca else ():
+        hooks.setdefault(event, []).append({"hooks": [{"command": ": orca-agent-hook-form=1"}]})
+    for event in OMX_EVENTS:
+        command = '"node" "/x/oh-my-codex/dist/scripts/codex-native-hook.js"'
+        hooks.setdefault(event, []).append({"hooks": [{"command": command}]})
+    (home / "hooks.json").write_text(json.dumps({"hooks": hooks}))
+    state = [
+        f'[hooks.state."{home}/hooks.json:{hook_label(event)}:{g}:0"]\n'
+        f'trusted_hash = "{codex_trust_hash(event, group["hooks"][0])}"\n'
+        for event, groups in hooks.items()
+        for g, group in enumerate(groups)
+    ]
+    plugin = home / "plugins/cache" / PONYTAIL.split("@")[1] / "ponytail" / "5.3.3"
+    (plugin / "hooks").mkdir(parents=True)
+    (plugin / "hooks/claude-codex-hooks.json").write_text(json.dumps({"hooks": PONYTAIL_HOOKS}))
+    (plugin / "README.md").write_text("ponytail\n")
+    content = bundle_hash(plugin)
+    for event in list(PONYTAIL_HOOKS)[:ponytail_trusted]:
+        group = PONYTAIL_HOOKS[event][0]
+        state.append(
+            f'[hooks.state."{PONYTAIL}:hooks/claude-codex-hooks.json:{hook_label(event)}:0:0"]\n'
+            f'trusted_hash = "{codex_trust_hash(event, group["hooks"][0], group.get("matcher"))}"\n'
+            f'trusted_content_hash = "{content}"\n'
+        )
+    with (home / "config.toml").open("a") as f:
+        f.write(f'\n[plugins."{PONYTAIL}"]\nenabled = true\n\n' + "\n".join(state))
+    return home / "config.toml"
 
 
 def drift_report(lines):
@@ -483,20 +631,22 @@ def test_the_upkeep_prompt_lands_through_the_gate_and_names_what_a_run_must_neve
     assert upkeep.rstrip().endswith('version_ge "$(orca_version)" "${ORCA_VERSION}" || cmd_orca')
 
 
-def codex_config_check(path):
+def codex_config_check(path, mode="full"):
     body = setup_function_body("check_codex")
-    program = body.split("\nimport sys\n", 1)[1].split("\nPY", 1)[0]
+    program = "import" + body.split("<<'PY'", 1)[1].split("\nimport", 1)[1].split("\nPY", 1)[0]
+    home = path.parent
     return subprocess.run(
-        [sys.executable, "-I", "-", str(path), "model"],
-        input="import sys\n" + program,
+        [sys.executable, "-I", "-", str(path), "model", str(home / "hooks.json")]
+        + [str(home / ".omx-config.json"), DOCS_MCP, PONYTAIL, SERENA_ARGS, mode],
+        input=program,
         capture_output=True,
         text=True,
         check=False,
     )
 
 
-def test_codex_startup_menu_is_disabled_in_new_and_existing_configs(tmp_path):
-    run_config_writer("codex_config_file", tmp_path)
+def test_codex_config_sets_the_stack_and_keeps_other_tables(tmp_path):
+    write_codex_config(tmp_path)
     path = tmp_path / ".codex/config.toml"
     original = path.read_text()
     assert tomllib.loads(original)["check_for_update_on_startup"] is False
@@ -506,29 +656,185 @@ def test_codex_startup_menu_is_disabled_in_new_and_existing_configs(tmp_path):
         '"check_for_update_on_startup" = true\n',
     ):
         text = original.replace("check_for_update_on_startup = false\n", setting)
-        text = text.replace("apps = false", "apps = true")
+        text = text.replace("apps = false", "apps = true").replace("plugins = true", "plugins = 0")
+        text = text.replace('model_reasoning_effort = "high"', 'model_reasoning_effort = "medium"')
+        text = text.replace(f'url = "{DOCS_MCP}"', 'url = "https://example.com/mcp"')
         text += (
             '\n[hooks.state.test]\ncommand = "keep"\n'
             '[projects."/example"]\ntrust_level = "trusted"\n'
         )
         path.write_text(text)
-        run_config_writer("codex_config", tmp_path, ("codex_config_file", "codex_setting_off"))
+        write_codex_config(tmp_path)
         expected = tomllib.loads(text)
         expected["check_for_update_on_startup"] = False
-        expected["features"]["apps"] = False
+        expected["model_reasoning_effort"] = "high"
+        expected["features"] |= {"apps": False, "plugins": True}
+        expected["mcp_servers"] = {"openaiDeveloperDocs": {"url": DOCS_MCP}, "serena": SERENA}
         assert tomllib.loads(path.read_text()) == expected
-        assert codex_config_check(path).returncode == 0
         once = path.read_bytes()
-        run_config_writer("codex_config", tmp_path, ("codex_config_file", "codex_setting_off"))
+        write_codex_config(tmp_path)
         assert path.read_bytes() == once
 
 
-@pytest.mark.parametrize("setting", ["", "check_for_update_on_startup = true\n"])
-def test_codex_check_rejects_a_startup_menu(tmp_path, setting):
-    run_config_writer("codex_config_file", tmp_path)
-    path = tmp_path / ".codex/config.toml"
-    path.write_text(path.read_text().replace("check_for_update_on_startup = false\n", setting))
+def test_codex_check_accepts_the_stack_and_waits_for_ponytails_hooks(tmp_path):
+    path = codex_home(tmp_path)
+    result = codex_config_check(path)
+    assert result.returncode == 0, result.stderr
+    assert "3 of ponytail's 3 hooks wait for the owner's /hooks" in result.stdout
+    path = codex_home(tmp_path / "trusted", ponytail_trusted=3)
+    result = codex_config_check(path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+
+ADD = "[analytics]"
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "named"),
+    [
+        ("check_for_update_on_startup = false\n", "", "check_for_update_on_startup"),
+        ("check_for_update_on_startup = false", "check_for_update_on_startup = true", "startup"),
+        ("apps = false", "apps = true", "[features] apps"),
+        ("plugins = true", "plugins = false", "[features] plugins"),
+        ('model_reasoning_effort = "high"', 'model_reasoning_effort = "medium"', "effort"),
+        (ADD, '[mcp_servers.broker]\ncommand = "broker-mcp"\n\n' + ADD, "MCP servers"),
+        (f'url = "{DOCS_MCP}"', 'url = "https://example.com/mcp"', "openaiDeveloperDocs"),
+        ('"--context=codex"', '"--context=agent"', "[mcp_servers.serena]"),
+        ('command = "serena"', 'command = "/tmp/serena"', "[mcp_servers.serena]"),
+        (
+            'SERENA_USAGE_REPORTING = "false"',
+            'SERENA_USAGE_REPORTING = "true"',
+            "[mcp_servers.serena]",
+        ),
+        (ADD, '[plugins."broker@example"]\nenabled = true\n\n' + ADD, "plugins ["),
+        (ADD, '[profiles.x.mcp_servers.y]\nurl = "https://example.com"\n\n' + ADD, "a profile"),
+        ('trusted_hash = "sha256:', 'trusted_hash = "sha256:0', "hooks without trust"),
+    ],
+)
+def test_codex_check_rejects_what_the_stack_does_not_name(tmp_path, old, new, named):
+    path = codex_home(tmp_path)
+    text = path.read_text()
+    assert old in text
+    path.write_text(text.replace(old, new, 1))
+    result = codex_config_check(path)
+    assert result.returncode != 0
+    assert named in result.stderr
+
+
+def test_codex_check_rejects_a_hook_that_is_neither_orcas_nor_oh_my_codexs(tmp_path):
+    path = codex_home(tmp_path)
+    hooks_file = path.parent / "hooks.json"
+    hooks = json.loads(hooks_file.read_text())
+    hooks["hooks"]["Stop"].append({"hooks": [{"command": "curl https://example.com"}]})
+    hooks_file.write_text(json.dumps(hooks))
+    with path.open("a") as f:
+        f.write(f'\n[hooks.state."{hooks_file}:stop:2:0"]\ntrusted_hash = "sha256:x"\n')
+    result = codex_config_check(path)
+    assert result.returncode != 0
+    assert "'unknown': 1" in result.stderr
+
+
+@pytest.mark.parametrize("change", ["remove", "team", "triage"])
+def test_codex_check_requires_oh_my_codex_team_mode_and_triage_off(tmp_path, change):
+    path = codex_home(tmp_path)
+    omx_file = path.parent / ".omx-config.json"
+    if change == "remove":
+        omx_file.unlink()
+    else:
+        settings = json.loads(omx_file.read_text())
+        if change == "team":
+            settings["teamMode"] = "enabled"
+        else:
+            settings["promptRouting"]["triage"]["enabled"] = True
+        omx_file.write_text(json.dumps(settings))
     assert codex_config_check(path).returncode != 0
+
+
+def test_omx_config_keeps_other_keys_and_is_stable(tmp_path):
+    path = tmp_path / ".codex/.omx-config.json"
+    path.parent.mkdir()
+    path.write_text(json.dumps({"teamMode": "enabled", "other": 1, "promptRouting": {"x": 2}}))
+    run_config_writer("omx_config", tmp_path)
+    assert json.loads(path.read_text()) == {
+        "teamMode": "disabled",
+        "other": 1,
+        "promptRouting": {"x": 2, "triage": {"enabled": False}},
+    }
+    once = path.read_bytes()
+    run_config_writer("omx_config", tmp_path)
+    assert path.read_bytes() == once
+
+
+def user_data_requirements():
+    # The literal block under the requirements file in the definition, read without the script.
+    lines = (DEPLOY / "meridian.user-data").read_text().splitlines()
+    start = lines.index("  - path: /etc/codex/requirements.toml")
+    start = lines.index("    content: |", start) + 1
+    block = []
+    for line in lines[start:]:
+        if line and not line.startswith("      "):
+            break
+        block.append(line[6:])
+    return "\n".join(block).rstrip("\n") + "\n"
+
+
+def test_codex_requirements_text_is_the_definitions_and_names_each_server(tmp_path):
+    function = setup_function_body("codex_requirements_text")
+    written = subprocess.run(
+        ["bash", "-c", f"f() {{\n{function}\n}}\nf $1", "x", str(DEPLOY / "meridian.user-data")],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert written == user_data_requirements()
+    requirements = tomllib.loads(written)
+    assert requirements["features"] == {"apps": False}
+    write_codex_config(tmp_path)
+    servers = tomllib.loads((tmp_path / ".codex/config.toml").read_text())["mcp_servers"]
+    # Codex compares the identity with the configured command or URL exactly.
+    assert requirements["mcp_servers"] == {
+        name: {"identity": {key: server[key] for key in ("url", "command") if key in server}}
+        for name, server in servers.items()
+    }
+
+
+def serena_config_check(tmp_path):
+    body = setup_function_body("serena_config_check")
+    program = body.split("<<'PY'\n", 1)[1].split("\nPY", 1)[0]
+    return subprocess.run(
+        [sys.executable, "-I", "-", str(tmp_path / ".serena/serena_config.yml"), SERENA_TOOLS],
+        input=program,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("", ""),
+        ("agent_interface: tools", "agent_interface: REPL"),
+        ("web_dashboard: false", "web_dashboard: true"),
+        ("web_dashboard_open_on_launch: false", "web_dashboard_open_on_launch: true"),
+        ("fixed_tools: [", "fixed_tools: [execute_shell_command, "),
+        ("projects: []", "projects: []\nincluded_optional_tools: [open_dashboard]"),
+        ("ls_path: .venv/bin/pyright-langserver", "ls_path: pyright-langserver"),
+    ],
+)
+def test_serena_config_serves_only_navigation_and_diagnostics(tmp_path, old, new):
+    pytest.importorskip("yaml")
+    run_config_writer("serena_config", tmp_path)
+    path = tmp_path / ".serena/serena_config.yml"
+    path.write_text(path.read_text().replace(old, new, 1))
+    assert (serena_config_check(tmp_path).returncode == 0) == (old == new)
+
+
+def test_serena_tools_hold_no_shell_edit_or_memory_tool():
+    tools = SERENA_TOOLS.split(", ")
+    assert len(tools) == 7
+    assert all(t.startswith(("get_", "find_")) for t in tools), tools
 
 
 def test_dsh_writes_home_wide_guide_completion_and_preserves_other_state(tmp_path):
@@ -1028,6 +1334,118 @@ def test_the_gitleaks_check_fails_when_missing_or_another_version(tmp_path):
     assert installed.returncode == 1 and "is not 8.30.1" in installed.stderr
 
 
+def test_the_install_check_lets_a_fresh_distro_finish_before_orca_prepares_codex(tmp_path):
+    # `setup.sh agents` runs cmd_codex before cmd_orca: Orca's hooks are not there yet.
+    path = codex_home(tmp_path, orca=False)
+    result = codex_config_check(path, "install")
+    assert result.returncode == 0, result.stderr
+    assert "Orca's 9 Codex hooks are not there yet" in result.stdout
+    assert "wait for the owner's /hooks" in result.stdout
+    # agents-check still requires them.
+    assert "hooks.json entries" in codex_config_check(path).stderr
+    # Installed and trusted later, both checks pass.
+    path = codex_home(tmp_path / "later")
+    assert codex_config_check(path, "install").returncode == 0
+    assert codex_config_check(path).returncode == 0
+
+
+@pytest.mark.parametrize(
+    "break_", ["untrusted omx hook", "unknown hook", "no hooks.json", "orca partly"]
+)
+def test_the_install_check_still_rejects_what_setup_did_not_write(tmp_path, break_):
+    path = codex_home(tmp_path, orca=False)
+    hooks_file = path.parent / "hooks.json"
+    hooks = json.loads(hooks_file.read_text())
+    if break_ == "untrusted omx hook":
+        path.write_text(
+            path.read_text().replace('trusted_hash = "sha256:', 'trusted_hash = "sha256:0', 1)
+        )
+    elif break_ == "unknown hook":
+        hooks["hooks"]["Stop"].append({"hooks": [{"command": "curl https://example.com"}]})
+    elif break_ == "orca partly":
+        hooks["hooks"]["Stop"].insert(0, {"hooks": [{"command": ": orca-agent-hook-form=1"}]})
+    if break_ == "no hooks.json":
+        hooks_file.unlink()
+    else:
+        hooks_file.write_text(json.dumps(hooks))
+    result = codex_config_check(path, "install")
+    assert result.returncode != 0
+    assert "hooks" in result.stderr
+
+
+def test_cmd_codex_runs_the_install_check_and_agents_check_the_full_one():
+    assert setup_function_body("cmd_codex").rstrip().endswith("check_codex install")
+    script = (DEPLOY / "setup.sh").read_text()
+    agents_check = script.split("  agents-check)\n", 1)[1].split(";;", 1)[0]
+    assert re.search(r"^\s*check_codex$", agents_check, re.M)
+
+
+def set_codex(path, name, table, value):
+    body = setup_function_body("codex_setting")
+    program = body.split("<<'PY'", 1)[1].split("\n", 1)[1].split("\nPY", 1)[0]
+    return subprocess.run(
+        [sys.executable, "-I", "-", str(path), name, table, value],
+        input=program,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize(
+    "before",
+    [
+        # A multi-line array, one with a nested array whose lines open with "[", a comment inside.
+        '[mcp_servers.serena]\nargs = [\n  "start-mcp-server",\n  "--context=agent",\n]\n'
+        'command = "serena"\n',
+        '[mcp_servers.serena]\nargs = [\n  ["x"],\n  # old\n  "y",\n]\ncommand = "serena"\n',
+        '[mcp_servers.serena]\nargs = """\nmulti\nline\n"""\ncommand = "serena"\n',
+    ],
+)
+def test_the_setting_writer_replaces_a_multi_line_value_whole(tmp_path, before):
+    path = tmp_path / "config.toml"
+    after = '\n[hooks.state."/x/hooks.json:stop:0:0"]\ntrusted_hash = "sha256:x"\n'
+    path.write_text('model = "m"\n\n' + before + after)
+    result = set_codex(path, "args", "mcp_servers.serena", SERENA_ARGS)
+    assert result.returncode == 0, result.stderr
+    cfg = tomllib.loads(path.read_text())
+    assert cfg["mcp_servers"]["serena"] == {"args": SERENA["args"], "command": "serena"}
+    assert cfg["hooks"]["state"] == {"/x/hooks.json:stop:0:0": {"trusted_hash": "sha256:x"}}
+    once = path.read_bytes()
+    assert set_codex(path, "args", "mcp_servers.serena", SERENA_ARGS).returncode == 0
+    assert path.read_bytes() == once
+
+
+@pytest.mark.parametrize(
+    "env",
+    [
+        'env = { SERENA_USAGE_REPORTING = "true", OTHER = "keep" }\n',
+        'env = { OTHER = "keep" }\n',
+        'env.SERENA_USAGE_REPORTING = "true"\nenv.OTHER = "keep"\n',
+        '\n[mcp_servers.serena.env]\nSERENA_USAGE_REPORTING = "true"\nOTHER = "keep"\n',
+    ],
+)
+def test_the_setting_writer_sets_a_key_of_an_inline_or_dotted_env_table(tmp_path, env):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[mcp_servers.serena]\ncommand = "serena"\n' + env + "\n[analytics]\nenabled = false\n"
+    )
+    result = set_codex(path, "SERENA_USAGE_REPORTING", "mcp_servers.serena.env", '"false"')
+    assert result.returncode == 0, result.stderr
+    cfg = tomllib.loads(path.read_text())
+    assert cfg["mcp_servers"]["serena"]["env"] == {
+        "SERENA_USAGE_REPORTING": "false",
+        "OTHER": "keep",
+    }
+    assert cfg["analytics"] == {"enabled": False}
+    once = path.read_bytes()
+    assert (
+        set_codex(path, "SERENA_USAGE_REPORTING", "mcp_servers.serena.env", '"false"').returncode
+        == 0
+    )
+    assert path.read_bytes() == once
+
+
 OMC_ADAPTER = DEPLOY / "meridian-omc.py"
 
 
@@ -1322,7 +1740,7 @@ def test_omc_remove_cleans_only_its_new_runtime_version_cache(tmp_path):
 
 
 @pytest.mark.parametrize("event", ["SessionStart", "PreToolUse", "PostToolUseFailure"])
-def test_omc_checks_require_direct_commands_for_events_without_adapter_logic(tmp_path, event):
+def test_omc_checks_require_expected_commands_for_node_events(tmp_path, event):
     api, home, user = fake_omc_home(tmp_path)
     settings = api["read"](home / "settings.json")
     command = settings["hooks"][event][-1]["hooks"][0]
@@ -1510,6 +1928,90 @@ def test_ocr_comes_from_the_release_binary_not_the_self_updating_npm_package():
         .endswith("/releases/download/v${OCR_VERSION}/opencodereview-linux-amd64")
     )
     assert "@alibaba-group/open-code-review" not in (DEPLOY / "setup.sh").read_text()
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["command", "timeout", "matcher", "statusMessage", "async", "entry removed", "disabled"],
+)
+@pytest.mark.parametrize("owner", ["orca", "omx"])
+def test_codex_check_rejects_a_hook_changed_after_its_trust_entry_was_written(
+    tmp_path, owner, change
+):
+    # Codex compares the stored hash with the hook's current identity: a hook edited after
+    # approval keeps its entry but no longer runs, and the check must say so.
+    path = codex_home(tmp_path)
+    assert codex_config_check(path).returncode == 0
+    hooks_file = path.parent / "hooks.json"
+    hooks = json.loads(hooks_file.read_text())
+    group = hooks["hooks"]["PreToolUse"][0 if owner == "orca" else 1]
+    handler = group["hooks"][0]
+    if change == "command":
+        handler["command"] += " --changed"
+    elif change == "timeout":
+        handler["timeout"] = 30
+    elif change == "matcher":
+        group["matcher"] = "Bash"
+    elif change == "statusMessage":
+        handler["statusMessage"] = "new"
+    elif change == "async":
+        handler["async"] = True
+    hooks_file.write_text(json.dumps(hooks))
+    key = f'[hooks.state."{hooks_file}:pre_tool_use:{0 if owner == "orca" else 1}:0"]\n'
+    text = path.read_text()
+    assert key in text
+    if change == "entry removed":
+        text = re.sub(re.escape(key) + r'trusted_hash = "[^"]*"\n', "", text)
+    elif change == "disabled":
+        text = text.replace(key, key + "enabled = false\n")
+    path.write_text(text)
+    result = codex_config_check(path)
+    assert result.returncode != 0
+    assert "hooks without trust: ['PreToolUse" in result.stderr
+
+
+def test_a_hook_without_a_timeout_hashes_with_codexs_default_per_event(tmp_path):
+    # Interrupt (and SessionEnd) default to 1 second and are capped at 3; other events default
+    # to 600. An explicit value equal to the default keeps the same hash.
+    path = codex_home(tmp_path)
+    hooks_file = path.parent / "hooks.json"
+    hooks = json.loads(hooks_file.read_text())
+    hooks["hooks"]["Interrupt"][0]["hooks"][0]["timeout"] = 1
+    hooks["hooks"]["Stop"][0]["hooks"][0]["timeout"] = 600
+    hooks_file.write_text(json.dumps(hooks))
+    assert codex_config_check(path).returncode == 0
+    hooks["hooks"]["Interrupt"][0]["hooks"][0]["timeout"] = 9  # clamped to 3: another hash
+    hooks_file.write_text(json.dumps(hooks))
+    assert "Interrupt" in codex_config_check(path).stderr
+
+
+@pytest.mark.parametrize(
+    "stale", ["declaration", "stored hash", "content", "content entry missing"]
+)
+def test_a_stale_ponytail_trust_entry_still_shows_the_owners_reminder(tmp_path, stale):
+    path = codex_home(tmp_path, ponytail_trusted=3)
+    assert codex_config_check(path).stdout == ""
+    plugin = path.parent / "plugins/cache" / PONYTAIL.split("@")[1] / "ponytail" / "5.3.3"
+    if stale == "declaration":
+        hooks = json.loads((plugin / "hooks/claude-codex-hooks.json").read_text())
+        hooks["hooks"]["SubagentStart"][0]["hooks"][0]["command"] = "node other.js"
+        (plugin / "hooks/claude-codex-hooks.json").write_text(json.dumps(hooks))
+    elif stale == "content":
+        (plugin / "README.md").write_text("changed\n")
+    elif stale == "stored hash":
+        key = f'[hooks.state."{PONYTAIL}:hooks/claude-codex-hooks.json:subagent_start:0:0"]\n'
+        path.write_text(
+            path.read_text().replace(
+                key + 'trusted_hash = "sha256:', key + 'trusted_hash = "sha256:0'
+            )
+        )
+    else:
+        path.write_text(re.sub(r'trusted_content_hash = "[^"]*"\n', "", path.read_text(), count=1))
+    result = codex_config_check(path)
+    assert result.returncode == 0, result.stderr
+    # Any change to the installed copy changes its content hash, which all three entries hold.
+    waiting = 1 if stale in ("stored hash", "content entry missing") else 3
+    assert f"{waiting} of ponytail's 3 hooks wait for the owner's /hooks" in result.stdout
 
 
 def start_shim(*command: str) -> subprocess.Popen[bytes]:

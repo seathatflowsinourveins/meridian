@@ -46,6 +46,35 @@ AGENTS = {
     "writer",
 }
 WRAPPED = {"UserPromptSubmit", "PostToolUse", "Stop", "SessionEnd"}
+PRE_FILTER = "meridian-pre-tool-use.mjs"
+# Preload in the same Node process: the pinned emitter uses console.log(JSON).
+# Match only its complete Claude notice-only shape; preserve all other output.
+PRE_FILTER_SOURCE = r"""// Meridian adapter for OMC 5.8.4; upstream is unchanged (ADR 0019).
+const log = console.log.bind(console);
+const suffix = '\n\nRecommended: Delegate to executor agent instead:\n' +
+  '  Task(subagent_type="oh-my-claudecode:executor", model="sonnet", prompt="...")' +
+  '\n\nThis is a soft warning. Operation will proceed.';
+const bash = /^\[DELEGATION NOTICE\] Bash command may modify source files: /;
+const edit = /^\[DELEGATION NOTICE\] Direct (Edit|Write|edit|write) on source file: /;
+const keys = (value, names) => value && Object.keys(value).sort().join(',') === names;
+console.log = (...args) => {
+  if (args.length === 1 && typeof args[0] === 'string') {
+    try {
+      const value = JSON.parse(args[0]);
+      const hook = value?.hookSpecificOutput;
+      if (keys(value, 'continue,hookSpecificOutput') && value.continue === true &&
+          keys(hook, 'additionalContext,hookEventName') &&
+          hook.hookEventName === 'PreToolUse' &&
+          typeof hook.additionalContext === 'string' &&
+          (bash.test(hook.additionalContext) || edit.test(hook.additionalContext)) &&
+          hook.additionalContext.endsWith(suffix)) {
+        return log('{"continue":true,"suppressOutput":true}');
+      }
+    } catch { /* Unknown output passes through byte-for-byte. */ }
+  }
+  return log(...args);
+};
+"""
 ENV = {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1", "OMC_NOTIFY": "0", "OMC_OPENCLAW": "0"}
 INSTALL = ".meridian-omc-install.json"
 HOOKS = {
@@ -105,6 +134,8 @@ def hook_command(home, adapter, event, name):
     args = (
         ["python3", str(adapter), "hook", event, script] if event in WRAPPED else ["node", script]
     )
+    if event == "PreToolUse":
+        args = ["node", "--import", (home / "hooks" / PRE_FILTER).resolve().as_uri(), script]
     return shlex.join(args)
 
 
@@ -128,6 +159,8 @@ def stage(home, staging):
     """Seed upstream setup with hooks/status only, never auth or arbitrary env."""
     write(staging / "settings.json", foreign_settings(read(home / "settings.json"), home))
     prepare(staging, staging.parent / "config/claude-omc/config.jsonc")
+    (staging / "hooks").mkdir(exist_ok=True)
+    (staging / "hooks" / PRE_FILTER).write_text(PRE_FILTER_SOURCE)
 
 
 def owned_files(staging):
@@ -357,6 +390,7 @@ def configure(home, adapter):
 
 def check(home, user_config, adapter, require_orca=True):
     assert (home / INSTALL).exists(), "OMC absent (no Meridian ownership record)"
+    assert (home / "hooks" / PRE_FILTER).read_text() == PRE_FILTER_SOURCE, "OMC filter drift"
     settings = read(home / "settings.json")
     cfg = read(home / ".omc-config.json")
     assert cfg.get("hudEnabled") is False
@@ -384,7 +418,8 @@ def check(home, user_config, adapter, require_orca=True):
             assert any(".orca/agent-hooks/" in c for c in commands), f"missing Orca {event}"
         for name in names:
             command = hook_command(home, adapter, event, name)
-            assert commands.count(command) == 1, f"missing or duplicate OMC {event}/{name}"
+            matching = [c for c in commands if str(home / "hooks" / name) in c]
+            assert matching == [command], f"missing or duplicate OMC {event}/{name}"
             assert (home / "hooks" / name).is_file()
     marked = {p.parent.name for p in (home / "skills").glob("*/.omc-managed")}
     assert marked == SKILLS, "OMC skill set differs from admitted lifecycle"
