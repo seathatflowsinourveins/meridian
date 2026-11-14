@@ -108,7 +108,7 @@ Set `order_budget_rows_path` to an owner-held JSON file outside the tree or unde
 all fields and review each source and scope. Missing, invalid or fixture rows refuse without values.
 The documented budget is 180 requests per 60 s of Alpaca's 200, burst 18, with 429 backoff 1 s
 doubling to 30 s; this repo supplies no production values. Fake tests cover loading and pacing.
-A cancel costs two requests (read, DELETE); readers stop at the budget's page count.
+A cancel costs two requests (read, DELETE); readers stop at the budget's page count (90,000 orders).
 
 ## 6. Keys
 
