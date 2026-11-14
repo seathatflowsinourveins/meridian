@@ -1,9 +1,7 @@
 """Alpaca lane wiring and lifecycle against synthetic venue and quote streams."""
 
 import asyncio
-import gc
 import importlib
-from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -11,10 +9,11 @@ import pytest
 from alpaca_fakes import Rig, fill_activity, order_row, position_row, run, update
 from nautilus_trader.core import unix_nanos_to_iso8601
 from nautilus_trader.model import ClientOrderId, OrderSide, Price, Quantity
+from node_lifetime import live_nodes as live_nodes
 
 
 @pytest.fixture
-def node_module(monkeypatch):
+def node_module(monkeypatch, live_nodes):
     module = importlib.import_module("meridian.alpaca_node")
     real_config = module.LiveNodeConfig
     monkeypatch.setattr(
@@ -23,12 +22,7 @@ def node_module(monkeypatch):
     # Never construct a real credential reader or network transport in these tests.
     monkeypatch.setattr(module, "production_wiring", lambda *_: pytest.fail("production wiring"))
 
-    from meridian.alpaca_sessions import session_at
-
-    fixed = datetime.fromisoformat("2026-11-02T15:00:00+00:00")
-    monkeypatch.setattr(module, "session_ns", lambda _, calendar=None: session_at(fixed, calendar))
     yield module
-    gc.collect()
 
 
 def state():
@@ -80,13 +74,12 @@ def build(module, monkeypatch, mode="order", rig=None, when=None, lane_state=Non
     lane_state = lane_state or state()
 
     def test_clock(clock):
-        if when is None:
-            return clock
         from meridian.alpaca.reports import timestamp_ns
         from meridian.alpaca_sessions import session_ns
 
         monkeypatch.setattr(module, "session_ns", session_ns)
-        offset = timestamp_ns(when, "synthetic") - clock.timestamp_ns()
+        fixed = when or "2026-11-02T15:00:00+00:00"
+        offset = timestamp_ns(fixed, "synthetic") - clock.timestamp_ns()
         return SimpleNamespace(timestamp_ns=lambda: clock.timestamp_ns() + offset)
 
     quotes, captured = Quotes(), {}
