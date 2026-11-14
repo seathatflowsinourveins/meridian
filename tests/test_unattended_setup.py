@@ -108,7 +108,7 @@ def snapshot(root: Path) -> dict[str, tuple]:
 def test_install_enables_the_timers_and_a_second_run_changes_nothing(fake):
     repo, root, run = fake
     out, calls = run("unattended")
-    assert sum(c.startswith("uv sync --locked --no-dev") for c in calls) == 1
+    assert sum(c.startswith("uv sync --locked --no-default-groups ") for c in calls) == 1
     assert "systemctl daemon-reload" in calls
     for timer in TIMERS:
         assert f"systemctl add-wants timers.target {timer}" in calls
@@ -172,7 +172,19 @@ def test_a_failed_sync_is_never_activated_and_a_rerun_synchronises_again(fake):
     current = root / "opt/meridian/current"
     assert not current.exists() and not current.is_symlink()
     out, calls = run("unattended")
-    assert sum(c.startswith("uv sync --locked --no-dev") for c in calls) == 1
+    assert sum(c.startswith("uv sync --locked --no-default-groups ") for c in calls) == 1
     assert current.is_symlink() and (current / ".meridian-release-complete").exists()
     _, calls = run("unattended")
     assert not [c for c in calls if c.startswith("uv ")]
+
+
+def test_the_release_installs_no_dependency_group(fake):
+    """pyproject.toml makes `dev` and `research` default groups: `--no-dev` alone would still
+    install `research` into the service's environment."""
+    _, _, run = fake
+    _, calls = run("unattended")
+    (sync,) = [c for c in calls if c.startswith("uv sync")]
+    assert "--no-default-groups" in sync.split()
+    assert not {"--group", "--all-groups", "--dev", "--only-group"} & set(sync.split())
+    script = (ROOT / "deploy/wsl/setup.sh").read_text()
+    assert "--no-dev" not in script

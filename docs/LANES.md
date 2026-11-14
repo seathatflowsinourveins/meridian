@@ -131,7 +131,7 @@ sudo systemd-creds setup
 systemd-ask-password -n "Alpaca paper key id:" | sudo systemd-creds encrypt --with-key=host --name=alpaca-paper-key-id - /etc/credstore.encrypted/alpaca-paper-key-id
 systemd-ask-password -n "Alpaca paper secret key:" | sudo systemd-creds encrypt --with-key=host --name=alpaca-paper-secret-key - /etc/credstore.encrypted/alpaca-paper-secret-key
 ```
-`deploy/systemd/meridian-alpaca-paper.service` is prepared, not installed/enabled, and has no `[Install]` section. It runs as `paper`, loads both credentials by absolute path (missing files prevent startup), and runs only `python -m meridian.alpaca.credentials`: presence/format checks, no socket. M7 installs `/opt/meridian`. The loader refuses missing credentials; key values come only from their files, whose directory is named by `CREDENTIALS_DIRECTORY`.
+`deploy/systemd/meridian-alpaca-paper@.service`, the [unattended lane](#unattended-alpaca-lane-m7)'s template unit, has no `[Install]` section. It runs as `paper` and loads both credentials by absolute path (missing files prevent startup); the loader refuses missing credentials and reads key values only from the files in `CREDENTIALS_DIRECTORY`.
 
 From the repository root, in a distro terminal the owner started outside Orca, use the system
 manager (the existing encrypted credentials target it, not the per-user manager):
@@ -173,3 +173,14 @@ rows (also shown at the terminal), session/feed used to price the order, and onl
 Quotes are synthetic, generated in process: no market or recorded data, no real price.
 PASS means accepted, then cancelled, nothing filled and flat at stop; any fill means FAIL.
 Records go only to `runs/*-simulation.json`, never `evidence/`; it is offline and keyless.
+
+## Unattended Alpaca lane (M7)
+
+The owner chose unattended services for paper runs (2026-11-13). The owner's landing session enables them, on the owner's word, once this lane is on main: no worker and not the lead. The engine places every order; no agent types PAPER or reads a key.
+- **Install or update** (idempotent; sudo): `deploy/wsl/setup.sh unattended` puts the checked-out commit in `/opt/meridian/releases/<commit>` with no dependency group (`--no-default-groups`), marks it complete only after a successful sync, points `current` at it, creates the settings and rows files in `/etc/meridian-alpaca-paper/` from the templates if absent (root-owned, read by `paper`), `/var/lib/meridian-alpaca-paper` and the three units, then enables both timers. Keys: [Alpaca credentials](#alpaca-credentials). Fill the settings' nulls with sudo; the step sets none.
+- **Consent**: `unattended_orders_enabled: true` is the owner's standing consent; null or false refuses `order`. `restart` needs only the unit, credentials and settings.
+- **Window and schedule** (New York time): `order_window_open` is `alpaca_sessions.session_at` without calendar rows, the weekly 24/5 window; the engine still admits the order against the venue's calendar. The timers cover the real-time sessions only: `order` Mon..Fri 10:00 (regular, IEX) and Sun..Thu 22:00 (`Sun,Mon..Thu` in the timer; overnight, the next trade date), each after a `restart` at 09:45 and 21:45, plus a `restart` at 16:15. Pre-market and after-hours use delayed SIP, whose quote age is at least 15 minutes, so under an owner limit of 15 minutes or less those runs could never price, would fail and would hold every later order. A missed run is not caught up. On a venue holiday the order run places nothing, fails and holds.
+- **Refusals** (fixed text, nothing sent): not the unit with both credentials; settings or rows writable by `paper`; a second run at once; for `order`, no consent, a hold, or the window closed.
+- **Hold file** `/var/lib/meridian-alpaca-paper/hold`: every run writes it before the engine starts unless one exists, and removes only its own, after a pass; a failure, crash or timeout kill leaves it. It refuses `order`, not `restart`. Read the last record, settle the account by hand if needed, then `sudo rm` the hold.
+- **Watch**: `deploy/wsl/setup.sh unattended-check` (units, timers, last results, next runs, the hold); `sudo -u paper /opt/meridian/current/.venv/bin/python -m meridian.alpaca_unattended status` (last outcomes; exit 1 if the state is not readable); `journalctl -u 'meridian-alpaca-paper@*'`. Records (the lane's, plus `"unattended": true`) go to the state directory's `runs/` (full) and `evidence/` (scrubbed passes), never to this repository.
+- **Stop**: `sudo systemctl disable --now meridian-alpaca-order.timer`, set the consent to false, or leave a hold file. Not yet run: the install, the credentials as `paper`, an unattended run.

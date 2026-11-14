@@ -70,7 +70,7 @@ Omitted: modify/successor lineage, trailing stops and exit guard (protection, M4
 
 ## 6. Keys
 
-See [owner credential setup and the prepared unit](LANES.md#alpaca-credentials).
+See [owner credential setup and the unit](LANES.md#alpaca-credentials).
 
 ## 7. Replay data on the Sextant disk
 

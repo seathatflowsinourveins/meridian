@@ -1,8 +1,9 @@
-# Reconcile only, before the order run and after the close; no [Install]: the owner enables it.
+# Reconcile only: before each order run and after the close. No [Install]: see the order timer.
 [Unit]
 Description=Meridian Alpaca paper lane: unattended restart (reconcile only)
 
 [Timer]
 OnCalendar=Mon..Fri 09:45 America/New_York
 OnCalendar=Mon..Fri 16:15 America/New_York
+OnCalendar=Sun,Mon..Thu 21:45 America/New_York
 Unit=meridian-alpaca-paper@restart.service

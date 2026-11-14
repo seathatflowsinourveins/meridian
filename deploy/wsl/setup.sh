@@ -266,7 +266,7 @@ cmd_unattended() {
     cache="$(mktemp -d)"
     # The interpreter goes under /opt too: `paper` cannot read a home (ProtectHome=yes).
     sudo env UV_CACHE_DIR="${cache}" UV_PYTHON_INSTALL_DIR="${UNATTENDED_ROOT}/python" \
-      "${HOME}/.local/bin/uv" sync --locked --no-dev --managed-python --project "${release}"
+      "${HOME}/.local/bin/uv" sync --locked --no-default-groups --managed-python --project "${release}"
     sudo rm -rf "${cache}"
     sudo touch "${release}/.meridian-release-complete"
   fi

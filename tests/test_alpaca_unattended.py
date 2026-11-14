@@ -7,7 +7,7 @@ import json
 import os
 import re
 from contextlib import nullcontext
-from datetime import UTC, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 
 import pytest
@@ -15,6 +15,7 @@ from order_budget_fixtures import control_rows
 
 from meridian import alpaca_lane, alpaca_node, alpaca_unattended, ibkr_paper
 from meridian.alpaca.credentials import PaperKeys
+from meridian.alpaca_sessions import NEW_YORK, session_at
 
 ROOT = Path(__file__).resolve().parents[1]
 SYSTEMD = ROOT / "deploy" / "systemd"
@@ -105,6 +106,7 @@ def fake_node(result: str = "pass"):
         if order:
             record.order_built(type="LIMIT", time_in_force="DAY", side="BUY", quantity="1")
             record.event("OrderAccepted", 1)
+            record.data["venue_working_seen"] = True  # venue `new` proved routing
             record.event("OrderFilled" if result == "fill" else "OrderCanceled", 2)
         record.reason("fake", "private-engine-text")
 
@@ -176,15 +178,17 @@ def test_consent_is_only_the_literal_true(unit, capsys, consent):
 @pytest.mark.parametrize(
     ("now", "inside"),
     [
-        (datetime(2026, 11, 16, 14, 30, tzinfo=UTC), True),  # Monday 09:30 New York
-        (datetime(2026, 11, 16, 14, 29, tzinfo=UTC), False),  # 09:29
-        (datetime(2026, 11, 16, 20, 54, tzinfo=UTC), True),  # 15:54
-        (datetime(2026, 11, 16, 20, 55, tzinfo=UTC), False),  # 15:55
+        (datetime(2026, 11, 16, 15, 0, tzinfo=UTC), True),  # Monday 10:00 New York, regular
+        (datetime(2026, 11, 16, 14, 29, tzinfo=UTC), True),  # 09:29, pre-market
+        (datetime(2026, 11, 17, 0, 59, tzinfo=UTC), True),  # Monday 19:59, after hours
+        (datetime(2026, 11, 16, 3, 0, tzinfo=UTC), True),  # Sunday 22:00, overnight
         (datetime(2026, 11, 14, 15, 0, tzinfo=UTC), False),  # Saturday 10:00
+        (datetime(2026, 11, 14, 1, 0, tzinfo=UTC), False),  # Friday 20:00, the week's end
+        (datetime(2026, 11, 16, 0, 59, tzinfo=UTC), False),  # Sunday 19:59
         (datetime(2026, 7, 13, 14, 0, tzinfo=UTC), True),  # Monday 10:00 EDT
     ],
 )
-def test_order_runs_only_in_the_fill_window(unit, monkeypatch, capsys, now, inside):
+def test_order_runs_only_in_the_24_5_window(unit, monkeypatch, capsys, now, inside):
     monkeypatch.setattr(alpaca_unattended, "_now", lambda: now)
     run, calls = fake_node()
     monkeypatch.setattr(alpaca_node, "run", run)
@@ -196,11 +200,11 @@ def test_order_runs_only_in_the_fill_window(unit, monkeypatch, capsys, now, insi
     assert alpaca_unattended.main(["restart"], unit) == 0
 
 
-def test_the_window_is_one_function_with_one_caller_defaulting_to_the_fill_window():
-    assert (time(9, 30), time(15, 55)) == ibkr_paper.FILL_WINDOW
+def test_the_window_is_one_function_with_one_caller_on_the_session_module():
     source = Path(alpaca_unattended.__file__).read_text()
     assert source.count("order_window_open(") == 2  # the definition and the gate
-    assert source.count("in_regular_hours(") == 1
+    assert source.count("session_at(") == 1 and "in_regular_hours" not in source
+    assert "ibkr_paper" not in source
 
 
 def test_the_gate_asks_only_the_window_function(unit, monkeypatch):
@@ -371,18 +375,41 @@ def test_the_service_is_a_oneshot_with_unit_directories_and_no_install():
 
 
 @pytest.mark.parametrize("mode", ["restart", "order"])
-def test_each_timer_starts_its_instance_on_weekdays(mode):
+def test_each_timer_starts_its_instance_inside_the_24_5_week(mode):
     rows = unit_rows(TIMERS[mode])
     assert ("[Timer]", "Unit", f"meridian-alpaca-paper@{mode}.service") in rows
     calendars = [value for _, key, value in rows if key == "OnCalendar"]
-    assert calendars and all(c.startswith("Mon..Fri ") for c in calendars)
-    assert all(c.endswith(" America/New_York") for c in calendars)
+    assert calendars and all(c.endswith(" America/New_York") for c in calendars)
     assert "Persistent" not in {key for _, key, _ in rows}  # a missed run is not caught up
     if mode == "order":
-        (calendar,) = calendars  # one order run per trading day
-        hour, minute = map(int, calendar.split()[1].split(":"))
-        start, end = ibkr_paper.FILL_WINDOW
-        assert start <= time(hour, minute) < end
+        # Each line fires only in a real-time session: regular (IEX) or overnight. Pre-market
+        # and after-hours quotes are delayed SIP and age at least 15 minutes.
+        sessions = set()
+        for calendar in calendars:
+            days, clock, _ = calendar.split()
+            hour, minute = map(int, clock.split(":"))
+            for day in WEEK:
+                if day.strftime("%a") in expand(days):
+                    when = datetime.combine(day, time(hour, minute), NEW_YORK)
+                    session = session_at(when)
+                    assert session is not None, (calendar, day)
+                    sessions.add(session.name)
+        assert sessions == {"regular", "overnight"}
+
+
+# Sunday 2026-11-15 to Saturday 2026-11-21, one of each weekday.
+WEEK = [date(2026, 11, 15) + timedelta(days=n) for n in range(7)]
+DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+
+def expand(spec: str) -> set[str]:
+    out = set()
+    for part in spec.split(","):
+        first, _, last = part.partition("..")
+        i, j = DAYS.index(first), DAYS.index(last or first)
+        assert i <= j, f"systemd weekday ranges do not wrap: {part}"
+        out.update(DAYS[i : j + 1])
+    return out
 
 
 def function_body(script: str, name: str) -> str:

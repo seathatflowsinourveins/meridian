@@ -23,8 +23,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from meridian import ibkr_paper
 from meridian.alpaca_lane import Preflight, Refused, RunRecord, preflight
+from meridian.alpaca_sessions import session_at
 
 RUN_MODES = ("restart", "order")
 SETTINGS_NAME = "alpaca-lane.json"
@@ -46,10 +46,10 @@ _now: Callable[[], datetime] = lambda: datetime.now(UTC)  # noqa: E731 (replaced
 def order_window_open(now: datetime) -> bool:
     """The one place the unattended order window is decided; `gate` is its only caller.
 
-    Today the regular session the IBKR lane's fill mode uses: weekdays 09:30 to 15:55 New York
-    time, with no holiday calendar. For 24/5, point this at the session module's function.
+    Alpaca's 24/5 weekly window from `meridian.alpaca_sessions`, without calendar rows: an
+    offline preflight. The engine then admits the order only against the venue's calendar.
     """
-    return ibkr_paper.in_regular_hours(now)
+    return session_at(now) is not None
 
 
 def service_dirs(environ: Mapping[str, str]) -> tuple[Path, Path]:
