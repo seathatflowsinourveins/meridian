@@ -354,3 +354,5 @@ two adopted ones, You should know and claude-hud, have their rows under "Agent r
   `package_upgrade` has not been applied to the running instance: 133 package upgrades wait
   until the Gateway session can be interrupted, and Ubuntu's unattended security upgrades stay
   on as the image ships them.
+
+| Clean landing review, lock and trigger precheck (`.agents/skills/lead/scripts/`) | codex-cli 0.167.2; Claude Code headless CLI; oh-my-codex 0.22.6 detector; Python fcntl/socket over the shared flock | https://code.claude.com/docs/en/headless ; https://github.com/Yeachan-Heo/oh-my-codex/tree/v0.22.6/src/hooks ; local `codex exec review --help` | 2026-11-14 | wraps upstream final-message output and the installed detector; unknown review prose fails closed, no copied keyword list; evidence and real example in [clean-landing](docs/adr/data/clean-landing.md); revisit 2027-02-14 or on CLI/detector upgrade | own integration |
