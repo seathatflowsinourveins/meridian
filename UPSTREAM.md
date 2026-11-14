@@ -248,6 +248,14 @@ Notes on the order budget, measured by the soak (`evidence/M2-order-budget-*-soa
 | Alpaca paper market calendar | current Trading API v2 reference | https://docs.alpaca.markets/us/reference/legacycalendar | 2026-11-13 | budgeted calendar read for holidays, regular and full-session bounds including early closes; no market-data or trading service contacted here | upstream |
 | `meridian/alpaca_sessions.py`, session feed rollover and overnight guards | this repo | pages in the five preceding rows; installed pinned `StockDataStream` example/hooks | 2026-11-13 | shared weekly scheduler window plus calendar-aware admission; JSON prices-only rollover, honest delayed age, strict overnight flags, routed-before-cancel and session/feed records; fake tests only | own design |
 
+## Strategy template (milestone M4 groundwork)
+
+| Component | Version or commit | Source URL (read) | Date read | Used for | Origin |
+|---|---|---|---|---|---|
+| Upstream example `EMACrossTrailingStop` (read, not copied), the engine's `OrderEmulator`, `TRAILING_STOP_LIMIT` and `AverageTrueRange` (nothing new installed) | NautilusTrader 2.0.0rc9, tag commit da6b57aefdd62b44f675e434ffcfefca7f4025dd | https://github.com/nautechsystems/nautilus_trader/blob/da6b57aefdd62b44f675e434ffcfefca7f4025dd/python/tests/strategies/acceptance.py#L515-L700 ; https://github.com/nautechsystems/nautilus_trader/blob/da6b57aefdd62b44f675e434ffcfefca7f4025dd/docs/concepts/orders/emulated.md ; https://github.com/nautechsystems/nautilus_trader/blob/da6b57aefdd62b44f675e434ffcfefca7f4025dd/crates/indicators/src/volatility/atr.rs#L143-L170 | 2026-11-13 | the pattern of `meridian/strategy_template/`: after an entry fills, an emulated trailing stop with offset ATR x multiple. Changed: many symbols, `TRAILING_STOP_LIMIT` (released as a DAY LIMIT), long only, quotes instead of bars, re-entry rules. The emulator does the ratchet and the release; ATR measures each symbol | upstream |
+| `meridian/strategy_template/` (template, simulation) and `tests/test_strategy_template.py` | this repo | n/a | 2026-11-13 | one state machine per symbol, fast-exit re-pricing, the handbook's re-entry rules, action counts | own design |
+| Broker API rate limits (read for the M4 rate targets) | n/a | https://alpaca.markets/support/usage-limit-api-calls ; https://docs.alpaca.markets/docs/rate-limits ; https://interactivebrokers.github.io/tws-api/order_limitations.html ; https://www.interactivebrokers.com/campus/ibkr-api-page/web-api-trading/ | 2026-11-13 | Alpaca: 200 requests a minute per account; IBKR TWS API: 50 messages a second, so at most 50 orders a second; IBKR Web API: 10 requests a second per session. No budget changed | upstream |
+
 ## Evidence ADRs (plans 8.6 and 8.7)
 
 One row per component that an evidence ADR in `docs/adr/` assessed, whatever it decided: the
