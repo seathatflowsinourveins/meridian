@@ -315,6 +315,11 @@ implement `entry_signal` (and `rank`, `confidence`, `reclaim_qualified` for re-e
 means wait), and supply every `TemplateParams` value from configuration: there are no defaults.
 The package holds the template (`strategy.py`, `params.py`, `actions.py`) and its offline
 simulation, `uv run python -m meridian.strategy_template.sim [--copies N]`. Not yet in a lane.
+The simulation now gates entries with the [screener universe](m4-universe.md): Alpaca movers
+intersected with most-actives, lane permission, price/volume floors and a count cap. Lists
+apply strictly after receipt, replace prior membership, and expire; outside-hours freshness
+is unknown and cannot admit entries. Parameters come from the owner’s local JSON; the deploy
+template holds null placeholders. Data reads share a separate 200/minute budget, not order pacing.
 
 1. Start from an upstream template: the strategy template above, a NautilusTrader example or
    built-in strategy at the pinned version, or a cited published method. Name it in the strategy file's docstring (repository,
