@@ -21,7 +21,7 @@ from meridian.alpaca.reports import timestamp_ns
 
 STAMP = "2026-11-02T14:30:00.123456789Z"
 EVENT = timestamp_ns(STAMP, "synthetic")
-# Invented test values, including the lot size; never a calibrated or venue row.
+# Invented test values; never a calibrated or venue row.
 QUOTE = '[{"T":"q","S":"AAPL","bp":100.1234,"ap":100.1235,"bs":3,"as":4,"t":"' + STAMP + '"}]'
 EQUITY = parse_equity({"symbol": "AAPL", "class": "us_equity"}, ts_init=EVENT)
 KEYS = PaperKeys("synthetic-key-id", "synthetic-secret")
@@ -90,7 +90,6 @@ def config(data, **overrides):
     return data.AlpacaQuoteConfig(
         **{
             "universe": [str(AAPL)],
-            "round_lot_sizes": {str(AAPL): 100},
             **overrides,
         }
     )
@@ -146,7 +145,7 @@ def test_subscription_exact_quote_age_and_unsubscribe(data, monkeypatch):
         assert tick.instrument_id == AAPL
         assert tick.bid_price.as_decimal() == Decimal("100.1234")
         assert tick.ask_price.as_decimal() == Decimal("100.1235")
-        assert tick.bid_size.as_decimal() == 300 and tick.ask_size.as_decimal() == 400
+        assert tick.bid_size.as_decimal() == tick.ask_size.as_decimal() == 0
         assert tick.ts_event == EVENT and tick.ts_init == EVENT + 10
         assert r.client.quote_age_ns(AAPL) == 10
         r.clock.ns += 100
@@ -407,4 +406,25 @@ def test_failed_subscription_send_invalidates_data(data, monkeypatch, action):
 def test_basic_plan_symbol_cap(data):
     universe = [f"S{i}.ALPACA" for i in range(31)]
     with pytest.raises(ValueError, match="30"):
-        config(data, universe=universe, round_lot_sizes={s: 100 for s in universe})
+        config(data, universe=universe)
+
+
+@pytest.mark.parametrize("sizes", [(0, 0), (3, 4), (999999, 1)])
+def test_quote_sizes_are_not_carried_whatever_the_frame_says(data, monkeypatch, sizes):
+    async def check():
+        r = rig(data, monkeypatch)
+        await subscribed(r)
+        frame = QUOTE.replace('"bs":3', f'"bs":{sizes[0]}').replace('"as":4', f'"as":{sizes[1]}')
+        r.socket.frames.put_nowait(frame)
+        await settle()
+        (tick,) = r.ticks
+        assert tick.bid_size.as_decimal() == tick.ask_size.as_decimal() == 0
+        assert tick.bid_size.precision == tick.ask_size.precision == EQUITY.size_precision
+        assert tick.bid_price.as_decimal() == Decimal("100.1234")
+        await r.client._disconnect()
+
+    asyncio.run(check())
+
+
+def test_price_only_config_needs_no_size_conversion(data):
+    assert data.AlpacaQuoteConfig(universe=[str(AAPL)]).universe == (AAPL,)

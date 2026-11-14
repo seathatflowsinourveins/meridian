@@ -2,7 +2,7 @@
 #
 # Nothing installs this file and it has no [Install] section, so it cannot be enabled by
 # accident. Milestone M7 (unattended running) installs it, after the owner's attended first
-# Alpaca paper order. Until the lane's entry point exists, it runs only the offline credential
+# Alpaca paper order. This unattended placeholder still runs only the offline credential
 # check (`python -m meridian.alpaca.credentials`), which opens no socket and prints no value.
 #
 # The paper keys reach the process only as systemd credentials (systemd.exec(5), systemd 259):

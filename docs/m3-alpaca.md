@@ -71,7 +71,9 @@ Carried, each with offline tests (`tests/test_alpaca_{wire,trade_updates,reconci
   open-order checks, not in-flight (the old node had neither), none over a minute; checked on rc9.
 - IEX quotes only (`data.py`): JSON decimal text, pinned host before sign-in, no REST reads;
   a lost, unreadable or unmapped stream latches failure. `quote_age_ns` is None when unusable;
-  the lane supplies its age limit and sourced round-lot sizes (sizes arrive in lots), with instruments loaded by execution.
+  the lane supplies its age limit; execution loads instruments. Sizes arrive in round lots with no
+  sourced shares-per-lot field: validate then drop them, publishing zero as unknown (rc9's convention,
+  cited in `UPSTREAM.md`). No consumer may use this lane's quote sizes; only prices are carried.
 - No invented fee: connect refuses without a sourced per-fill commission. `AlpacaPaperExecClientConfig.for_paper_equities()`
   uses `meridian/alpaca/commission.py`: zero USD is what Alpaca's paper simulation charges a US-equity fill.
   This is only for this paper lane and models no cost of real trading. Two dated citations and exact quotes
@@ -132,7 +134,7 @@ systemd-ask-password -n "Alpaca paper key id:" | sudo systemd-creds encrypt --wi
 systemd-ask-password -n "Alpaca paper secret key:" | sudo systemd-creds encrypt --with-key=host --name=alpaca-paper-secret-key - /etc/credstore.encrypted/alpaca-paper-secret-key
 ```
 
-The unit is not installed and has no `[Install]` section. Until the lane's entry point exists it
+The unit is not installed and has no `[Install]` section. It still
 runs only `python -m meridian.alpaca.credentials`: presence, no socket. M7 installs `/opt/meridian`.
 
 ## 7. Replay data on the Sextant disk
@@ -157,5 +159,5 @@ check a replay's counts (section 2); the replay is a reconcile-only start on the
 ## 8. Left for the owner
 
 - The paper keys into the two credential files (section 6); the section 7 subset, if wanted.
-- The attended first order, on the account you assign, after the previous writer is confirmed
-  stopped; its PR wires the quote client and adds the lane entry point and sourced commission rows.
+- The local rows and quote-age limit, then the attended restart and first order after the
+  previous writer is confirmed stopped; the handbook command has not been run by an agent.
