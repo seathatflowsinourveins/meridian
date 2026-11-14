@@ -37,6 +37,7 @@ class AlpacaPaperExecClientConfig(ExecutionClientConfig):
         commission_per_fill: str | None = None,
         commission_source: str | None = None,
         request_timeout_secs: float = 10.0,
+        order_budget_rows_path: str | None = None,
         **kwargs: Any,
     ) -> None:
         unknown = sorted(set(kwargs) - _COMMON_FIELDS)
@@ -56,6 +57,7 @@ class AlpacaPaperExecClientConfig(ExecutionClientConfig):
         self.commission_per_fill = commission_per_fill
         self.commission_source = commission_source
         self.request_timeout_secs = float(request_timeout_secs)
+        self.order_budget_rows_path = order_budget_rows_path
 
     def commission(self) -> Money | None:
         """The evidenced per-fill fee, or None when the evidence is missing or malformed."""

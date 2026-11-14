@@ -3,8 +3,7 @@ Builds the execution client from node configuration, after the upstream template
 (`examples/live/_template/factories.py` at NautilusTrader v2.0.0rc9): `create` returns a fresh
 client and opens nothing. The SDK, the stream and the keys are built at connect.
 
-The pacer is not wired here yet: M2 owns the order budget. Until the lane supplies it (a
-`Wiring` with `pacer` set), connect refuses.
+M2's pacer reads the owner's control rows at connect and starts with no burst.
 """
 
 from __future__ import annotations
@@ -18,6 +17,7 @@ from .config import AlpacaPaperExecClientConfig
 from .constants import VENUE
 from .credentials import PaperKeys, load_paper_keys
 from .execution import AlpacaPaperExecutionClient, Wiring
+from .pacing import build_pacer
 from .wire import PaperTradingClient, PaperTradingStream
 
 
@@ -32,7 +32,7 @@ def production_wiring(config: AlpacaPaperExecClientConfig) -> Wiring:
         keys=load_paper_keys,
         sdk=lambda keys: PaperTradingClient(keys.key_id, keys.secret_key, timeout_secs=timeout),
         stream=paper_stream,
-        pacer=None,
+        pacer=lambda now_ns: build_pacer(config.order_budget_rows_path, now_ns),
     )
 
 
