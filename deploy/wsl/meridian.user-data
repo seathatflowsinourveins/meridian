@@ -70,6 +70,7 @@ write_files:
     content: |
       [features]
       apps = false
+      plugins = false
       remote_plugin = false
       plugin_sharing = false
 

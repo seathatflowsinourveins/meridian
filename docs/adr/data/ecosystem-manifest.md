@@ -16,6 +16,7 @@ here and not adopted" to layer 7, in use for Codex; `DietrichGebert/ponytail` fr
 in use, as a Codex plugin; `rtk-ai/rtk` is not adopted (ADR 0017).
 2026-11-14 (ADR 0018): `oraios/serena` is in use for Codex as its MCP server for navigation and
 diagnostics (layer 7 row); its placement stays in layer 8, where ADR 0016 put it.
+2026-11-14 (ADR 0018 revisit): ponytail moves from plugin to native skills/hooks; the three selected `obra/superpowers` folders are also installed for Codex from the DSH pin. All Codex plugin features are pinned off.
 
 ### Layer 1, base system
 | Job | Rests on | State |
@@ -92,7 +93,7 @@ diagnostics (layer 7 row); its placement stays in layer 8, where ADR 0016 put it
 | Shell-output compression | `rtk-ai/rtk` | not adopted, 2026-11-13 (ADR 0017) |
 | Status line: context, plan limits, activity, and token and cost accounting | `jarrodwatts/claude-hud` (ADR 0015) | in use |
 | Token and cost accounting for DeepSeek Harness | `kenn-io/agentsview` (reads dsh's sessions) | in use for DeepSeek Harness (ADR 0016) |
-| Write-less-code skill | `DietrichGebert/ponytail` | in use for Codex, 2026-11-13 (ADR 0018) |
+| Write-less-code skills and hooks | `DietrichGebert/ponytail` | in use for Codex natively: six skills and three trusted hooks, plugin features off, 2026-11-14 (ADR 0018 revisit) |
 | Codex workflow layer | `Yeachan-Heo/oh-my-codex` | in use, 2026-11-13 (ADR 0018) |
 | Code navigation and diagnostics for Codex | `oraios/serena` | in use, 2026-11-14 (ADR 0018) |
 | DeepSeek Harness skills: spec, self-review, source reading, test first, root cause, proof before "done", research, the pull request body | `addyosmani/agent-skills`, `obra/superpowers`, `mattpocock/skills` (single folders at a pin) | in use for DeepSeek Harness (ADR 0016) |

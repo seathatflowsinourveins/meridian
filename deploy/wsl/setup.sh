@@ -11,7 +11,7 @@
 #   deploy/wsl/setup.sh gateway       install IB Gateway (pinned build; never starts it or logs in)
 #   deploy/wsl/setup.sh agents        all of the following, in this order:
 #     claude        Claude Code, from Anthropic's signed release manifest
-#     codex         Codex CLI and its worker stack, ADR 0018 (npm, a local plugin marketplace)
+#     codex         Codex CLI and its worker stack, ADR 0018 (npm, native skills and hooks)
 #     agy           Antigravity CLI (its GitHub release asset)
 #     dsh           DeepSeek Harness and the terminal UI Orca launches for it (npm, pnpm)
 #     orca          Orca server, a loopback-only systemd user service (sudo for /opt)
@@ -711,6 +711,7 @@ cmd_codex() {
   codex_config
   cmd_omx
   codex_ponytail
+  codex_extra_skills
   codex_serena
   # Orca adds its hooks when it prepares Codex, after this step on a fresh distro (`agents`).
   check_codex install
@@ -852,10 +853,9 @@ codex_config() {
   # The startup menu is independent of --no-daemon; tasks typed later do not skip it.
   codex_setting "${file}" check_for_update_on_startup "" false
   codex_setting "${file}" model_reasoning_effort "" '"high"'
-  for feature in apps remote_plugin plugin_sharing skill_mcp_dependency_install memories; do
+  for feature in apps plugins remote_plugin plugin_sharing skill_mcp_dependency_install memories; do
     codex_setting "${file}" "${feature}" features false
   done
-  codex_setting "${file}" plugins features true
   codex_setting "${file}" url mcp_servers.openaiDeveloperDocs "\"${CODEX_DOCS_MCP}\""
   codex_setting "${file}" command mcp_servers.serena '"serena"'
   codex_setting "${file}" args mcp_servers.serena "${SERENA_MCP_ARGS}"
@@ -878,12 +878,12 @@ check_for_update_on_startup = false
 
 [features]
 # ChatGPT apps (account connectors) stay off, as claude.ai connectors do for Claude Code, so no
-# account-linked tool (a broker connector among them) reaches an agent here. Plugins are on for
-# the one plugin of ADR 0018; the MCP servers a skill can ask for and Codex's own memory stay off.
+# account-linked tool (a broker connector among them) reaches an agent here. Plugins stay off;
+# ADR 0018 installs native skills/hooks. Skill-requested MCP servers and Codex memory stay off.
 apps = false
 remote_plugin = false
 plugin_sharing = false
-plugins = true
+plugins = false
 skill_mcp_dependency_install = false
 memories = false
 
@@ -935,12 +935,10 @@ omx_config() {
   rm -f "${tmp}"
 }
 
-# ponytail (ADR 0018) as a Codex plugin, from a local marketplace holding the files of its release
-# commit (its own marketplace installs from `main`). Codex runs its hooks once the owner trusts
-# them in /hooks.
+# Native ponytail: no plugin loader, marketplace or manual hook review (ADR 0018 revisit).
 codex_ponytail() {
-  local src="${HOME}/.local/share/meridian/ponytail-src" market="${HOME}/.local/share/meridian/codex-market"
-  local codex="${HOME}/.local/bin/codex" tmp changed=0 trusted
+  local src="${HOME}/.local/share/meridian/ponytail-src" path item
+  local omx_skills="${HOME}/.local/lib/node_modules/oh-my-codex/skills"
   if [ "$(git -C "${src}" rev-parse HEAD 2>/dev/null)" != "${PONYTAIL_COMMIT}" ]; then
     rm -rf "${src}"
     git init -q "${src}"
@@ -949,37 +947,48 @@ codex_ponytail() {
   fi
   [ "$(git -C "${src}" rev-parse HEAD)" = "${PONYTAIL_COMMIT}" ] && [ -z "$(git -C "${src}" status --porcelain)" ] \
     || fail "the ponytail checkout is not ${PONYTAIL_COMMIT} as fetched"
-  tmp="$(mktemp -d)"
-  tar -C "${src}" --exclude=.git -cf - . | tar -C "${tmp}" -xf -
-  if ! diff -r "${tmp}" "${market}/plugins/ponytail" >/dev/null 2>&1; then
-    rm -rf "${market}/plugins/ponytail"
-    install -d "${market}/plugins" "${market}/.agents/plugins"
-    mv "${tmp}" "${market}/plugins/ponytail"
-    changed=1
-  fi
-  rm -rf "${tmp}"
-  cat > "${market}/.agents/plugins/marketplace.json" <<JSON
-{
-  "name": "${PONYTAIL_MARKET}",
-  "interface": { "displayName": "ponytail ${PONYTAIL_COMMIT:0:7} (deploy/wsl/setup.sh)" },
-  "plugins": [
-    { "name": "ponytail", "source": { "source": "local", "path": "./plugins/ponytail" }, "category": "Productivity" }
-  ]
+  # Check the entire collision set before copying any skill or changing hooks.
+  local collisions=""
+  for path in "${src}"/skills/*; do
+    [ -d "${path}" ] || continue
+    [ ! -e "${omx_skills}/${path##*/}" ] || collisions+=" ${path##*/}"
+  done
+  [ -z "${collisions}" ] || fail "ponytail/oh-my-codex skill collisions:${collisions}"
+  codex_plugins_remove
+  install -d -m 0700 "${HOME}/.codex/skills" "${HOME}/.local/share/meridian/ponytail-data"
+  for path in "${src}"/skills/*; do
+    [ -d "${path}" ] || continue
+    copy_skill "${path}" "${HOME}/.codex/skills/${path##*/}"
+  done
+  python3 -I "${USER_DATA%/*}/codex-native.py" install "${HOME}"
 }
-JSON
-  grep -qxF "[marketplaces.${PONYTAIL_MARKET}]" "${HOME}/.codex/config.toml" \
-    || "${codex}" plugin marketplace add "${market}" </dev/null
-  if [ "${changed}" = 1 ] || ! grep -qxF "[plugins.\"ponytail@${PONYTAIL_MARKET}\"]" "${HOME}/.codex/config.toml" \
-    || ! codex_config_check ponytail >/dev/null 2>&1; then
-    # plugin add enables the plugin, even on a reinstall. Disable it on failure as well.
-    if ! "${codex}" plugin add "ponytail@${PONYTAIL_MARKET}" </dev/null; then
-      codex_setting "${HOME}/.codex/config.toml" enabled "plugins.\"ponytail@${PONYTAIL_MARKET}\"" false
-      fail "ponytail installation failed; left disabled"
-    fi
-  fi
-  codex_setting "${HOME}/.codex/config.toml" enabled "plugins.\"ponytail@${PONYTAIL_MARKET}\"" false
-  trusted="$(codex_config_check ponytail)" || fail "ponytail bundle check failed; left disabled"
-  codex_setting "${HOME}/.codex/config.toml" enabled "plugins.\"ponytail@${PONYTAIL_MARKET}\"" "${trusted}"
+
+codex_plugins_remove() {
+  local item legacy
+  legacy="$(python3 -I "${USER_DATA%/*}/codex-native.py" legacy "${HOME}")"
+  while read -r item; do
+    case "${item}" in
+      plugin) "${HOME}/.local/bin/codex" plugin remove "ponytail@${PONYTAIL_MARKET}" </dev/null ;;
+      marketplace) "${HOME}/.local/bin/codex" plugin marketplace remove "${PONYTAIL_MARKET}" </dev/null ;;
+    esac
+  done <<<"${legacy}"
+  python3 -I "${USER_DATA%/*}/codex-native.py" clean-legacy "${HOME}"
+}
+
+# Reuse the DeepSeek stack's pin, sparse checkout and copy operation, without installing dsh.
+codex_extra_skills() {
+  local entry repo commit paths_line src path
+  local -a paths
+  for entry in "${DSH_SKILLS[@]}"; do
+    read -r repo commit paths_line <<<"${entry}"
+    [ "${repo}" = "obra/superpowers" ] || continue
+    read -r -a paths <<<"${paths_line}"
+    src="$(skill_checkout "${repo}" "${commit}" "${paths[@]}")"
+    for path in "${paths[@]}"; do
+      [ ! -e "${HOME}/.local/lib/node_modules/oh-my-codex/skills/${path##*/}" ] || continue
+      copy_skill "${src}/${path}" "${HOME}/.codex/skills/${path##*/}"
+    done
+  done
 }
 
 serena_version() { "${HOME}/.local/bin/serena" --version 2>/dev/null </dev/null | sed -n 's/^Serena //p' | tail -n 1; }
@@ -1047,192 +1056,15 @@ sys.exit(f"serena_config.yml: {', '.join(problems)}" if problems else 0)
 PY
 }
 
-# Shared config/bundle check. `ponytail` returns only whether its three hooks are trusted;
-# `install` permits missing Orca hooks until Orca prepares a fresh distro.
+# Shared native-hook and skill checker; install permits Orca's later first-run registration.
 codex_config_check() {
-  python3 -I - "${HOME}/.codex/config.toml" "${CODEX_MODEL}" "${HOME}/.codex/hooks.json" \
-    "${HOME}/.codex/.omx-config.json" "${CODEX_DOCS_MCP}" "ponytail@${PONYTAIL_MARKET}" "${SERENA_MCP_ARGS}" "${1:-full}" "${PONYTAIL_VERSION}" <<'PY'
-import hashlib
-import json
-import os
-import re
-import sys
-import tomllib
-
-config, model, hooks_file, omx_file, docs_url, plugin, serena_args, mode, version = sys.argv[1:]
-serena = dict(
-    command="serena",
-    args=tomllib.loads(f"v = {serena_args}")["v"],
-    startup_timeout_sec=15,
-    env={"SERENA_USAGE_REPORTING": "false"},
-)
-with open(config, "rb") as f:
-    cfg = tomllib.load(f)
-features = cfg.get("features", {})
-profiles = cfg.get("profiles", {})
-servers = cfg.get("mcp_servers", {})
-plugins = set(cfg.get("plugins", {}))
-plugin_enabled = cfg.get("plugins", {}).get(plugin, {}).get("enabled", True) is not False
-state = cfg.get("hooks", {}).get("state", {})
-
-
-# Codex's hook trust identity (codex-rs/hooks/src/engine/discovery.rs `hook_hash` and
-# config/src/fingerprint.rs at rust-v0.167.2 and rust-v0.169.0): SHA-256 of the sorted, compact
-# JSON of the normalized hook. A trust entry counts only when its hash is the current one, so a
-# hook whose command, matcher or timeout changed after approval is untrusted, as Codex sees it.
-MATCHER_EVENTS = {"PreToolUse", "PermissionRequest", "PostToolUse", "SessionStart", "SessionEnd",
-                  "SubagentStart", "SubagentStop", "PreCompact", "PostCompact"}
-CONTEXT_EVENTS = {"PreToolUse", "PostToolUse", "SessionStart", "UserPromptSubmit", "SubagentStart"}
-
-
-def event_label(event):
-    return re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower()
-
-
-def hook_hash(event, group, handler):
-    if handler.get("type", "command") != "command" or not str(handler.get("command", "")).strip():
-        return None
-    timeout = handler.get("timeout")
-    if event in ("SessionEnd", "Interrupt"):
-        timeout = min(max(1 if timeout is None else timeout, 1), 3)
-    else:
-        timeout = max(600 if timeout is None else timeout, 1)
-    normalized = dict(type="command", command=handler["command"], timeout=timeout, **{"async": bool(handler.get("async", False))})
-    if handler.get("statusMessage") is not None:
-        normalized["statusMessage"] = handler["statusMessage"]
-    limit = handler.get("additionalContextLimit")
-    if event in CONTEXT_EVENTS and limit is not None and limit != 2500:
-        normalized["additionalContextLimit"] = limit
-    identity = {"event_name": event_label(event), "hooks": [normalized]}
-    if event in MATCHER_EVENTS and group.get("matcher") is not None:
-        identity["matcher"] = group["matcher"]
-    text = json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return "sha256:" + hashlib.sha256(text.encode()).hexdigest()
-
-
-def plugin_content_hash(root):
-    # codex-rs/hooks/src/engine/plugin_fingerprint.rs at the same tags.
-    digest, pending = hashlib.sha256(b"codex-plugin-bundle-v1"), [root]
-    while pending:
-        path = pending.pop()
-        relative = os.path.relpath(path, root) if path != root else ""
-        base = os.path.basename(relative)
-        if base in ("__pycache__", ".venv") or base.endswith((".pyc", ".egg-info")):
-            continue
-        name = os.fsencode(relative)
-        digest.update(len(name).to_bytes(8, "little") + name)
-        if os.path.isdir(path) and not os.path.islink(path):
-            digest.update(b"directory")
-            pending.extend(sorted((os.path.join(path, e) for e in os.listdir(path)), key=lambda p: os.fsencode(os.path.basename(p)), reverse=True))
-        else:
-            with open(path, "rb") as f:
-                data = f.read()
-            digest.update(b"file" + len(data).to_bytes(8, "little") + data)
-    return "sha256:" + digest.hexdigest()
-
-
-def trusted(key, current):
-    entry = state.get(key, {})
-    return current is not None and entry.get("trusted_hash") == current and entry.get("enabled") is not False
-
-
-# Every hook entry in hooks.json is Orca's or oh-my-codex's, and each has its trust entry.
-count, untrusted = {"orca": 0, "omx": 0, "unknown": 0}, []
-try:
-    with open(hooks_file, encoding="utf-8") as f:
-        hooks = json.load(f).get("hooks", {})
-except (OSError, ValueError):
-    hooks = {}
-for event, groups in hooks.items():
-    label = re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower()
-    for g, group in enumerate(groups):
-        for h, handler in enumerate(group.get("hooks", [])):
-            command = handler.get("command", "")
-            owner = "orca" if "orca-agent-hook-form" in command else "omx" if "/oh-my-codex/" in command else "unknown"
-            count[owner] += 1
-            if not trusted(f"{hooks_file}:{label}:{g}:{h}", hook_hash(event, group, handler)):
-                untrusted.append(f"{event} {g}:{h}")
-try:
-    with open(omx_file, encoding="utf-8") as f:
-        omx = json.load(f)
-except (OSError, ValueError):
-    omx = {}
-problems = [
-    name
-    for name, bad in [
-        ("model", cfg.get("model") != model),
-        ("model_reasoning_effort", cfg.get("model_reasoning_effort") != "high"),
-        ("approval_policy", cfg.get("approval_policy") != "never"),
-        ("sandbox_mode", cfg.get("sandbox_mode") != "danger-full-access"),
-        ("check_for_update_on_startup", cfg.get("check_for_update_on_startup") is not False),
-        *[(f"[features] {name}", features.get(name) is not False) for name in ("apps", "remote_plugin", "plugin_sharing", "skill_mcp_dependency_install", "memories")],
-        ("[features] plugins", features.get("plugins") is not True),
-        ("[features] connectors (the old name of apps)", "connectors" in features),
-        (f"MCP servers {sorted(servers)}", set(servers) != {"openaiDeveloperDocs", "serena"}),
-        ("openaiDeveloperDocs", servers.get("openaiDeveloperDocs", {}) != {"url": docs_url}),
-        ("[mcp_servers.serena]", servers.get("serena", {}) != serena),
-        (f"plugins {sorted(plugins)}", plugins != {plugin}),
-        (
-            "a profile sets features, MCP servers or plugins",
-            any(key in p for p in profiles.values() for key in ("features", "mcp_servers", "plugins")),
-        ),
-        ("[analytics] enabled", cfg.get("analytics", {}).get("enabled") is not False),
-        ("[feedback] enabled", cfg.get("feedback", {}).get("enabled") is not False),
-        ("[otel] metrics_exporter", cfg.get("otel", {}).get("metrics_exporter") != "none"),
-        (
-            f"hooks.json entries {count}",
-            count not in ({"orca": 9, "omx": 8, "unknown": 0}, *([{"orca": 0, "omx": 8, "unknown": 0}] if mode == "install" else [])),
-        ),
-        (f"hooks without trust: {untrusted}", bool(untrusted)),
-        (".omx-config.json teamMode", omx.get("teamMode") != "disabled"),
-        (
-            ".omx-config.json prompt triage",
-            omx.get("promptRouting", {}).get("triage", {}).get("enabled") is not False,
-        ),
-    ]
-    if bad
-]
-if problems and mode != "ponytail":
-    sys.exit(f"Codex config: {', '.join(problems)}")
-if count["orca"] == 0 and mode != "ponytail":
-    print("note: Orca's 9 Codex hooks are not there yet; Orca adds them, and agents-check requires them")
-# Ponytail's hooks: each trust entry (`<plugin>:<file>:<event>:<group>:<handler>`) must hold the
-# current hash of its declaration in the installed copy, and of that copy's files.
-market, name = plugin.split("@")[1], plugin.split("@")[0]
-root = os.path.join(os.path.dirname(config), "plugins", "cache", market, name, version)
-try:
-    with open(os.path.join(root, ".codex-plugin", "plugin.json"), encoding="utf-8") as f:
-        manifest = json.load(f)
-    assert manifest["name"] == name and manifest["version"] == version
-    assert manifest["skills"] == "./skills/"
-    for skill in ("ponytail", "ponytail-audit", "ponytail-debt", "ponytail-gain", "ponytail-help", "ponytail-review"):
-        assert os.path.isfile(os.path.join(root, "skills", skill, "SKILL.md"))
-    with open(os.path.join(root, "hooks/claude-codex-hooks.json"), encoding="utf-8") as f:
-        plugin_hooks = json.load(f)["hooks"]
-    assert set(plugin_hooks) == {"SessionStart", "SubagentStart", "UserPromptSubmit"}
-except (OSError, ValueError, KeyError, TypeError, AssertionError):
-    sys.exit(f"ponytail {version} bundle missing or incomplete in Codex's plugin cache; run: deploy/wsl/setup.sh codex")
-content = plugin_content_hash(root)
-current_plugin = 0
-for event in ("SessionStart", "SubagentStart", "UserPromptSubmit"):
-    key = f"{plugin}:hooks/claude-codex-hooks.json:{re.sub(r'(?<!^)(?=[A-Z])', '_', event).lower()}:0:0"
-    try:
-        group = plugin_hooks[event][0]
-        current_plugin += (len(plugin_hooks[event]) == len(group["hooks"]) == 1
-            and state.get(key, {}).get("trusted_content_hash") == content
-            and trusted(key, hook_hash(event, group, group["hooks"][0])))
-    except (KeyError, IndexError, TypeError):
-        continue
-waiting = 3 - current_plugin
-if mode == "ponytail":
-    print("true" if waiting == 0 else "false")
-    sys.exit(0)
-if waiting and plugin_enabled:
-    sys.exit(f"ponytail enabled with {waiting} untrusted hooks: Codex workers cannot start under Orca; run: deploy/wsl/setup.sh codex to disable it")
-if not plugin_enabled:
-    print(f"note: ponytail installed and disabled; owner: outside Orca, run codex -c 'plugins.\"{plugin}\".enabled=true', "
-          "review its three hooks in /hooks, then rerun deploy/wsl/setup.sh codex after trusting them")
-PY
+  local entry repo commit paths_line superpowers_commit=""
+  for entry in "${DSH_SKILLS[@]}"; do
+    read -r repo commit paths_line <<<"${entry}"
+    [ "${repo}" != "obra/superpowers" ] || superpowers_commit="${commit}"
+  done
+  python3 -I "${USER_DATA%/*}/codex-native.py" check "${HOME}" "${CODEX_MODEL}" \
+    "${CODEX_DOCS_MCP}" "${SERENA_MCP_ARGS}" "${1:-full}" "${PONYTAIL_COMMIT}" "${superpowers_commit}"
 }
 
 check_codex() {
@@ -1251,31 +1083,25 @@ check_codex() {
   rm -rf "${tmp}"
   grep -qE '^Results: [0-9]+ passed, [0-9]+ warnings, 0 failed$' <<<"${doctor}" \
     || fail "omx doctor: $(grep -E '^ *\[XX\]|^Results:' <<<"${doctor}" | tr -s ' ' | tr '\n' ';')"
-  ok "Codex CLI $(codex_version): ${CODEX_MODEL} at high effort, no ChatGPT apps or memories; oh-my-codex ${OMX_VERSION} (omx doctor: 0 failed), the ponytail plugin, serena ${SERENA_VERSION} (navigation and diagnostics only) and OpenAI's docs server"
+  ok "Codex CLI $(codex_version): ${CODEX_MODEL} at high effort, no ChatGPT apps or memories; oh-my-codex ${OMX_VERSION} (omx doctor: 0 failed), native ponytail skills and trusted hooks, serena ${SERENA_VERSION} (navigation and diagnostics only) and OpenAI's docs server"
 }
 
-# Config tables omit account-catalogue plugins. Ask Codex for its installed inventory too.
+# The disabled loader reports an empty inventory even for a stale install; the native checker
+# independently rejects config tables and cache entries. A nonempty/failed CLI result also fails.
 codex_plugins_check() {
   local inventory
   inventory="$("${HOME}/.local/bin/codex" plugin list --json </dev/null 2>&1)" \
     || fail "Codex plugin inventory unavailable"
-  python3 -I - "${inventory}" "ponytail@${PONYTAIL_MARKET}" "${PONYTAIL_VERSION}" "${HOME}/.codex/config.toml" <<'PY' \
-    || fail "Codex plugin inventory is not the pinned ponytail alone"
+  python3 -I - "${inventory}" <<'PY' \
+    || fail "Codex plugin inventory is not empty"
 import json
 import sys
-import tomllib
 
-inventory, plugin, version, config = sys.argv[1:]
 try:
-    installed = json.loads(inventory)["installed"]
-    assert isinstance(installed, list) and len(installed) == 1
-    assert installed[0]["pluginId"] == plugin and installed[0]["installed"] is True
-    assert installed[0]["version"] == version
-    with open(config, "rb") as f:
-        enabled = tomllib.load(f)["plugins"][plugin].get("enabled", True)
-    assert installed[0]["enabled"] is enabled
-except (OSError, ValueError, KeyError, TypeError, AssertionError):
-    sys.exit("Codex plugin inventory: missing, malformed, wrong version or unapproved installed plugins")
+    installed = json.loads(sys.argv[1])["installed"]
+    assert isinstance(installed, list) and not installed
+except (ValueError, KeyError, TypeError, AssertionError):
+    sys.exit("Codex plugin inventory: missing, malformed or installed plugins remain")
 PY
 }
 
@@ -1705,31 +1531,43 @@ dsh_stack() {
 # Each skill folder from a sparse, shallow checkout of its repository at the pinned commit, then
 # copied whole to ~/.dsh/skills/<folder name>, which only dsh reads. A copy that differs from
 # its checkout is replaced.
+skill_checkout() {
+  local repo="$1" commit="$2" dir
+  shift 2
+  local -a paths=("$@")
+  dir="${HOME}/.local/share/meridian/dsh-skill-src/${repo/\//__}"
+  if [ "$(git -C "${dir}" rev-parse HEAD 2>/dev/null)" != "${commit}" ] \
+    || [ -n "$(git -C "${dir}" status --porcelain 2>/dev/null)" ]; then
+    rm -rf "${dir}"
+    git init -q "${dir}"
+    git -C "${dir}" remote add origin "https://github.com/${repo}.git"
+    git -C "${dir}" sparse-checkout set --no-cone "${paths[@]/#//}"
+    git -C "${dir}" fetch -q --depth 1 --filter=blob:none origin "${commit}"
+    git -C "${dir}" -c advice.detachedHead=false checkout -q FETCH_HEAD
+    [ "$(git -C "${dir}" rev-parse HEAD)" = "${commit}" ] || fail "${repo} did not check out at ${commit}"
+  fi
+  printf '%s\n' "${dir}"
+}
+
+copy_skill() {
+  [ -f "$1/SKILL.md" ] || fail "no skill at $1"
+  if ! diff -rq "$1" "$2" >/dev/null 2>&1; then
+    rm -rf "$2"
+    install -d "$(dirname "$2")"
+    cp -R "$1" "$2"
+  fi
+}
+
 dsh_skills() {
-  local sources="${HOME}/.local/share/meridian/dsh-skill-src" entry repo commit path dir paths_line
+  local entry repo commit path dir paths_line
   local -a paths
-  install -d "${sources}"
   install -d -m 0700 "${HOME}/.dsh/skills"
   for entry in "${DSH_SKILLS[@]}"; do
     read -r repo commit paths_line <<<"${entry}"
     read -r -a paths <<<"${paths_line}"
-    dir="${sources}/${repo/\//__}"
-    if [ "$(git -C "${dir}" rev-parse HEAD 2>/dev/null)" != "${commit}" ] \
-      || [ -n "$(git -C "${dir}" status --porcelain 2>/dev/null)" ]; then
-      rm -rf "${dir}"
-      git init -q "${dir}"
-      git -C "${dir}" remote add origin "https://github.com/${repo}.git"
-      git -C "${dir}" sparse-checkout set --no-cone "${paths[@]/#//}"
-      git -C "${dir}" fetch -q --depth 1 --filter=blob:none origin "${commit}"
-      git -C "${dir}" -c advice.detachedHead=false checkout -q FETCH_HEAD
-      [ "$(git -C "${dir}" rev-parse HEAD)" = "${commit}" ] || fail "${repo} did not check out at ${commit}"
-    fi
+    dir="$(skill_checkout "${repo}" "${commit}" "${paths[@]}")"
     for path in "${paths[@]}"; do
-      [ -f "${dir}/${path}/SKILL.md" ] || fail "${repo} has no skill at ${path}"
-      if ! diff -rq "${dir}/${path}" "${HOME}/.dsh/skills/${path##*/}" >/dev/null 2>&1; then
-        rm -rf "${HOME}/.dsh/skills/${path##*/}"
-        cp -R "${dir}/${path}" "${HOME}/.dsh/skills/${path##*/}"
-      fi
+      copy_skill "${dir}/${path}" "${HOME}/.dsh/skills/${path##*/}"
     done
   done
 }
