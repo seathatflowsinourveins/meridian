@@ -196,7 +196,7 @@ def test_the_workflow_check_leaves_this_ci_alone():
 
 # A token is allowed only for this exact default-branch, non-PR recipe. Requiring the
 # whole shape rejects extra triggers/jobs/permissions and YAML aliases or duplicate keys.
-LANDSCAPE_RECIPE = """name: Landscape watch
+LANDSCAPE_RECIPE = r"""name: Landscape watch
 on:
   schedule:
     - cron: '23 9 * * 1'
@@ -217,12 +217,18 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+          enable-cache: true
       - name: Read landscape and publish findings
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python3 -m deploy.landscape_watch > "$RUNNER_TEMP/landscape.md"
-          python3 -m deploy.landscape_issue "$RUNNER_TEMP/landscape.md"
+          uv run --no-project --python 3.14 python -m deploy.landscape_watch \
+            > "$RUNNER_TEMP/landscape.md"
+          uv run --no-project --python 3.14 python -m deploy.landscape_issue \
+            "$RUNNER_TEMP/landscape.md"
 """
 
 
@@ -264,6 +270,7 @@ def test_landscape_recipe_is_pinned_and_restricted():
         ("persist-credentials: false", "persist-credentials: true"),
         ("3d3c42e5aac5ba805825da76410c181273ba90b1", "main"),
         ("cancel-in-progress: false", "cancel-in-progress: true"),
+        ("uv run --no-project --python 3.14 python", "python3"),
     ],
 )
 def test_landscape_rejects_mutations_of_the_safe_recipe(old, new):

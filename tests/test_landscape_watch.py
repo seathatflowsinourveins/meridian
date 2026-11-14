@@ -53,9 +53,9 @@ def root(tmp_path):
     data = tmp_path / "docs/adr/data"
     data.mkdir(parents=True)
     (data / "ecosystem-manifest.md").write_text(
-        f"| Job | Rests on | State |\n| Engine | `{ENGINE}` | in use |\n"
+        f"### Layer 1, engine\n| Job | Rests on | State |\n| Engine | `{ENGINE}` | in use |\n"
         f"| Adapter | [{ADAPTER}](https://github.com/{ADAPTER}) | add |\n"
-        "## Other stars\n| `other/excluded` | excluded: no job |\n",
+        "## Placement of the starred repositories\n| `other/excluded` | excluded: no job |\n",
         encoding="utf-8",
     )
     (tmp_path / "docs/adr/README.md").write_text(
@@ -135,21 +135,46 @@ def test_missing_push_is_visible(root, api):
     assert "No recorded push" in watch.collect(root, "owner/project", TODAY, api)
 
 
-def test_manifest_replaces_fallback_but_all_placements_count(root):
+def test_manifest_architecture_and_all_placements_count(root):
     architecture, placed, scope = watch.manifest(root)
     assert architecture == {ENGINE, ADAPTER}
     assert placed == {ENGINE, ADAPTER, "other/excluded"}
-    assert "Fallback" not in scope
+    assert scope == "Scope: docs/adr/data/ecosystem-manifest.md."
+
+
+def test_missing_manifest_is_an_error(root):
     (root / "docs/adr/data/ecosystem-manifest.md").unlink()
-    architecture, placed, scope = watch.manifest(root)
-    assert architecture == placed == {r.lower() for r in watch.FALLBACK}
-    assert all(name in scope for name in architecture)
+    with pytest.raises(FileNotFoundError):
+        watch.manifest(root)
 
 
-def test_invalid_manifest_fails_instead_of_quietly_using_fallback(root):
+def test_invalid_manifest_is_an_error(root):
     (root / "docs/adr/data/ecosystem-manifest.md").write_text("no architecture")
     with pytest.raises(ValueError, match="no architecture rows"):
         watch.manifest(root)
+
+
+@pytest.mark.parametrize(
+    "boundary",
+    [
+        "## Placement of the starred repositories",
+        "## Appendix: other repositories",
+        "| repository | group | in architecture | starred |",
+    ],
+)
+def test_all_layer_states_watched_but_placement_and_appendix_excluded(root, boundary):
+    (root / "docs/adr/data/ecosystem-manifest.md").write_text(
+        "| `outside/layers` | source mention |\n"
+        "### Layer 1, toolchain\n"
+        "| Engineering | `nautechsystems/nautilus_engineering` | compare with ours, then an ADR |\n"
+        "### Layer 2, research\n"
+        "| Candidate | `example/candidate` | deferred pending evidence |\n"
+        f"{boundary}\n| `other/excluded` | watch |\n"
+        "### Layer 99, only mentioned in the appendix\n| `other/later` | add |\n"
+    )
+    architecture, placed, _ = watch.manifest(root)
+    assert architecture == {"nautechsystems/nautilus_engineering", "example/candidate"}
+    assert placed == architecture | {"outside/layers", "other/excluded", "other/later"}
 
 
 def test_star_and_release_pagination(root, api):
@@ -286,7 +311,11 @@ def test_publisher_finds_open_issue_on_second_page_ignores_pr_and_keeps_labels()
             ]
             * 100,
             "repos/owner/project/issues?state=open&per_page=100&page=2": [
-                {"title": "Landscape watch", "number": 7, "labels": [{"name": "triage"}]}
+                {
+                    "title": "Landscape watch",
+                    "number": 7,
+                    "labels": [{"name": "landscape"}, {"name": "triage"}],
+                }
             ],
         }
     )
@@ -302,3 +331,31 @@ def test_publisher_finds_open_issue_on_second_page_ignores_pr_and_keeps_labels()
             },
         ),
     ]
+
+
+def test_publisher_does_not_overwrite_an_unlabelled_title_match():
+    api = FakeGitHub(
+        {
+            "repos/owner/project/labels?per_page=100&page=1": [{"name": "landscape"}],
+            "repos/owner/project/issues?state=open&per_page=100&page=1": [
+                {"title": "Landscape watch", "number": 6, "labels": [{"name": "triage"}]},
+                {"title": "Different title", "number": 8, "labels": [{"name": "landscape"}]},
+            ],
+        }
+    )
+    publish(api, "owner/project", "findings")
+    writes = [call for call in api.calls if call[0] != "GET"]
+    assert len(writes) == 1
+    assert writes[0][:2] == ("POST", "repos/owner/project/issues")
+    api.replies["repos/owner/project/issues?state=open&per_page=100&page=1"].append(
+        {
+            "title": "Landscape watch",
+            "number": 9,
+            "labels": [{"name": "landscape"}],
+        }
+    )
+    api.calls.clear()
+    publish(api, "owner/project", "updated findings")
+    writes = [call for call in api.calls if call[0] != "GET"]
+    assert len(writes) == 1
+    assert writes[0][:2] == ("PATCH", "repos/owner/project/issues/9")

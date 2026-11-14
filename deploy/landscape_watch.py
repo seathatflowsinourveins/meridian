@@ -1,8 +1,10 @@
-"""Read-only landscape report: python3 -m deploy.landscape_watch --repository OWNER/REPO.
+"""Read-only report: uv run --no-project --python 3.14 python -m deploy.landscape_watch.
 
 Only GitHub REST GETs; no broker, dependency installation, or local writes. Empty stdout
 means nothing is due; an incomplete read exits nonzero without publishing a partial report.
-GITHUB_TOKEN (or GH_TOKEN) is optional. Sources and fallback scope: UPSTREAM.md.
+Use --repository OWNER/REPO or GITHUB_REPOSITORY. GITHUB_TOKEN (or GH_TOKEN) supplies
+authentication: the full manifest exceeds the anonymous hourly limit; the workflow provides
+its token. Sources: UPSTREAM.md.
 """
 
 import argparse
@@ -18,22 +20,6 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
-# Plan section 3's currently used engine, adapter, toolchain, runtimes and review.
-# Until the manifest lands, these are both the watched and the placed repositories.
-FALLBACK = {
-    "nautechsystems/nautilus_trader",
-    "alpacahq/alpaca-py",
-    "astral-sh/uv",
-    "astral-sh/ruff",
-    "microsoft/pyright",
-    "pytest-dev/pytest",
-    "gitleaks/gitleaks",
-    "anthropics/claude-code",
-    "openai/codex",
-    "deepseek-ai/deepseek-harness",
-    "stablyai/orca",
-    "openai/codex-plugin-cc",
-}
 PACKAGES = {"nautechsystems/nautilus_trader": "nautilus_trader", "alpacahq/alpaca-py": "alpaca-py"}
 REPO = r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"
 VERSION = re.compile(
@@ -91,21 +77,24 @@ def repositories(text: str) -> set[str]:
 
 def manifest(root: Path) -> tuple[set[str], set[str], str]:
     path = root / "docs/adr/data/ecosystem-manifest.md"
-    if not path.exists():
-        names = {name.lower() for name in FALLBACK}
-        return names, names, "Fallback scope (manifest absent): " + ", ".join(sorted(names)) + "."
     text = path.read_text(encoding="utf-8")
-    # Architecture tables carry the plan's states. Appendix placements are still counted
-    # as placed, but excluded/rejected repositories are not watched for maintenance.
+    # Watch tables inside the architecture's Layer sections, irrespective of state.
+    # Placement/appendix tables still count as placed, never as architecture.
     architecture = set()
+    in_layer = False
     for line in text.splitlines():
-        cells = [cell.strip().lower() for cell in line.split("|")]
-        if line.startswith("|") and any(
-            re.match(r"^(?:\*\*|`)?(?:in use|add|measure|watch)(?:\b)", cell) for cell in cells
-        ):
+        if heading := re.match(r"^#{1,6}\s+(.+)", line):
+            title = heading[1].lower()
+            if title.startswith(("placement", "appendix")):
+                break
+            in_layer = bool(re.match(r"layer\s+\d+\b", title))
+        elif line.startswith("|") and in_layer:
+            cells = [cell.strip().lower() for cell in line.split("|")]
+            if "in architecture" in cells and "starred" in cells:
+                break
             architecture.update(repositories(line))
     if not architecture:
-        raise ValueError("manifest has no architecture rows with in use/add/measure/watch states")
+        raise ValueError("manifest has no architecture rows in Layer sections")
     return architecture, repositories(text), "Scope: docs/adr/data/ecosystem-manifest.md."
 
 

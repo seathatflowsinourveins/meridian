@@ -21,7 +21,16 @@ def publish(api: GitHub, repository: str, body: str) -> None:
     if not any(label["name"] == LABEL for label in labels):
         api.request(f"{prefix}/labels", "POST", {"name": LABEL, "color": "0e8a16"})
     issues = api.pages(f"{prefix}/issues?state=open")
-    existing = next((i for i in issues if i["title"] == TITLE and "pull_request" not in i), None)
+    existing = next(
+        (
+            i
+            for i in issues
+            if i["title"] == TITLE
+            and "pull_request" not in i
+            and any(label["name"] == LABEL for label in i["labels"])
+        ),
+        None,
+    )
     payload = {"title": TITLE, "body": body, "labels": [LABEL]}
     if existing is None:
         api.request(f"{prefix}/issues", "POST", payload)
