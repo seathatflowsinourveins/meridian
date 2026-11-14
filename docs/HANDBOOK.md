@@ -193,10 +193,9 @@ Records go only to `runs/*-simulation.json`, never `evidence/`; it is offline an
 | Work is reviewed by a different model family before it merges; findings are fixed or closed with a reason; nothing auto-files issues | plan 9.5 | rule |
 | One writer per account; plain DAY LIMIT entries, no brackets | plan 9.1 | rule; the M1 record fails an order that is not a DAY LIMIT |
 
-The upstream gate requires every file under `meridian/` and `deploy/` to match exactly one
-map entry, each citing an upstream row, its feature and why local work is needed; unused
-entries fail. Project dependencies and groups name register rows with the locked versions.
-Add the row and map entry with the change; the check runs offline in the normal test suite.
+The offline gate requires exactly one map entry per `meridian/` or `deploy/` file, citing an upstream
+row, feature and local need; unused entries fail. Project and group dependency rows must match
+locked versions. Add the register row and map entry with the change; CI checks both.
 
 A tripwire catches a mistake, not a determined change: agents here run in bypass mode and can
 edit the tests too. The owner's GitHub settings are the lock, where GitHub offers one.

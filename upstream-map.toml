@@ -20,6 +20,7 @@
 "deploy/systemd/*" = { upstream = "systemd credentials (`LoadCredentialEncrypted=`, `systemd-creds`, `systemd-ask-password`)", how = "integrate", feature = "service credentials", why = "the lane needs a dedicated paper service definition" }
 "deploy/wsl/meridian.user-data" = { upstream = "cloud-init, WSL datasource", how = "integrate", feature = "first-boot distro configuration", why = "the image needs the harness users and settings" }
 "deploy/wsl/setup.sh" = { upstream = "Ubuntu WSL image", how = "install", feature = "user-level tool installation", why = "the distro needs the register's pinned tools and checks" }
+"deploy/landscape_*.py" = { upstream = "GitHub REST API", how = "build-on", feature = "repository, release, starred-repository, issue and label endpoints", why = "the harness needs its own revisit rules and a consolidated watch issue" }
 
 # Only differently named rows need aliases; package labels are normalized automatically.
 [dependencies]
