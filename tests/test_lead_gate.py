@@ -581,8 +581,11 @@ def test_an_external_flock_blocks_the_gate(repo: Path):
     g.lock_path.parent.mkdir(parents=True, exist_ok=True)
     with g.lock_path.open("a+") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        with pytest.raises(gate.Refused, match="another process holds"):
+        cure = "run the gate without an outer flock; it takes the lock itself"
+        with pytest.raises(gate.Refused, match=cure):
             g.trial("feature")
+        with pytest.raises(gate.Refused, match=cure):
+            g.release()
     assert g.trial("feature")
 
 
@@ -2069,3 +2072,58 @@ def test_malformed_codex_retry_bound_still_applies(
     assert not g.pending()
     assert "retry limit reached" in output[-1]
     assert len(calls) == 3 and not g.review_file("feature").exists()
+
+
+@pytest.mark.parametrize("builder", ["codex", "claude"])
+@pytest.mark.parametrize("result", ["clean", "findings", "malformed", "exit", "timeout"])
+def test_rereview_revokes_stored_approval_before_model_and_requires_reopen(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, builder: str, result: str
+):
+    g, fake = make(repo, ["pass"], builder=builder)
+    assert g.trial("feature")
+    fake_reviewer(monkeypatch)
+    g.review("feature", builder)
+    body = tmp_path / "body"
+    body.write_text("body")
+    g.open("feature", "title", body, wait=False)
+    old = g.state("feature")
+    assert "review" in old and old["pr"] == 7
+    final = review_output("new candidate") if result == "findings" else review_output()
+    if result == "malformed":
+        final = "not a schema object"
+    fake_reviewer(monkeypatch, final, code=1 if result == "exit" else 0)
+    original = subprocess.run
+
+    def run(args, **kwargs):
+        if args[0] in {"codex", "claude"}:
+            # Inspect durable state during the model call, not merely after it returns.
+            assert "review" not in g.state("feature")
+            assert not g.review_file("feature").exists()
+            if result == "timeout":
+                raise subprocess.TimeoutExpired(args, kwargs["timeout"], output=b"partial")
+        return original(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    if result == "clean":
+        g.review("feature", builder)
+    else:
+        with pytest.raises(gate.Refused):
+            g.review("feature", builder)
+    state = g.state("feature")
+    assert state["tested"] == old["tested"] and state["pr"] == 7
+    assert "review" not in state
+    # Timeout releases the reservation; reacquiring it alone must not restore approval.
+    with (
+        g.reservation("feature", create=True),
+        pytest.raises(gate.Refused, match="no validated review"),
+    ):
+        g.land("feature")
+    assert not any(call[:2] == ["pr", "merge"] for call in fake.calls)
+    if result == "clean":
+        fake.existing_pr = True
+        body = tmp_path / "body"
+        body.write_text("body")
+        g.open("feature", "title", body, wait=False)
+        assert g.state("feature")["review"] == json.loads(g.review_file("feature").read_text())
+        g.land("feature")
+        assert g.holder() is None

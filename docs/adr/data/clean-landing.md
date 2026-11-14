@@ -318,3 +318,28 @@ publish, and the third transient failure suppressing further automatic paid retr
 command, exact input diff, schema, events, stderr and final object are retained under
 `/tmp/meridian-clean-landing-review5/`; this run proves the output contract, not approval of
 the final implementation. No machine setup or live gate landing was performed.
+
+## Lead-triaged rereview and upkeep fixes
+
+The lead accepted both candidates from the real Codex schema run. Starting a new review
+now removes the prior approval from durable trial state before saving state, removing the
+old review file, or starting a model. The PR number and tested head remain, but land refuses
+until open validates and stores the current review. Tests exercise both reviewer families
+with clean, candidate-bearing, malformed, nonzero-exit and timed-out results; even a clean
+rereview requires open again before land, and a fresh open restores a usable approval.
+
+Upkeep prompt steps 6–7 now prepare the title/body, register the Claude-built branch and
+run gate auto, which performs the Codex review and owns the shared lock through landing.
+They explicitly forbid an outer flock and retain “never go around it”; lead candidates
+use close before auto resumes, and confirmed defects go back for fixes. Step 8 is unchanged:
+fast-forward the main checkout, then use absolute paths for upkeep, agents-check and drift.
+The prompt-sync check remains unchanged; the lead must refresh the stored automation after
+landing, and this worker did not run setup or update the automation.
+
+Repository search found the old wrapper instruction only in upkeep step 7. The lead skill
+now explicitly says no outer flock; setup's upkeep summary comment and the UPSTREAM weekly
+upkeep row clarify gate-owned locking. Handbook and lanes contain no wrapper instruction.
+Gate refusal for a plain external flock now gives the cure: “run the gate without an outer
+flock; it takes the lock itself”, including release when no gate owner exists. The external
+flock regression checks both messages while preserving exclusion. The existing setup.sh
+upstream-map entry still covers this authorized prompt edit; the coverage tests pass.

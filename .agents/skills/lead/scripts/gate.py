@@ -57,6 +57,7 @@ CHECKS = [
     ["uv", "run", "pytest", "-q"],
     ["gitleaks", "git", "--redact", "--no-banner", "--log-opts=origin/main..HEAD", "."],
 ]
+OUTER_FLOCK_CURE = "run the gate without an outer flock; it takes the lock itself"
 GREEN = {"pass", "skipping"}  # `gh pr checks --json bucket`; everything else is not green
 REVIEW_SCHEMA = {
     "type": "object",
@@ -153,7 +154,7 @@ def lock_server(path: Path, owner: dict) -> int:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            print("another process holds landing.lock", flush=True)
+            print(f"another process holds landing.lock; {OUTER_FLOCK_CURE}", flush=True)
             return 1
         sock_path.unlink(missing_ok=True)
         server.bind(str(sock_path))
@@ -366,7 +367,10 @@ class Gate:
             try:
                 holder = self.holder()
                 if not holder:
-                    raise Refused("another process holds landing.lock without a gate owner")
+                    raise Refused(
+                        "another process holds landing.lock without a gate owner; "
+                        + OUTER_FLOCK_CURE
+                    )
                 with self.reservation(holder):
                     self._finish = True
             except Refused, OSError, ValueError:
@@ -724,6 +728,9 @@ class Gate:
     def review(self, branch: str, builder: str) -> Path:
         st, wt = self._tested(branch, builder)
         st["builder"] = builder
+        # Revoke the published approval before a new reviewer can fail or find defects.
+        # A new successful review must pass through open again before land can use it.
+        st.pop("review", None)
         self._save(branch, st)
         reviewer = "claude" if builder == "codex" else "codex"
         model = "claude-opus-5-5" if reviewer == "claude" else "gpt-6-astra"

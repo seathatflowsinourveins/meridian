@@ -436,15 +436,20 @@ def test_the_upkeep_prompt_lands_through_the_gate_and_names_what_a_run_must_neve
     # The run finishes its own change: another family's review, the gate under the shared
     # lock, then the pins applied and checked.
     for phrase in (
-        "codex review --base origin/main",
-        "flock ~/.cache/meridian/landing.lock",
-        "`trial`, `open` and `land`",
+        "register BRANCH --builder claude --task TASK_ID",
+        "auto BRANCH --builder claude TITLE BODY.md",
+        "The gate runs the Codex review",
+        "holds `~/.cache/meridian/landing.lock` itself from `trial` through `land`",
+        "run the gate without an outer flock",
         "never go around it",
         "git -C ~/src/meridian pull --ff-only",
         "~/src/meridian/deploy/wsl/setup.sh upkeep",
         "~/src/meridian/deploy/wsl/setup.sh agents-check",
+        "~/src/meridian/deploy/wsl/setup.sh drift",
     ):
         assert phrase in steps, phrase
+    assert "flock ~/.cache/meridian/landing.lock" not in steps
+    assert "codex review --base origin/main" not in steps
     for phrase in (
         "any pull request but your own upkeep changes",
         "start a lane",
