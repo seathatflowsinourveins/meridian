@@ -334,6 +334,9 @@ cmd_unattended_check() {
     hold="none"
   fi
   echo "hold file: ${hold}"
+  if sudo -n test -e "${UNATTENDED_STATE}/run-marker" 2>/dev/null; then
+    echo "run marker: PRESENT (a run is active, or one crashed or was killed; order refuses)"
+  fi
 }
 
 cmd_uv() {

@@ -117,6 +117,10 @@ def hold(env) -> Path:
     return Path(env["STATE_DIRECTORY"]) / "hold"
 
 
+def marker(env) -> Path:
+    return Path(env["STATE_DIRECTORY"]) / "run-marker"
+
+
 # Refusals, each with fixed, value-free text.
 
 
@@ -235,7 +239,7 @@ def test_a_passing_order_leaves_no_hold_and_its_record_in_the_state_directory(
     seen = []
 
     def watched(state, record, log_dir=None):
-        seen.append(json.loads(hold(unit).read_text()))  # held while the engine runs
+        seen.append(json.loads(marker(unit).read_text()))  # marked while the engine runs
         run(state, record, log_dir)
 
     monkeypatch.setattr(alpaca_node, "run", watched)
@@ -244,7 +248,7 @@ def test_a_passing_order_leaves_no_hold_and_its_record_in_the_state_directory(
     assert capsys.readouterr().out.startswith("PASS")
     state = Path(unit["STATE_DIRECTORY"])
     assert seen and seen[0]["mode"] == "order"
-    assert not hold(unit).exists()
+    assert not hold(unit).exists() and not marker(unit).exists()
     assert calls == [state / "runs"]
     (public,) = (state / "evidence").iterdir()
     text = public.read_text()
@@ -258,25 +262,29 @@ def test_a_passing_order_leaves_no_hold_and_its_record_in_the_state_directory(
 def test_a_failed_order_holds_and_later_orders_refuse_until_removed(
     unit, monkeypatch, capsys, result
 ):
+    # A failure that reaches the end writes the hold; a crash or kill leaves the run marker.
+    left, refusal = (marker, alpaca_unattended.MARKED) if result == "crash" else (hold, None)
+    refusal = refusal or alpaca_unattended.HELD
     run, calls = fake_node(result)
     monkeypatch.setattr(alpaca_node, "run", run)
     with pytest.raises(RuntimeError) if result == "crash" else nullcontext():
         assert alpaca_unattended.main(["order"], unit) == 1
-    written = json.loads(hold(unit).read_text())
+    written = json.loads(left(unit).read_text())
     assert written["mode"] == "order"
-    assert "private" not in hold(unit).read_text()
-    # Held: order refuses; restart still runs and keeps the hold.
+    assert "private" not in left(unit).read_text()
+    assert not (marker if left is hold else hold)(unit).exists()
+    # Held: order refuses; restart still runs and keeps the file.
     good, _ = fake_node()
     monkeypatch.setattr(alpaca_node, "run", good)
     capsys.readouterr()
     assert alpaca_unattended.main(["order"], unit) == 2
-    assert capsys.readouterr().err == f"REFUSED TO START: {alpaca_unattended.HELD}\n"
+    assert capsys.readouterr().err == f"REFUSED TO START: {refusal}\n"
     assert alpaca_unattended.main(["restart"], unit) == 0
-    assert json.loads(hold(unit).read_text()) == written
+    assert json.loads(left(unit).read_text()) == written
     # The owner removes it; the next order runs.
-    hold(unit).unlink()
+    left(unit).unlink()
     assert alpaca_unattended.main(["order"], unit) == 0
-    assert not hold(unit).exists()
+    assert not hold(unit).exists() and not marker(unit).exists()
 
 
 def test_a_failed_restart_writes_a_hold(unit, monkeypatch, capsys):
@@ -444,25 +452,152 @@ def test_setup_enables_only_timers_and_its_checks_are_read_only():
 # Review fixes (Codex, P2): a killed restart holds; status never hides an unreadable state.
 
 
-def test_a_restart_holds_while_it_runs_and_a_crash_or_kill_leaves_the_hold(unit, monkeypatch):
+def test_a_restart_marks_while_it_runs_and_a_crash_or_kill_leaves_the_marker(unit, monkeypatch):
     run, _ = fake_node()
     seen = []
 
     def watched(state, record, log_dir=None):
-        seen.append(json.loads(hold(unit).read_text()))  # held while reconciliation runs
+        seen.append(json.loads(marker(unit).read_text()))  # marked while reconciliation runs
         run(state, record, log_dir)
 
     monkeypatch.setattr(alpaca_node, "run", watched)
     assert alpaca_unattended.main(["restart"], unit) == 0
     assert seen and seen[0]["mode"] == "restart"
-    assert not hold(unit).exists()  # a pass clears the hold this run created
+    assert not marker(unit).exists()  # a pass removes the run's own marker
     crash, _ = fake_node("crash")  # what the unit's timeout kill leaves: no code after the engine
     monkeypatch.setattr(alpaca_node, "run", crash)
     with pytest.raises(RuntimeError):
         alpaca_unattended.main(["restart"], unit)
-    assert json.loads(hold(unit).read_text())["mode"] == "restart"
+    assert json.loads(marker(unit).read_text())["mode"] == "restart"
     monkeypatch.setattr(alpaca_node, "run", run)
     assert alpaca_unattended.main(["order"], unit) == 2  # the next order stays refused
+    assert alpaca_unattended.main(["restart"], unit) == 0  # a later restart keeps that marker
+    assert marker(unit).exists()
+
+
+# Codex review of the fitted branch (P2): an owner's hold written during a run survives it.
+
+
+@pytest.mark.parametrize("mode", ["restart", "order"])
+@pytest.mark.parametrize("replace", [False, True])
+def test_a_hold_written_during_a_passing_run_survives_it(unit, monkeypatch, capsys, mode, replace):
+    run, _ = fake_node()
+    if replace:  # a hold already there for a restart, replaced by the owner mid-run
+        hold(unit).write_text('{"reason": "an earlier hold"}\n')
+
+    def owner_stops(state, record, log_dir=None):
+        hold(unit).write_text('{"reason": "the owner stops the lane"}\n')
+        run(state, record, log_dir)
+
+    monkeypatch.setattr(alpaca_node, "run", owner_stops)
+    if replace and mode == "order":
+        assert alpaca_unattended.main([mode], unit) == 2  # an existing hold refuses order
+        return
+    assert alpaca_unattended.main([mode], unit) == 0
+    assert hold(unit).read_text() == '{"reason": "the owner stops the lane"}\n'
+    assert not marker(unit).exists()
+    capsys.readouterr()
+    monkeypatch.setattr(alpaca_node, "run", run)
+    assert alpaca_unattended.main(["order"], unit) == 2
+    assert capsys.readouterr().err == f"REFUSED TO START: {alpaca_unattended.HELD}\n"
+
+
+def test_a_failing_run_never_replaces_the_owners_hold(unit, monkeypatch):
+    run, _ = fake_node()
+
+    def unclean(state, record, log_dir=None):
+        hold(unit).write_text('{"reason": "the owner stops the lane"}\n')
+        run(state, record, log_dir)
+        record.data["startup_reconciliation"]["instrument_open_orders_at_start"] = 1
+
+    monkeypatch.setattr(alpaca_node, "run", unclean)
+    assert alpaca_unattended.main(["restart"], unit) == 1
+    assert hold(unit).read_text() == '{"reason": "the owner stops the lane"}\n'
+
+
+# The lead: a closed venue is a skip, not a failure.
+
+
+def closed_node(calendar: str):
+    """The record a node leaves when nothing was sent: the calendar was read and said closed
+    ("closed"), or the read failed and the node stopped with an error ("unread")."""
+
+    def run(state, record, log_dir=None):
+        record.trader_started(
+            instrument_open_orders=0,
+            instrument_open_positions=0,
+            account_open_orders=0,
+            account_open_positions=0,
+        )
+        if calendar == "closed":
+            record.data.update(session="closed", venue_closed=True)
+        else:
+            record.engine_error("node failed or interrupted; inspect the local engine log")
+        record.at_stop(
+            instrument_open_orders=0,
+            instrument_open_positions=0,
+            instrument_inflight_orders=0,
+            execution_healthy=True,
+            order_status=None,
+            filled=False,
+        )
+
+    return run
+
+
+def test_a_closed_venue_skips_without_a_hold(unit, monkeypatch, capsys):
+    monkeypatch.setattr(alpaca_node, "run", closed_node("closed"))
+    assert alpaca_unattended.main(["order"], unit) == 0
+    assert capsys.readouterr().out == (
+        "SKIPPED: the venue is closed; nothing was sent, no hold written\n"
+    )
+    assert not hold(unit).exists() and not marker(unit).exists()
+    state = Path(unit["STATE_DIRECTORY"])
+    (record,) = (state / "runs").glob("*-order.json")
+    data = json.loads(record.read_text())
+    assert data["result"] == alpaca_unattended.SKIPPED and data["problems"] == []
+    assert not (state / "evidence").exists()  # a skip is not a pass
+    assert alpaca_unattended.main(["status", "--state", str(state)], {}) == 0
+    assert f": {alpaca_unattended.SKIPPED}" in capsys.readouterr().out
+    run, _ = fake_node()
+    monkeypatch.setattr(alpaca_node, "run", run)
+    assert alpaca_unattended.main(["order"], unit) == 0  # the next session's order runs
+
+
+def test_a_calendar_that_could_not_be_read_holds(unit, monkeypatch):
+    monkeypatch.setattr(alpaca_node, "run", closed_node("unread"))
+    assert alpaca_unattended.main(["order"], unit) == 1
+    assert json.loads(hold(unit).read_text())["reason"] == "the unattended order run failed"
+
+
+@pytest.mark.parametrize("change", ["order", "event", "not_flat", "unhealthy", "unknown"])
+def test_closed_with_anything_else_wrong_still_holds(unit, monkeypatch, change):
+    closed = closed_node("closed")
+
+    def run(state, record, log_dir=None):
+        closed(state, record, log_dir)
+        if change == "order":
+            record.order_built(type="LIMIT", time_in_force="DAY", side="BUY", quantity="1")
+        elif change == "event":
+            record.event("OrderRejected", 1)
+        elif change == "not_flat":
+            record.data["at_stop"]["instrument_open_positions"] = 1
+        elif change == "unhealthy":
+            record.data["at_stop"]["execution_healthy"] = False
+        else:
+            del record.data["venue_closed"]  # "closed" only from the quote guard, not the venue
+
+    monkeypatch.setattr(alpaca_node, "run", run)
+    assert alpaca_unattended.main(["order"], unit) == 1
+    assert hold(unit).exists()
+
+
+def test_a_restart_is_never_a_skip(unit, monkeypatch):
+    run = closed_node("closed")
+    monkeypatch.setattr(alpaca_node, "run", run)
+    assert alpaca_unattended.main(["restart"], unit) == 0  # a clean restart passes, as before
+    data = json.loads(next((Path(unit["STATE_DIRECTORY"]) / "runs").glob("*.json")).read_text())
+    assert data["result"] == "pass"
 
 
 def test_status_of_an_unreadable_state_fails_instead_of_reporting_no_hold(unit, capsys):

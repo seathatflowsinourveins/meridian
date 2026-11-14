@@ -145,10 +145,13 @@ def test_check_mode_reports_and_changes_nothing(fake):
     assert "release: not installed" in out and "hold file: unknown" in out
     assert all(f"{timer}: not enabled" in out for timer in TIMERS)
     run("unattended")
+    out, _ = run("unattended-check")
+    assert "hold file: none" in out and "run marker" not in out
     (root / "var/lib/meridian-alpaca-paper/hold").write_text("{}\n")
+    (root / "var/lib/meridian-alpaca-paper/run-marker").write_text("{}\n")
     before = snapshot(root)
     out, calls = run("unattended-check")
-    assert "hold file: PRESENT" in out
+    assert "hold file: PRESENT" in out and "run marker: PRESENT" in out
     assert "meridian-alpaca-paper@order.service: last result fake" in out
     assert not [c for c in calls if any(m in c for m in MUTATING)], calls
     assert not [c for c in calls if "alpaca-lane.json" in c or "credstore" in c]

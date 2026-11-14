@@ -75,6 +75,9 @@ class LaneExecutionClient(AlpacaPaperExecutionClient):
             current = self.current_session()  # Validate before startup completes.
             self.record.data["session"] = "closed" if current is None else current.name
             self.record.data["feed"] = None if current is None else current.feed
+            # Only here, after the venue's own calendar was read: the unattended lane skips
+            # rather than fails a run on a day this says is closed.
+            self.record.data["venue_closed"] = current is None
 
     def _order_report(self, row: Any) -> Any:
         report = super()._order_report(row)
