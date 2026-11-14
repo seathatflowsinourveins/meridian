@@ -15,6 +15,7 @@ from typing import Any
 from nautilus_trader.config import ExecutionClientConfig
 from nautilus_trader.model import AccountId, InstrumentId, Money
 
+from .commission import PAPER_US_EQUITY_COMMISSION
 from .constants import ACCOUNT_ISSUER, VENUE
 
 _COMMON_FIELDS = frozenset({"instrument_provider", "routing"})
@@ -58,6 +59,23 @@ class AlpacaPaperExecClientConfig(ExecutionClientConfig):
         self.commission_source = commission_source
         self.request_timeout_secs = float(request_timeout_secs)
         self.order_budget_rows_path = order_budget_rows_path
+
+    @classmethod
+    def for_paper_equities(
+        cls, *, account_id: str, house_prefix: str, universe: list[str], **kwargs: Any
+    ) -> AlpacaPaperExecClientConfig:
+        """Use this paper lane's sourced charge, which models no cost of real trading."""
+        fee = PAPER_US_EQUITY_COMMISSION
+        return cls(
+            account_id=account_id,
+            house_prefix=house_prefix,
+            universe=universe,
+            commission_per_fill=fee.decimal_text,
+            commission_source="; ".join(
+                f"{source.url} (read {source.date_read.isoformat()})" for source in fee.sources
+            ),
+            **kwargs,
+        )
 
     def commission(self) -> Money | None:
         """The evidenced per-fill fee, or None when the evidence is missing or malformed."""
