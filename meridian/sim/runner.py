@@ -43,9 +43,10 @@ from nautilus_trader.model import (
 from nautilus_trader.persistence import DataCatalogConfig
 
 from meridian import boundary
+from meridian.alpaca.universe import UniverseTimeline
 from meridian.strategy_template.params import TemplateParams
 from meridian.strategy_template.report import _finite, require_research
-from meridian.strategy_template.sim import SCENARIOS, SIM_PARAMS, path
+from meridian.strategy_template.sim import SCENARIOS, SIM_PARAMS, path, synthetic_universe
 from meridian.strategy_template.sim import problems as template_problems
 
 from . import budget, catalog
@@ -110,11 +111,18 @@ def run_set(
     inspect: Inspect | None = None,
     template_type: type[GatedBreakout] = GatedBreakout,
     calendar: catalog.Calendar | None = None,
+    start_ns: int = catalog.START_NS,
+    universe: UniverseTimeline | None = None,
 ) -> dict[str, Any]:
     """One node, one run, one parameter set; the result as plain data.
 
     `calendar` must be the rows the catalog was written with: the strategies' session rule
     and DAY expiry read them, the venue reads the statuses made from them.
+
+    The template enters only symbols on a mover list received before the entry
+    (`meridian/alpaca/universe.py`). By default that list comes from synthetic screener
+    responses read at `start_ns`, the catalog's first quote (the template's own
+    `synthetic_universe`: the same parser and selector as the read-only client, no network).
     """
     ids = catalog.instrument_ids(SCENARIOS, copies)
     config = run_config(models, catalog_path, [*ids, BRACKET])
@@ -130,6 +138,7 @@ def run_set(
             calendar=calendar,
             budget_rows=rows,
         )
+        template.universe = universe or synthetic_universe([*ids], read_at_ns=start_ns)
         bracket = BracketProbe(BRACKET, **BRACKET_ARGS, calendar=calendar)
         node.add_strategy(config.id, template)
         node.add_strategy(config.id, bracket)
