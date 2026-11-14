@@ -65,11 +65,13 @@ BRACKET_ARGS: dict[str, Any] = {
 Inspect = Callable[[BacktestNode, str, GatedBreakout, BracketProbe], None]
 
 
-def write_catalog(folder: Path, *, copies: int = 1, start_ns: int = catalog.START_NS) -> Path:
+def write_catalog(
+    folder: Path, *, copies: int = 1, start_ns: int = catalog.START_NS, spacing_days: int = 0
+) -> Path:
     path = folder / "catalog"
     path.mkdir(parents=True, exist_ok=True)
     bracket = {BRACKET: catalog.quotes(BRACKET, BRACKET_BIDS, start_ns)}
-    catalog.write(path, copies=copies, start_ns=start_ns, extra=bracket)
+    catalog.write(path, copies=copies, start_ns=start_ns, spacing_days=spacing_days, extra=bracket)
     return path
 
 
@@ -119,6 +121,7 @@ def run_set(
         fills = node.generate_fills_report(config.id)
         data: dict[str, Any] = {
             "set": models.name,
+            "returns_series": dict(sorted(result.returns_series.items())),
             "models": {k: str(v) for k, v in asdict(models).items()},
             "symbols": {str(i): b.report() for i, b in template.books.items()},
             "actions": template.actions.summary(),

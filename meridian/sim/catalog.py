@@ -130,18 +130,27 @@ def write(
     *,
     copies: int = 1,
     start_ns: int = START_NS,
+    spacing_days: int = 0,
     extra: Mapping[InstrumentId, list[QuoteTick]] | None = None,
 ) -> list[InstrumentId]:
-    """Write one catalog: each instrument, its quotes and its session statuses."""
+    """Write each instrument, quotes and statuses; optionally space scenario copies by days.
+
+    Zero preserves simultaneous copies. Research uses weekly spacing for the same weekday;
+    each copy still has its own instrument and the existing synthetic price path.
+    """
     catalog = ParquetDataCatalog(str(path))
     series = {
-        iid: quotes(iid, scenarios[name][0], start_ns)
-        for iid, name in instrument_ids(scenarios, copies).items()
+        iid: quotes(
+            iid,
+            scenarios[name][0],
+            start_ns + (index % copies) * spacing_days * 86_400_000_000_000,
+        )
+        for index, (iid, name) in enumerate(instrument_ids(scenarios, copies).items())
     }
     series.update(extra or {})
     catalog.write_instruments([equity(iid, start_ns) for iid in series])
     for iid, ticks in series.items():
         # The catalog takes one instrument per write call.
         catalog.write_quote_ticks(ticks)
-        catalog.write_instrument_statuses(status_events(iid, start_ns, ticks[-1].ts_init))
+        catalog.write_instrument_statuses(status_events(iid, ticks[0].ts_init, ticks[-1].ts_init))
     return list(series)

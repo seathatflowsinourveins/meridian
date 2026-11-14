@@ -27,7 +27,7 @@ def register_rows(text: str) -> dict[str, tuple[str, str]]:
 def area_problems(
     names: list[str], areas: dict[str, dict[str, str]], rows: dict[str, tuple[str, str]]
 ) -> list[str]:
-    files = [name for name in names if name.startswith(("meridian/", "deploy/"))]
+    files = [name for name in names if name.startswith(("meridian/", "deploy/", "research/"))]
     found = []
     for name in files:
         matches = [pattern for pattern in areas if fnmatch.fnmatchcase(name, pattern)]
@@ -123,13 +123,14 @@ def area():
     return {"upstream": "Example", "how": "build-on", "feature": "hooks", "why": "local policy"}
 
 
-def test_planted_module_without_entry_fails(area):
+@pytest.mark.parametrize("root", ["meridian", "deploy", "research"])
+def test_planted_module_without_entry_fails(area, root):
     found = area_problems(
-        ["meridian/known.py", "meridian/planted.py"],
-        {"meridian/known.py": area},
+        [f"{root}/known.py", f"{root}/planted.py"],
+        {f"{root}/known.py": area},
         {"Example": ("1.0", "upstream")},
     )
-    assert found == ["meridian/planted.py: expected one upstream entry, found 0"]
+    assert found == [f"{root}/planted.py: expected one upstream entry, found 0"]
 
 
 def test_entry_without_upstream_row_fails(area):

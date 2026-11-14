@@ -1,6 +1,9 @@
 # Row names are exact UPSTREAM.md cells; paths use case-sensitive fnmatch (* includes /).
 # Each own-design area names its upstream feature and the gap it fills.
 [areas]
+"research/__init__.py" = { upstream = "skfolio", how = "integrate", feature = "research namespace", why = "keep research imports outside the order path" }
+"research/metrics.py" = { upstream = "ml4t-diagnostic", how = "build-on", feature = "DSR moments and PBO; skfolio purged splits", why = "score every fixed candidate with common trials and audited splits" }
+"research/evaluate.py" = { upstream = "skfolio", how = "integrate", feature = "CombinatorialPurgedCV", why = "evaluate the native simulation results offline with ml4t-diagnostic" }
 "meridian/__init__.py" = { upstream = "NautilusTrader", how = "integrate", feature = "Python package", why = "the harness needs its own namespace" }
 "meridian/boundary.py" = { upstream = "NautilusTrader IB integration guide and reconciliation concept", how = "build-on", feature = "paper Gateway configuration", why = "the lane must verify paper state before constructing the engine" }
 "meridian/ib_probe.py" = { upstream = "IBKR Python API client source, read as text and not installed", how = "build-on", feature = "managed-accounts handshake", why = "the engine adapter trusts the configured account" }

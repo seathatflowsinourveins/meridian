@@ -56,7 +56,7 @@ Milestones (plan 9.2); each ends in a committed, scrubbed run record:
 | Ask the owner before adding a paid service or an account; no licence is chosen for this repo's own code: that is the owner's decision | the owner | rule |
 | One writer per account; plain DAY LIMIT entries, no brackets | plan 9.1 | rule; the M1 record fails an order that is not a DAY LIMIT |
 
-The offline gate requires exactly one map entry per `meridian/` or `deploy/` file, citing an upstream
+The offline gate requires exactly one map entry per `meridian/`, `deploy/` or `research/` file, citing an upstream
 row, feature and local need; unused entries fail. Project and group dependency rows must match
 locked versions. Add the register row and map entry with the change; CI checks both.
 
@@ -289,6 +289,12 @@ in that turn. `codex features list` shows `goals` stable and on.
 - NautilusTrader 2.0 is a release-candidate line with breaking changes between candidates.
   Read its release notes before moving the pin, and never answer an API question from memory:
   read the installed package or the tagged source.
+
+Before an attended paper run, exercise `uv run python -m research.evaluate`: engine statistics,
+purged held-out scores, DSR over all placeholder sets, and PBO go to `runs/` with a terminal table.
+This repeats synthetic scenarios; significance is no evidence of profit or approval to run.
+`research/` is linted and typed but forbidden on the order path; methods, pinned sources and
+limitations are in [the evaluation record](adr/data/m5-evaluation.md).
 
 ## Size budget, ADRs and this file
 

@@ -7,6 +7,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 RESEARCH_MODULES = {
+    "research",
     "hypothesis",
     "time_machine",
     "polars",
