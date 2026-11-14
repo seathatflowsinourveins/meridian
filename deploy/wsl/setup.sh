@@ -258,6 +258,8 @@ claude_settings() {
   # Display: thinking summaries in the conversation and the Ctrl+O transcript, a time on each
   # message, the fullscreen renderer. Compaction is left at Claude Code's defaults (the "auto"
   # window, idle compaction, precompute); check_claude refuses a file that switches one off.
+  # autoCompactEnabled is written out because Claude Code still reads an old value of it from
+  # ~/.claude.json when this file has none.
   local file="${HOME}/.claude/settings.json" tmp
   tmp="$(mktemp)"
   jq --arg model "${CLAUDE_MODEL}" --arg floor "${CLAUDE_VERSION}" '
@@ -272,6 +274,7 @@ claude_settings() {
       showThinkingSummaries: true,
       showMessageTimestamps: true,
       tui: "fullscreen",
+      autoCompactEnabled: true,
       enabledPlugins: {
         "codex@openai-codex": true,
         "cc-plugin-you-should-know@builtin": true
@@ -351,8 +354,9 @@ check_claude() {
     and .skipDangerousModePermissionPrompt == true
     and .showThinkingSummaries == true and .showMessageTimestamps == true
     and .tui == "fullscreen"
-    and ([.autoCompactEnabled, .idleCompaction, .precomputeCompactionEnabled,
-          .autoContinueAtUsageLimit] | all(. != false))
+    and .autoCompactEnabled == true
+    and ([.idleCompaction, .precomputeCompactionEnabled, .autoContinueAtUsageLimit]
+      | all(. != false))
     and (["Edit(//**/risk/**)", "Edit(//**/*.contract.json)", "Read(//**/.env)", "Read(//**/.env.*)"]
       - (.permissions.deny // []) == [])
     and ([.enabledPlugins // {} | to_entries[] | select(.value == true) | .key]
