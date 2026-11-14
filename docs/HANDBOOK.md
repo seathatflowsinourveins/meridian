@@ -52,7 +52,7 @@ Milestones (plan 9.2); each ends in a committed, scrubbed run record:
 | The size budget | `size-budget.toml`, `tests/test_size_budget.py` | CI tripwire |
 | The owner sets goals; a goal never names a lane run, an order, the IB Gateway, port 4002 or a step only the owner takes | "Goals" below | rule |
 | Work is reviewed by a different model family before it merges (`/codex:review` in Claude Code); findings are fixed in the pull request or closed with a reason; nothing auto-files issues | plan 9.5 | rule |
-| MCP servers are off machine-wide for Claude Code and Codex; a skill, plugin or MCP server is added only by an evidence record (plan 8.6), and none gets an order tool or broker connector | `deploy/wsl/setup.sh agents-check` | check |
+| MCP servers are off machine-wide for Claude Code and Codex; a skill, plugin or MCP server is added only by an ADR (`docs/adr/README.md`), and none gets an order tool or broker connector | `deploy/wsl/setup.sh agents-check` | check |
 | Ask the owner before adding a paid service or an account; no licence is chosen for this repo's own code: that is the owner's decision | the owner | rule |
 | One writer per account; plain DAY LIMIT entries, no brackets | plan 9.1 | rule; the M1 record fails an order that is not a DAY LIMIT |
 
@@ -273,7 +273,7 @@ in that turn. `codex features list` shows `goals` stable and on.
 
 - Four agent runtimes run here through Orca, one git worktree per task: Claude Code leads
   (`claude-fable-5-2`; its workers run `claude-opus-5-5`), Codex (`gpt-6-astra`, `gpt-6.1-sol`
-  for bulk) and Antigravity work and review, DeepSeek Harness takes mechanical tasks only.
+  for bulk) and Antigravity work and review, DeepSeek Harness works (code and research).
 - The agent runtimes start from checksummed pins in `deploy/wsl/setup.sh` and update themselves
   in sessions the owner starts (Orca's launches do not); `setup.sh agents-check` verifies them.
 - NautilusTrader 2.0 is a release-candidate line with breaking changes between candidates.

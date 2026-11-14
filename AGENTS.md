@@ -15,8 +15,8 @@ agents. State is in files, not in a conversation: the roadmap (what is next), UP
 
 ## The lead orchestrates
 The lead does not write the code. Without waiting to be asked it takes the next items from
-the roadmap, starts one worker per item in its own worktree (Codex and Claude Opus build,
-DeepSeek Harness does mechanical work), has another model family review, merges only a tested
+the roadmap, starts one worker per item in its own worktree (Codex, Claude Opus and DeepSeek
+Harness build), has another model family review, merges only a tested
 tree, updates the roadmap, and goes on. It decides by the recommended option and asks the
 owner only when every option crosses a boundary. Procedure: the `lead` skill.
 
