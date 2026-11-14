@@ -32,25 +32,28 @@ It covers, in this order (plan 8.6), under these headings or plainer ones:
 
 An ADR that adds something also adds its row to `UPSTREAM.md`, in the same commit.
 
+Revisits append a dated kept/replaced/re-measured line in `data/NNNN-revisits.md`, then
+update this index; never silently edit prior evidence. Dates check the Decision prerequisites.
+
 ## Index
 
 Numbers 0001 to 0013 are taken by work in progress: 0001 for the retrieval layer (plan 8.7)
 and 0002 to 0013 for the first candidates of plan 8.6. Each ADR's pull request adds its row to
 this table; the row's first cell links the file by name, as in `[NNNN](NNNN-short-title.md)`.
 
-| ADR | Title | Status |
-|---|---|---|
-| [0001](0001-semble-code-search.md) | semble for code search (plan 8.7, retrieval slot 2) | not adopted, 2026-11-12 |
-| [0002](0002-claude-pyright-lsp.md) | pyright-lsp for Claude Code (plan 8.6) | not adopted, 2026-11-13 |
-| [0003](0003-trailofbits-property-testing-supply-chain.md) | Trail of Bits property-based-testing and supply-chain-risk-auditor for Claude Code (plan 8.6) | not adopted, 2026-11-13 |
-| [0004](0004-mattpocock-tdd-diagnosing-bugs.md) | mattpocock/skills tdd and diagnosing-bugs (plan 8.6) | not adopted, 2026-11-13 |
-| [0005](0005-claude-code-superpowers.md) | obra/superpowers for Claude Code (plan 8.6) | not adopted, 2026-11-13 |
-| [0006](0006-claude-compound-engineering.md) | compound-engineering plugin for Claude Code (plan 8.6) | not adopted, 2026-11-13 |
-| [0007](0007-codex-openai-plugins.md) | openai/plugins, the official Codex plugins (plan 8.6) | not adopted, 2026-11-13 |
-| [0008](0008-codex-oh-my-codex.md) | oh-my-codex for Codex CLI (plan 8.6) | not adopted, 2026-11-13 |
-| [0009](0009-dsh-codex-peer.md) | dsh-codex-peer, Codex as a peer of DeepSeek Harness (plan 8.6) | not adopted, 2026-11-13 |
-| [0010](0010-dsh-gungnir.md) | dsh-gungnir goal verification for DeepSeek Harness (plan 8.6) | not adopted, 2026-11-13 |
-| [0011](0011-dsh-goalloop-agentteams.md) | dsh-goalloop-agentteams completion gate for DeepSeek Harness (plan 8.6) | deferred, 2026-11-13 |
-| [0012](0012-dsh-early-stop-guard.md) | dsh-early-stop-guard for DeepSeek Harness (plan 8.6) | not adopted, 2026-11-13 |
-| [0013](0013-antigravity-cli-reading.md) | Antigravity CLI documentation reading (plan 8.6) | not adopted, 2026-11-13 |
-| [0014](0014-claude-you-should-know.md) | You should know for Claude Code (plan 8.6) | adopted, 2026-11-13 |
+| ADR | Title | Status | Last checked | Revisit |
+|---|---|---|---|---|
+| [0001](0001-semble-code-search.md) | semble for code search (plan 8.7, retrieval slot 2) | not adopted, 2026-11-12 | 2026-11-12 | 2027-02-10 |
+| [0002](0002-claude-pyright-lsp.md) | pyright-lsp for Claude Code (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0003](0003-trailofbits-property-testing-supply-chain.md) | Trail of Bits property-based-testing and supply-chain-risk-auditor for Claude Code (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0004](0004-mattpocock-tdd-diagnosing-bugs.md) | mattpocock/skills tdd and diagnosing-bugs (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0005](0005-claude-code-superpowers.md) | obra/superpowers for Claude Code (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0006](0006-claude-compound-engineering.md) | compound-engineering plugin for Claude Code (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0007](0007-codex-openai-plugins.md) | openai/plugins, the official Codex plugins (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0008](0008-codex-oh-my-codex.md) | oh-my-codex for Codex CLI (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0009](0009-dsh-codex-peer.md) | dsh-codex-peer, Codex as a peer of DeepSeek Harness (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0010](0010-dsh-gungnir.md) | dsh-gungnir goal verification for DeepSeek Harness (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0011](0011-dsh-goalloop-agentteams.md) | dsh-goalloop-agentteams completion gate for DeepSeek Harness (plan 8.6) | deferred, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0012](0012-dsh-early-stop-guard.md) | dsh-early-stop-guard for DeepSeek Harness (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0013](0013-antigravity-cli-reading.md) | Antigravity CLI documentation reading (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0014](0014-claude-you-should-know.md) | You should know for Claude Code (plan 8.6) | adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
