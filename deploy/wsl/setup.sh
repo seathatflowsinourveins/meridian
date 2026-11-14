@@ -6,6 +6,7 @@
 #   deploy/wsl/setup.sh uv            install uv (pinned; installer checksum verified first)
 #   deploy/wsl/setup.sh gh            install the GitHub CLI from GitHub's release, in place of Ubuntu's
 #   deploy/wsl/setup.sh gitleaks      install the pinned gitleaks CI uses, for the lead's merge gate
+#   deploy/wsl/setup.sh ocr           install open-code-review's `ocr`, a second reviewer's file list and rules
 #   deploy/wsl/setup.sh repo          clone the repo to ~/src/meridian and run `uv sync --locked`
 #   deploy/wsl/setup.sh gateway       install IB Gateway (pinned build; never starts it or logs in)
 #   deploy/wsl/setup.sh agents        all of the following, in this order:
@@ -24,7 +25,7 @@
 #   deploy/wsl/setup.sh signins       list the sign-ins left for the owner, with their commands
 #   deploy/wsl/setup.sh orca-pair     owner, once, in Windows Terminal: pair the Windows Orca app
 #
-# Order: check, uv, gh, gitleaks, repo, gateway, then agents. Sign-ins are the owner's: see UPSTREAM.md.
+# Order: check, uv, gh, gitleaks, ocr, repo, gateway, then agents. Sign-ins are the owner's: see UPSTREAM.md.
 # Versions, checksums and the pages they were read from: UPSTREAM.md.
 set -euo pipefail
 # The tools below go to ~/.local/bin. Ubuntu's ~/.profile puts that on PATH only when it existed
@@ -48,6 +49,11 @@ GH_URL="https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERS
 GITLEAKS_VERSION=8.30.1
 GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
 GITLEAKS_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+# open-code-review (ADR 0020), the release binary by its SHA-256 from the release's sha256sum.txt.
+# Not the npm package: its wrapper installs the newest release over itself in the background.
+OCR_VERSION=1.13.9
+OCR_SHA256=2db294981624d6fae9bcfb4df7f9ebfd7f92c40b3a552873dff5887116931d3e
+OCR_URL="https://github.com/alibaba/open-code-review/releases/download/v${OCR_VERSION}/opencodereview-linux-amd64"
 
 # Agent runtimes. By the owner's decision of 2026-11-12 they update themselves where the tool
 # can, in sessions the owner starts (Orca's own launches switch the updaters off). What is
@@ -316,6 +322,32 @@ check_gitleaks() {
   [ "$(command -v gitleaks)" = "${HOME}/.local/bin/gitleaks" ] \
     || fail "gitleaks resolves to $(command -v gitleaks || echo nothing), not ~/.local/bin/gitleaks"
   ok "gitleaks ${GITLEAKS_VERSION} in ~/.local/bin, the build CI uses"
+}
+
+# open-code-review, in its delegation mode only: `ocr delegate preview` lists the files of a diff
+# that a review has to cover and `ocr delegate rule` gives the rules for them; the reviewing
+# agent reads the diff and writes the findings. That mode needs no model provider, key or
+# account, so a provider configuration of its own is refused here (ADR 0020).
+ocr_version() { "${HOME}/.local/bin/ocr" --version 2>/dev/null </dev/null | sed -n '1s/^open-code-review v\([^ ]*\).*/\1/p'; }
+
+cmd_ocr() {
+  if [ "$(ocr_version)" != "${OCR_VERSION}" ]; then
+    local tmp
+    tmp="$(mktemp -d)"
+    curl -fsSLo "${tmp}/ocr" "${OCR_URL}"
+    echo "${OCR_SHA256}  ${tmp}/ocr" | sha256sum -c -
+    install -D -m 0755 "${tmp}/ocr" "${HOME}/.local/bin/ocr"
+    rm -rf "${tmp}"
+  fi
+  check_ocr
+}
+
+check_ocr() {
+  [ "$(ocr_version)" = "${OCR_VERSION}" ] \
+    || fail "open-code-review is not ${OCR_VERSION} in ~/.local/bin (run: deploy/wsl/setup.sh ocr)"
+  [ ! -e "${HOME}/.opencodereview/config.json" ] \
+    || fail "~/.opencodereview/config.json exists: open-code-review runs here without a model provider of its own"
+  ok "open-code-review ${OCR_VERSION} in ~/.local/bin, delegation mode only: no provider of its own"
 }
 
 claude_settings() {
@@ -1460,6 +1492,7 @@ dsh $(v dsh_version) ${DSH_VERSION} $(v newest_npm @deepseek-ai/dsh)
 dsh-tui $(v dsh_tui_version) ${DSH_TUI_VERSION} $(v newest_npm @deepseek-harness-tui/dsh-tui)
 orca $(v orca_version) ${ORCA_VERSION} $(v newest_github stablyai/orca)
 gh $(v gh_version) ${GH_VERSION} $(v newest_github cli/cli)
+ocr $(v ocr_version) ${OCR_VERSION} $(v newest_github alibaba/open-code-review)
 claude-hud $(v claude_hud_version) ${CLAUDE_HUD_VERSION} $(v newest_github jarrodwatts/claude-hud)
 EOF
   issue="$(cd "$(dirname "$(readlink -f "$0")")" && gh_cli issue list --label landscape --state open --json number --jq '.[0].number' 2>/dev/null || true)"
@@ -1478,6 +1511,7 @@ cmd_upkeep() {
   # server restarts every session, so that step stays the owner's.
   "${HOME}/.local/bin/claude" update </dev/null || echo "note: claude update did not complete"
   cmd_gh
+  cmd_ocr
   cmd_claude
   cmd_codex
   cmd_agy
@@ -1494,7 +1528,7 @@ UPKEEP_PROMPT='Weekly upkeep of the agent runtimes of this repository. Read AGEN
 
 Do this, in order:
 1. Run `deploy/wsl/setup.sh upkeep`, then `deploy/wsl/setup.sh drift`. Read the open GitHub issue labelled `landscape`, if there is one.
-2. For each runtime that drift shows ahead of its pin or with a newer release upstream (Claude Code, Codex, Antigravity, DeepSeek Harness, dsh-tui, Orca, gh, claude-hud): read its release notes at the source, then move its pin in deploy/wsl/setup.sh with the checksum, integrity value or signed manifest its installer already checks, and bring its UPSTREAM.md row up to date in place. claude-hud moves only to a tag whose commit GitHub marks verified.
+2. For each runtime that drift shows ahead of its pin or with a newer release upstream (Claude Code, Codex, Antigravity, DeepSeek Harness, dsh-tui, Orca, gh, open-code-review, claude-hud): read its release notes at the source, then move its pin in deploy/wsl/setup.sh with the checksum, integrity value or signed manifest its installer already checks, and bring its UPSTREAM.md row up to date in place. claude-hud moves only to a tag whose commit GitHub marks verified.
 3. Claude Code: read its changelog between the old pin and the new one. For each setting or feature that is new, off by default and useful to this setup, either add it to claude_settings and check_claude with a test, or name it in the pull request as considered and left out, with the reason.
 4. If the installed Orca is newer than the version named in .agents/skills/NOTICE.md, refresh the two copied skills the way that file describes.
 5. If a model newer than the lead or worker model ids in deploy/wsl/setup.sh is listed on its vendor'"'"'s models page, say so in the pull request. Do not change a model id.
@@ -1533,6 +1567,7 @@ case "${1:-}" in
   uv) cmd_uv ;;
   gh) cmd_gh ;;
   gitleaks) cmd_gitleaks ;;
+  ocr) cmd_ocr ;;
   claude) cmd_claude ;;
   codex) cmd_codex ;;
   agy) cmd_agy ;;
@@ -1558,6 +1593,7 @@ case "${1:-}" in
   agents-check)
     check_gh
     check_gitleaks
+    check_ocr
     check_claude
     check_codex
     check_agy
@@ -1569,5 +1605,5 @@ case "${1:-}" in
     ;;
   repo) cmd_repo ;;
   gateway) cmd_gateway ;;
-  *) sed -n '2,27p' "$0"; exit 2 ;;
+  *) sed -n '2,28p' "$0"; exit 2 ;;
 esac

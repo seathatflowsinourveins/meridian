@@ -80,7 +80,7 @@ for Codex as its MCP server for navigation and diagnostics.
 |---|---|---|
 | Fleet, one worktree per task | `stablyai/orca` | in use |
 | Cross-family review | `openai/codex-plugin-cc` and `codex review` | in use (the plugin has been quiet since July: watched) |
-| A second reviewer with a published benchmark | `alibaba/open-code-review` | measure |
+| A second reviewer with a published benchmark | `alibaba/open-code-review` | in use, delegation mode only (ADR 0020, 2026-11-14) |
 | Named fallbacks, not installed | `max-sixty/worktrunk` (if Orca is dropped), `coleam00/Archon` (if command-ended gates are needed) | watch |
 
 ### Layer 7, skills and context
@@ -89,10 +89,15 @@ for Codex as its MCP server for navigation and diagnostics.
 | Skill format | `agentskills/agentskills`, Orca's two skills, the built-in "You should know" | in use |
 | The few-line instruction file | the four maintained sources named in section 1 | add |
 | Shell-output compression | `rtk-ai/rtk` | not adopted, 2026-11-13 (ADR 0017) |
-| Token and cost accounting | `ccusage/ccusage` | measure |
+| Status line: context, plan limits, activity, and token and cost accounting | `jarrodwatts/claude-hud` (ADR 0015) | in use |
 | Write-less-code skill | `DietrichGebert/ponytail` | in use for Codex, 2026-11-13 (ADR 0018) |
 | Codex workflow layer | `Yeachan-Heo/oh-my-codex` | in use, 2026-11-13 (ADR 0018) |
 | Code navigation and diagnostics for Codex | `oraios/serena` | in use, 2026-11-14 (ADR 0018) |
+
+2026-11-14: token and cost accounting is held by claude-hud, adopted on 2026-11-13 (ADR 0015): the
+session's cost, a daily and weekly ledger, session tokens and both usage windows, all from
+Claude Code's own status payload. `ccusage/ccusage` is not installed: one upstream per job. It
+would add per-model reports over past transcripts, which nothing here needs yet.
 
 ### Layer 8, memory and retrieval
 | Job | Rests on | State |
@@ -163,7 +168,7 @@ The owner's starred list was read on 2026-11-13 with `gh api user/starred --pagi
 | `coleam00/Archon` | Layer 6, orchestration and review | yes | yes |
 | `agentskills/agentskills` | Layer 7, skills and context | yes | yes |
 | `rtk-ai/rtk` | Layer 7, skills and context | yes | yes |
-| `ccusage/ccusage` | Layer 7, skills and context | yes | no |
+| `ccusage/ccusage` | Context and status tools | no | no |
 | `DietrichGebert/ponytail` | Layer 7, skills and context | yes | yes |
 | `Yeachan-Heo/oh-my-codex` | Layer 7, skills and context | yes | yes |
 | `oraios/serena` | Layer 7, skills and context | yes | yes |
@@ -339,7 +344,7 @@ The owner's starred list was read on 2026-11-13 with `gh api user/starred --pagi
 | `kenn-io/agentsview` | Context and status tools | no | yes |
 | `getagentseal/codeburn` | Context and status tools | no | yes |
 | `graykode/abtop` | Context and status tools | no | yes |
-| `jarrodwatts/claude-hud` | Context and status tools | no | yes |
+| `jarrodwatts/claude-hud` | Layer 7, skills and context | yes | yes |
 | `sirmalloc/ccstatusline` | Context and status tools | no | yes |
 | `Maciek-roboblog/Claude-Code-Usage-Monitor` | Context and status tools | no | yes |
 | `drona23/claude-token-efficient` | Guides and catalogues, read but not installed | no | yes |
