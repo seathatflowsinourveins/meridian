@@ -268,11 +268,36 @@ class Gate:
         record = self.lock_path.with_suffix(".owner.json")
         return json.loads(record.read_text())["branch"] if record.exists() else None
 
+    def _release_stale(self) -> tuple[bool, str | None]:
+        """Only the shared flock proves that nobody can still own these leftovers."""
+        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.lock_path.open("a+") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return False, None
+            try:
+                holder = self.holder()
+            except ValueError, KeyError, TypeError:
+                holder = "unreadable owner"
+            self.lock_path.with_suffix(".owner.json").unlink(missing_ok=True)
+            self.lock_path.with_suffix(".sock").unlink(missing_ok=True)
+            return True, holder
+
     def release(self) -> str | None:
-        holder = self.holder()
-        if holder:
-            with self.reservation(holder):
-                self._finish = True
+        stale, holder = self._release_stale()
+        if not stale:
+            try:
+                holder = self.holder()
+                if not holder:
+                    raise Refused("another process holds landing.lock without a gate owner")
+                with self.reservation(holder):
+                    self._finish = True
+            except Refused, OSError:
+                # The holder may have died between the flock probe and the handshake.
+                stale, holder = self._release_stale()
+                if not stale:
+                    raise
         self.say(f"released the lock of {holder}" if holder else "no lock was held")
         return holder
 
@@ -333,13 +358,60 @@ class Gate:
         self.say(f"{'PASS' if ok else 'FAIL'} {branch}: tested {tested[:12]} on main {main[:12]}")
         return ok
 
+    @staticmethod
+    def plain_text(text: str) -> str:
+        return re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
+
+    def public_value(self, value, worktree: Path | None = None):
+        """Sanitize decoded JSON values, never edit serialized JSON escape sequences."""
+        if isinstance(value, str):
+            return self.public_text(value, worktree)
+        if isinstance(value, list):
+            return [self.public_value(item, worktree) for item in value]
+        if isinstance(value, dict):
+            return {
+                self.public_text(key, worktree): self.public_value(item, worktree)
+                for key, item in value.items()
+            }
+        return value
+
     def public_text(self, text: str, worktree: Path | None = None) -> str:
-        """Remove terminal controls and home paths before anything becomes PR text."""
-        plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
-        for root in sorted({str(self.repo), str(worktree or self.repo)}, key=len, reverse=True):
-            plain = plain.replace(root + "/", "")
-        homes = rf"(?:{re.escape(str(Path.home()))}|/home/[^/\s]+|/Users/[^/\s]+|~)"
-        return re.sub(homes + r"(?:/[^\s`\"'<>]*)+", "[local path]", plain)
+        plain = self.plain_text(text)
+        try:
+            value = json.loads(plain)
+            if isinstance(value, (dict, list)):
+                return json.dumps(self.public_value(value, worktree), ensure_ascii=False)
+        except ValueError:
+            pass
+        roots = sorted({str(self.repo), str(worktree or self.repo)}, key=len, reverse=True)
+        home = str(Path.home())
+
+        def scrub(match: re.Match) -> str:
+            token = match[0]
+            if re.match(r"[A-Za-z][\w+.-]*://", token):
+                if token.startswith("file://"):
+                    return self.public_text(token[7:], worktree)
+                return token  # /home/ in an HTTP URL is not a local home directory
+            path = token.rstrip(".,;:)]}")
+            suffix = token[len(path) :]
+            for root in roots:
+                if path.startswith(root + "/"):
+                    return path[len(root) + 1 :] + suffix
+            if (
+                path == home
+                or path.startswith(home + "/")
+                or path.startswith("~/")
+                or re.match(r"^/(?:home|Users)/[^/]+(?:/|$)", path)
+            ):
+                return "[local path]" + suffix
+            return token
+
+        return re.sub(
+            r"[A-Za-z][\w+.-]*://[^\s<>\"'`]+|"
+            r"(?<![\w/])(?:/|~/)[^\s<>\"'`\\]+",
+            scrub,
+            plain,
+        )
 
     def _run_checks(self, wt: Path, branch: str) -> list[dict]:
         log = self._state_file(branch).with_suffix(".log")
@@ -355,8 +427,8 @@ class Gate:
                 except FileNotFoundError:
                     code, text = 127, f"{cmd[0]}: not found"
                     summary = text
-                out.write(f"$ {' '.join(cmd)}\n{self.public_text(text)}\n")
-                last = (self.public_text(summary).strip().splitlines() or [""])[-1][:120]
+                out.write(f"$ {' '.join(cmd)}\n{self.plain_text(text)}\n")
+                last = (self.public_text(summary, wt).strip().splitlines() or [""])[-1][:120]
                 if cmd in self.checks:
                     results.append({"check": " ".join(cmd), "passed": code == 0, "last": last})
                 self.say(f"  {'ok  ' if code == 0 else 'FAIL'} {' '.join(cmd)}: {last}")
@@ -379,12 +451,33 @@ class Gate:
             self.say(f"waiting for GitHub to register CI checks for PR #{pr}")
             time.sleep(min(self.check_interval, remaining))
 
+    @staticmethod
+    def green_checks(checks: list[dict]) -> bool:
+        red = [c["name"] for c in checks if c["bucket"] in {"fail", "cancel"}]
+        if red:
+            raise WorkerFailure(f"CI is not green ({', '.join(red)})")
+        unknown = [c["name"] for c in checks if c["bucket"] not in GREEN | {"pending"}]
+        if unknown:
+            raise Refused(f"unknown CI status ({', '.join(unknown)})")
+        return bool(checks) and all(c["bucket"] in GREEN for c in checks)
+
+    def watch_checks(self, pr: int) -> None:
+        # JSON polling distinguishes a named red check from a transport/gh error.
+        while not self.green_checks(self.wait_checks(pr)):
+            time.sleep(30)
+
     def registration(self, branch: str) -> dict:
         path = self._state_file(branch).with_suffix(".dispatch.json")
         return json.loads(path.read_text()) if path.exists() else {}
 
     def builder(self, branch: str, requested: str | None) -> str | None:
         registered = self.registration(branch).get("builder")
+        if requested not in {None, "codex", "claude"} or registered not in {
+            None,
+            "codex",
+            "claude",
+        }:
+            raise Refused("builder must be codex or claude")
         if registered and requested not in {None, registered}:
             raise Refused(f"builder differs from dispatch registration: {registered}")
         return registered or requested
@@ -401,59 +494,61 @@ class Gate:
     def review_file(self, branch: str) -> Path:
         return self._state_file(branch).with_suffix(".review.json")
 
-    def _tested(self, branch: str) -> dict:
+    def _tested(self, branch: str, builder: str) -> tuple[dict, Path]:
         st = self.state(branch)
-        self.builder(branch, st.get("builder"))
+        self.builder(branch, builder)
+        if st.get("builder") not in {None, builder}:
+            raise Refused("builder differs from the recorded builder")
         if not st["passed"]:
             raise Refused("a check failed on the trial; fix and run trial")
         wt = self.worktree(branch)
-        if git(wt, "rev-parse", "HEAD") != st["tested"] or git(wt, "status", "--porcelain"):
+        self._unchanged(branch, wt, st["tested"])
+        return st, wt
+
+    @staticmethod
+    def _unchanged(branch: str, wt: Path, tested: str) -> None:
+        if git(wt, "rev-parse", "HEAD") != tested or git(wt, "status", "--porcelain"):
             raise Refused(f"{branch} moved or became dirty since its trial; run trial again")
-        return st
 
     @staticmethod
     def findings(final: str) -> list[dict]:
-        """Accept structured findings or native review bullets; unknown prose stays open.
-
-        Never manufacture a disposition. A reviewer finds issues; the lead fixes/retests
-        or records a reason. Native Codex's clean prose has no output-schema guarantee.
-        """
-        try:
-            value = json.loads(final.removeprefix("```json\n").removesuffix("\n```"))
-            items = value if isinstance(value, list) else value["findings"]
-            if not isinstance(items, list):
-                raise ValueError("findings is not an array")
+        """Structured arrays are authoritative; unknown prose belongs to the lead."""
+        arrays = []
+        candidates = [final, *re.findall(r"```(?:json)?\s*\n(.*?)\n```", final, re.S)]
+        for candidate in candidates:
+            try:
+                value = json.loads(candidate)
+                items = value if isinstance(value, list) else value["findings"]
+                if isinstance(items, list):
+                    arrays.append(items)
+            except ValueError, KeyError, TypeError:
+                continue
+        if arrays:
             return [
                 {
                     "text": json.dumps(item) if isinstance(item, dict) else str(item),
                     "status": "open",
                 }
+                for items in arrays
                 for item in items
             ]
-        except ValueError, KeyError, TypeError:
-            # Claude can surround a JSON findings array with a prose summary. Only
-            # nonempty findings can be extracted this way: prose around [] stays open.
-            for block in re.findall(r"```json\s*\n(.*?)\n```", final, re.S):
-                try:
-                    value = json.loads(block)
-                    items = value if isinstance(value, list) else value["findings"]
-                    if isinstance(items, list) and items:
-                        return [{"text": json.dumps(item), "status": "open"} for item in items]
-                except ValueError, KeyError, TypeError:
-                    continue
-        # Only these complete native clean verdicts are accepted; everything else needs
-        # human disposition, including errors, partial reviews, and unsupported prose.
         clean = {
             "No findings.",
             "No issues found.",
             "The requested git diff is empty: HEAD matches the specified merge base, and the "
             "working tree is clean. There are no code changes to review.",
         }
-        if final.strip() in clean:
+        if final.strip() in clean or re.fullmatch(
+            r"I (?:found|find) no (?:issues|findings)(?: in (?:this|the) (?:diff|patch))?[.!]?",
+            final.strip(),
+            re.I,
+        ):
             return []
         parts = re.split(r"(?m)^\s*[-*]?\s*(?=\[P[0-3]\])", final)
         bullets = [p.strip() for p in parts if re.match(r"\[P[0-3]\]", p)]
-        return [{"text": text, "status": "open"} for text in (bullets or [final])]
+        if bullets:
+            return [{"text": text, "status": "open"} for text in bullets]
+        raise Refused("unclassified reviewer output; lead must inspect the review log")
 
     def validate_review(self, st: dict, path: Path) -> dict:
         try:
@@ -484,7 +579,13 @@ class Gate:
                 raise Refused("each finding needs text and a disposition")
             status = finding.get("status", "")
             if not isinstance(status, str) or not (
-                status.startswith("closed:") and status[7:].strip()
+                status.startswith("closed:")
+                and status[7:].strip()
+                and not re.search(
+                    r"\b(?:fix(?:ed|es|ing)?|resolved|repaired|corrected|addressed|remediated)\b",
+                    status[7:],
+                    re.I,
+                )
             ):
                 unresolved.append(str(finding["text"]))
         if unresolved:
@@ -498,12 +599,7 @@ class Gate:
 
     @guarded()
     def review(self, branch: str, builder: str) -> Path:
-        st = self._tested(branch)
-        self.builder(branch, builder)
-        if builder not in {"codex", "claude"}:
-            raise Refused("builder must be codex or claude")
-        if st.get("builder") not in {None, builder}:
-            raise Refused("builder differs from the recorded builder")
+        st, wt = self._tested(branch, builder)
         st["builder"] = builder
         self._save(branch, st)
         reviewer = "claude" if builder == "codex" else "codex"
@@ -552,7 +648,7 @@ class Gate:
                 "with a findings array of objects containing title and body; use [] if clean.",
             ]
         try:
-            run = subprocess.run(cmd, cwd=self.worktree(branch), capture_output=True, text=True)
+            run = subprocess.run(cmd, cwd=wt, capture_output=True, text=True)
         except OSError as exc:
             raise Refused(f"{reviewer} review could not start: {exc}") from exc
         self._state_file(branch).with_suffix(".review.log").write_text(run.stdout + run.stderr)
@@ -570,8 +666,9 @@ class Gate:
                 raise ValueError("empty final message")
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
             raise Refused("review has no successful final message; see review log") from exc
-        self._tested(branch)  # no review certifies edits made during the model call
-        final = self.public_text(final, self.worktree(branch))
+        self._unchanged(branch, wt, st["tested"])  # keep the post-model integrity check
+        findings = self.findings(final)
+        final = self.public_text(final, wt)
         record = {
             "version": 1,
             "builder": builder,
@@ -579,7 +676,7 @@ class Gate:
             "model": model,
             "tested": st["tested"],
             "summary": final,
-            "findings": self.findings(final),
+            "findings": self.public_value(findings, wt),
         }
         path = self.review_file(branch)
         path.write_text(json.dumps(record, indent=2) + "\n")
@@ -588,8 +685,10 @@ class Gate:
         return path
 
     def auto(self, branch: str, builder: str, title: str, body: Path) -> bool:
-        step = "reservation"
+        step = "inputs"
         try:
+            body.read_text()  # Validate readability/encoding before checks, models or reservation.
+            step = "reservation"
             with self.reservation(branch, create=True):
                 step = "trial"
                 if not self.trial(branch, builder):
@@ -605,9 +704,10 @@ class Gate:
                 self.open(branch, title, body)
                 step = "land"
                 self.land(branch)
-        except (Refused, OSError, ValueError) as exc:
+        except Exception as exc:
             audience = "SEND TO WORKER" if isinstance(exc, WorkerFailure) else "LEAD ACTION"
-            self.say(f"{audience}: {branch}: {step} failed: {exc}")
+            detail = str(exc) if isinstance(exc, Refused) else f"{type(exc).__name__}: {exc}"
+            self.say(f"{audience}: {branch}: {step} failed: {detail}")
             return False
         return True
 
@@ -636,7 +736,7 @@ class Gate:
         found = False
         for path in sorted(self.home.glob("*.dispatch.json")):
             task = json.loads(path.read_text())
-            if task["task"] not in completed:
+            if task.get("landed") or task["task"] not in completed:
                 continue
             branch = task["branch"]
             # A deleted branch or an ancestor of main has nothing left to publish.
@@ -692,7 +792,7 @@ class Gate:
         public_body = self._state_file(branch).with_suffix(".body.md")
         public_review = self._state_file(branch).with_suffix(".public-review.json")
         public_body.write_text(self.public_text(body.read_text()))
-        public_review.write_text(self.public_text(json.dumps(record, indent=2)) + "\n")
+        public_review.write_text(json.dumps(self.public_value(record), indent=2) + "\n")
         title = self.public_text(title)
         push = subprocess.run(
             ["git", "-C", str(self.repo), "push", "-q", "origin", f"refs/heads/{branch}"],
@@ -730,8 +830,7 @@ class Gate:
         self._save(branch, st)
         self.say(f"PR #{pr} open at {st['tested'][:12]}; review record posted")
         if wait:
-            self.wait_checks(pr)
-            self.gh(["pr", "checks", str(pr), "--watch", "--interval", "30"])
+            self.watch_checks(pr)
         return pr
 
     # --- (c) land ------------------------------------------------------------------------------
@@ -750,9 +849,8 @@ class Gate:
             raise Refused("no validated review recorded; run open first")
         self.validate_record(st, st["review"])
         checks = self.wait_checks(st["pr"])
-        red = [c["name"] for c in checks if c["bucket"] not in GREEN]
-        if not checks or red:
-            raise Refused(f"CI is not green ({', '.join(red) or 'no checks reported'})")
+        if not self.green_checks(checks):
+            raise Refused("CI is not green (checks are pending)")
         args = ["pr", "merge", str(st["pr"]), "--squash", "--match-head-commit", st["tested"]]
         if squash is not None:
             subject, _, rest = self.public_text(squash.read_text()).partition("\n")
@@ -769,6 +867,12 @@ class Gate:
         self._finish = True
         st["merged"] = True
         self._save(branch, st)
+        registration = self.registration(branch)
+        if registration:
+            registration["landed"] = st["tested"]
+            self._state_file(branch).with_suffix(".dispatch.json").write_text(
+                json.dumps(registration) + "\n"
+            )
         try:
             after = self._main()
             landed = git(self.repo, "rev-parse", f"{after}^{{tree}}")

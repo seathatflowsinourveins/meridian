@@ -14,7 +14,7 @@ completion and publication. The final record contains only the current review ro
 its findings must be empty or `closed: reason`; `fixed` is rejected on that same commit.
 Fixed code needs another trial and review of the new commit, replacing the old round.
 Earlier findings are not carried forward as purported fixes on the current commit. `open` validates explicit files
-and the default record identically before any push. Unknown output remains unresolved.
+and the default record identically before any push. Unknown output goes to the lead.
 
 This example wraps the actual Codex final message observed on this branch at
 958859cddc716eaf819f5b34437d601a5735ee24, before edits. It demonstrates the real output
@@ -38,7 +38,7 @@ JSONL contained `item.completed` with `item.type=agent_message`, followed by
 `turn.completed`. FILE was plain prose, not JSON. The gate deliberately does not use
 `--output-schema`: the task identifies review as ignoring it; that specific behavior was
 not independently exercised in this one permitted real run. Nonempty native priority
-bullets become separate open findings; unsupported clean prose needs explicit disposition.
+bullets become separate open findings; unsupported prose needs lead classification.
 
 The permitted real Claude command used `claude -p "/code-review high
 seathatflowsinourveins/clean-landing" --model claude-opus-5-5 --output-format json`, plus
@@ -174,3 +174,24 @@ commands cannot exclude another session's plain flock between commands. A persis
 holding an inherited descriptor would require a different hand-run interface and the same
 lifetime coordination; the small detached holder is retained as the simpler solution for
 the required independent commands.
+
+## Second review follow-up
+
+An empty findings array is authoritative even with prose around the JSON fence; common
+clean prose is recognized too. Unclassified output stays in the local review log and goes
+to LEAD ACTION, never a fabricated worker finding. Closing reasons that claim a fix are
+refused just like a bare fixed disposition. JSON CI polling routes named red checks to
+the worker while gh/transport failures stay with the lead; pending checks are awaited.
+
+Release cleans stale owner/socket files only while holding the shared flock, including
+a corrupt owner record; it still refuses an active command or somebody else's live lock.
+Tests kill only their own holder process by its Popen handle and recover with release or
+the next trial. Auto validates BODY before reservation, names any unexpected exception as
+a lead action, and marks dispatch registration landed when the remote merge is recorded.
+Pending skips landed registrations before per-branch GitHub calls; a new dispatch resets it.
+
+Check summaries retain worktree-relative filenames; local check logs retain full paths
+with only ANSI controls removed. Publication scrubs decoded JSON values before serializing,
+recognizes bare home directories, and preserves HTTP URLs with home-like path components.
+Review resolves its worktree once and validates dispatch/request/trial builder provenance
+in one helper, retaining the before/after HEAD and worktree checks around the model call.
