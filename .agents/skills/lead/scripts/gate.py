@@ -4,6 +4,7 @@
     gate.py auto BRANCH --builder codex|claude TITLE BODY
     gate.py trial BRANCH [--builder codex|claude]
     gate.py review BRANCH --builder codex|claude
+    gate.py close BRANCH NUMBER REASON [--also NUMBER REASON ...]
     gate.py open BRANCH TITLE BODY [REVIEW.json]
     gate.py land BRANCH [SQUASH]
     gate.py release
@@ -57,6 +58,27 @@ CHECKS = [
     ["gitleaks", "git", "--redact", "--no-banner", "--log-opts=origin/main..HEAD", "."],
 ]
 GREEN = {"pass", "skipping"}  # `gh pr checks --json bucket`; everything else is not green
+REVIEW_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "findings": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string", "minLength": 1},
+                    "line": {"type": "integer", "minimum": 1},
+                    "summary": {"type": "string", "minLength": 1},
+                    "failure_scenario": {"type": "string", "minLength": 1},
+                },
+                "required": ["file", "line", "summary", "failure_scenario"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["findings"],
+    "additionalProperties": False,
+}
 
 Gh = Callable[[Sequence[str]], str]
 
@@ -69,6 +91,10 @@ class WorkerFailure(Refused):
     """A concrete code/check defect for the worker to fix."""
 
 
+class ReviewPending(Refused):
+    """Reviewer candidates require the lead's dispositions."""
+
+
 def git(repo: Path, *args: str) -> str:
     out = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
     if out.returncode != 0:
@@ -76,8 +102,11 @@ def git(repo: Path, *args: str) -> str:
     return out.stdout.strip()
 
 
-def real_gh(args: Sequence[str]) -> str:
-    out = subprocess.run(["gh", *args], capture_output=True, text=True)
+def real_gh(args: Sequence[str], timeout: float = 60.0) -> str:
+    try:
+        out = subprocess.run(["gh", *args], capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise Refused(f"gh {' '.join(args[:2])} deadline exceeded") from exc
     # `gh pr checks` exits non-zero while a check fails or is pending, and still prints its JSON.
     json_checks = list(args[:2]) == ["pr", "checks"] and "--json" in args
     reported = json_checks and out.stdout.strip()
@@ -202,6 +231,10 @@ class Gate:
         self._attempt: dict | None = None
         self.check_timeout = 120.0
         self.check_interval = 2.0
+        self.review_timeout = 900.0
+        self.ci_timeout = 1800.0
+        self.review_level = "medium"
+        self.retry_limit = 3
 
     # --- state and lock ------------------------------------------------------------------------
     def _state_file(self, branch: str) -> Path:
@@ -219,10 +252,19 @@ class Gate:
     def _identity(self, branch: str) -> dict:
         return {"repo": str(self.home.resolve()), "branch": branch}
 
+    def _check_legacy(self) -> None:
+        legacy = self.home / "lock"
+        if legacy.exists():
+            raise Refused(
+                f"legacy landing lock {legacy} holds {legacy.read_text().strip()}; "
+                "finish or release it with the old gate before upgrading"
+            )
+
     @contextmanager
     def reservation(
         self, branch: str, create: bool = False, automatic: bool = False
     ) -> Iterator[None]:
+        self._check_legacy()
         if self._connection is not None:
             yield
             return
@@ -308,6 +350,7 @@ class Gate:
             return True, holder
 
     def release(self) -> str | None:
+        self._check_legacy()
         stale, holder = self._release_stale()
         if not stale:
             try:
@@ -316,7 +359,7 @@ class Gate:
                     raise Refused("another process holds landing.lock without a gate owner")
                 with self.reservation(holder):
                     self._finish = True
-            except Refused, OSError:
+            except Refused, OSError, ValueError:
                 # The holder may have died between the flock probe and the handshake.
                 stale, holder = self._release_stale()
                 if not stale:
@@ -359,6 +402,8 @@ class Gate:
                 raise WorkerFailure(f"origin/main conflicts with {branch}; the worker resolves it")
         tested = git(wt, "rev-parse", "HEAD")
         if self._attempt is not None:
+            if self._attempt["commit"] != tested:
+                self._attempt["failures"] = 0
             self._attempt["commit"] = tested
             self._save_attempt(branch)
         results = self._run_checks(wt, branch)
@@ -477,10 +522,16 @@ class Gate:
                     return [{"check": " ".join(cmd), "passed": False, "last": last}]
         return results
 
-    def wait_checks(self, pr: int) -> list[dict]:
-        deadline = time.monotonic() + self.check_timeout
+    def wait_checks(self, pr: int, deadline: float | None = None) -> list[dict]:
+        deadline = min(deadline or float("inf"), time.monotonic() + self.check_timeout)
         while True:
-            checks = json.loads(self.gh(["pr", "checks", str(pr), "--json", "name,bucket"]))
+            args = ["pr", "checks", str(pr), "--json", "name,bucket"]
+            response = (
+                real_gh(args, timeout=max(0.001, deadline - time.monotonic()))
+                if self.gh is real_gh
+                else self.gh(args)
+            )
+            checks = json.loads(response)
             if checks:
                 return checks
             remaining = deadline - time.monotonic()
@@ -507,8 +558,18 @@ class Gate:
 
     def watch_checks(self, pr: int) -> None:
         # JSON polling distinguishes a named red check from a transport/gh error.
-        while not self.green_checks(self.wait_checks(pr)):
-            time.sleep(30)
+        deadline = time.monotonic() + self.ci_timeout
+        try:
+            while True:
+                if self.green_checks(self.wait_checks(pr, deadline)):
+                    return
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise Refused(f"CI deadline exceeded after {self.ci_timeout:g}s for PR #{pr}")
+                time.sleep(min(30, remaining))
+        finally:
+            if time.monotonic() >= deadline:
+                self._finish = True
 
     def registration(self, branch: str) -> dict:
         path = self._state_file(branch).with_suffix(".dispatch.json")
@@ -556,55 +617,44 @@ class Gate:
 
     @staticmethod
     def findings(final: str) -> list[dict]:
-        """Conflicting or unclassified reviewer output belongs to the lead."""
-        arrays = []
-        candidates = [final, *re.findall(r"```(?:json)?\s*\n(.*?)\n```", final, re.S | re.I)]
-        for candidate in candidates:
-            try:
-                value = json.loads(candidate)
-                items = value if isinstance(value, list) else value["findings"]
-                if isinstance(items, list):
-                    arrays.append(items)
-            except ValueError, KeyError, TypeError:
+        """Codex native priority bullets only; code fences are examples, never records."""
+        bullets: list[str] = []
+        fence = None
+        for line in final.splitlines():
+            marker = re.match(r"\s*(`{3,}|~{3,})", line)
+            if marker:
+                fence = None if fence and marker[1].startswith(fence) else marker[1]
                 continue
-        if arrays:
-            if not any(arrays) and re.search(r"\[P[0-3]\]", final):
-                raise Refused("unclassified review: empty findings disagree with priority findings")
-            for items in arrays:
-                for item in items:
-                    if (
-                        not isinstance(item, (str, dict))
-                        or not item
-                        or (isinstance(item, str) and not item.strip())
-                    ):
-                        raise Refused(
-                            "unclassified reviewer findings; lead must inspect the review log"
-                        )
-            return [
-                {
-                    "text": json.dumps(item) if isinstance(item, dict) else str(item),
-                    "status": "open",
-                }
-                for items in arrays
-                for item in items
-            ]
-        clean = {
-            "No findings.",
-            "No issues found.",
-            "The requested git diff is empty: HEAD matches the specified merge base, and the "
-            "working tree is clean. There are no code changes to review.",
-        }
-        if final.strip() in clean or re.fullmatch(
-            r"I (?:found|find) no (?:issues|findings)(?: in (?:this|the) (?:diff|patch))?[.!]?",
-            final.strip(),
-            re.I,
-        ):
-            return []
-        parts = re.split(r"(?m)^\s*[-*]?\s*(?=\[P[0-3]\])", final)
-        bullets = [p.strip() for p in parts if re.match(r"\[P[0-3]\]", p)]
-        if bullets:
-            return [{"text": text, "status": "open"} for text in bullets]
-        raise Refused("unclassified reviewer output; lead must inspect the review log")
+            if fence:
+                continue
+            if re.match(r"\s*[-*] \[P[0-3]\]", line):
+                if not re.match(r"\s*[-*] \[P[0-3]\] .+ — .+:\d+", line):
+                    raise Refused("unclassified Codex priority bullet; see review log")
+                bullets.append(line)
+            elif bullets:
+                bullets[-1] += "\n" + line
+        if not bullets:
+            raise Refused("unclassified Codex reviewer output; lead must inspect the review log")
+        return [{"text": text.strip(), "status": "open"} for text in bullets]
+
+    @staticmethod
+    def structured_findings(value) -> list[dict]:
+        if not isinstance(value, dict) or not isinstance(value.get("findings"), list):
+            raise Refused("unclassified Claude output: missing structured findings; see review log")
+        findings = []
+        for item in value["findings"]:
+            if (
+                not isinstance(item, dict)
+                or any(
+                    not isinstance(item.get(key), str) or not item[key].strip()
+                    for key in ("file", "summary", "failure_scenario")
+                )
+                or type(item.get("line")) is not int
+                or item["line"] < 1
+            ):
+                raise Refused("unclassified Claude finding: schema mismatch; see review log")
+            findings.append({"text": json.dumps(item), "status": "open"})
+        return findings
 
     def validate_review(self, st: dict, path: Path) -> dict:
         try:
@@ -613,7 +663,7 @@ class Gate:
             raise Refused(f"readable JSON review record required: {path}") from exc
         return self.validate_record(st, record)
 
-    def validate_record(self, st: dict, record: dict) -> dict:
+    def validate_record(self, st: dict, record: dict, *, allow_open: bool = False) -> dict:
         if not isinstance(record, dict) or record.get("tested") != st["tested"]:
             raise Refused("review commit is not the tested commit; run review again")
         builder = st.get("builder")
@@ -630,10 +680,12 @@ class Gate:
         if not isinstance(findings, list) or not isinstance(record.get("summary"), str):
             raise Refused("review needs a summary and a findings array")
         unresolved = []
-        for finding in findings:
+        for number, finding in enumerate(findings, 1):
             if not isinstance(finding, dict) or not finding.get("text"):
                 raise Refused("each finding needs text and a disposition")
             status = finding.get("status", "")
+            if status == "open" and allow_open:
+                continue
             if not isinstance(status, str) or not (
                 status.startswith("closed:")
                 and status[7:].strip()
@@ -645,15 +697,35 @@ class Gate:
                     re.I,
                 )
             ):
-                unresolved.append(str(finding["text"]))
+                unresolved.append(f"{number}. {finding['text']}")
         if unresolved:
-            raise WorkerFailure(
-                "unresolved review findings:\n"
-                + "\n".join(f"- {text}" for text in unresolved)
-                + "\nFix code, then run a new trial and review, or use 'closed: reason'. "
+            raise ReviewPending(
+                "unresolved review findings for lead triage:\n"
+                + "\n".join(unresolved)
+                + "\nLead: verify candidates; close with a reason or send confirmed defects "
+                "to the worker for a new trial and review. "
                 "Current-round findings cannot be marked fixed."
             )
         return record
+
+    def close(self, branch: str, dispositions: list[tuple[int, str]]) -> None:
+        self._check_legacy()
+        fresh, _ = self._release_stale()
+        with self.reservation(branch, create=True, automatic=fresh):
+            st = self.state(branch)
+            self._tested(branch, st["builder"])
+            record = json.loads(self.review_file(branch).read_text())
+            self.validate_record(st, record, allow_open=True)
+            for number, reason in dispositions:
+                if not 1 <= number <= len(record["findings"]):
+                    raise Refused(f"finding number {number} is outside this review")
+                reason = reason.strip().removeprefix("closed:").strip()
+                record["findings"][number - 1]["status"] = "closed: " + reason
+            self.validate_record(st, record, allow_open=True)
+            self.review_file(branch).write_text(
+                json.dumps(self.public_value(record), indent=2) + "\n"
+            )
+            self.say(f"recorded {len(dispositions)} dispositions for {st['tested'][:12]}")
 
     @guarded()
     def review(self, branch: str, builder: str) -> Path:
@@ -687,31 +759,55 @@ class Gate:
             cmd = [
                 "claude",
                 "-p",
-                f"/code-review high {branch}\n"
+                f"Perform a {self.review_level}-depth code review of branch {branch}; "
+                "report only high-confidence actionable defects, not a minimum quota.\n"
                 "Use origin/main as the base, exactly git diff origin/main...HEAD. "
+                "The exact diff is supplied on stdin. "
                 "Do not use local main, an upstream branch, or HEAD~1 as a fallback. "
                 "An empty diff has no findings.",
                 "--model",
                 model,
                 "--output-format",
                 "json",
+                "--json-schema",
+                json.dumps(REVIEW_SCHEMA),
                 "--no-session-persistence",
                 "--permission-mode",
-                "plan",
+                "dontAsk",
                 "--tools",
-                "Read,Grep,Glob,Bash",
+                "Read,Grep,Glob",
+                "--allowedTools",
+                "Read,Grep,Glob",
+                "--disallowedTools",
+                "Bash,Edit,Write,Agent,Task,mcp__*",
                 "--append-system-prompt",
                 "Read-only review of HEAD against origin/main. Do not delegate, edit files, "
-                "submit comments, read credentials, or run trading lanes. Return only JSON "
-                "with a findings array of objects containing title and body; use [] if clean.",
+                "submit comments, read credentials, or run trading lanes. Return an object "
+                "with a findings array of {file, line, summary, failure_scenario}; "
+                "use an empty findings array if clean. The schema defines the output contract.",
             ]
         try:
-            run = subprocess.run(cmd, cwd=wt, capture_output=True, text=True)
+            run = subprocess.run(
+                cmd,
+                cwd=wt,
+                capture_output=True,
+                text=True,
+                timeout=self.review_timeout,
+                input=git(wt, "diff", "origin/main...HEAD") if reviewer == "claude" else None,
+            )
+        except subprocess.TimeoutExpired as exc:
+            self._finish = True
+            output = (exc.stdout or b"") + (exc.stderr or b"")
+            self._state_file(branch).with_suffix(".review.log").write_bytes(output)
+            raise Refused(
+                f"{reviewer} review deadline exceeded after {self.review_timeout:g}s"
+            ) from exc
         except OSError as exc:
             raise Refused(f"{reviewer} review could not start: {exc}") from exc
         self._state_file(branch).with_suffix(".review.log").write_text(run.stdout + run.stderr)
         if run.returncode:
             raise Refused(f"{reviewer} review failed (exit {run.returncode}); see review log")
+        structured = None
         try:
             if reviewer == "codex":
                 final = final_file.read_text().strip()
@@ -719,13 +815,18 @@ class Gate:
                 envelope = json.loads(run.stdout)
                 if envelope.get("is_error") or envelope.get("subtype") != "success":
                     raise ValueError("review did not succeed")
-                final = envelope["result"].strip()
+                structured = envelope["structured_output"]
+                final = json.dumps(structured)
             if not final:
                 raise ValueError("empty final message")
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
-            raise Refused("review has no successful final message; see review log") from exc
+            raise Refused(
+                "unclassified review: no successful structured/final message; see review log"
+            ) from exc
         self._unchanged(branch, wt, st["tested"])  # keep the post-model integrity check
-        findings = self.findings(final)
+        findings = (
+            self.findings(final) if reviewer == "codex" else self.structured_findings(structured)
+        )
         final = self.public_text(final, wt)
         record = {
             "version": 1,
@@ -749,14 +850,27 @@ class Gate:
             step = "reservation"
             with self.reservation(branch, create=True, automatic=True):
                 try:
+                    head = git(self.repo, "rev-parse", f"refs/heads/{branch}")
+                    previous = self.attempt(branch)
                     self._attempt = {
-                        "commit": git(self.repo, "rev-parse", f"refs/heads/{branch}"),
+                        "commit": head,
+                        "failures": previous.get("failures", 0)
+                        if previous.get("commit") == head
+                        else 0,
                         "outcome": "running",
                         "step": "trial",
                     }
                     self._save_attempt(branch)
                     step = "trial"
-                    if not self.trial(branch, builder):
+                    reusable = False
+                    if self._state_file(branch).exists():
+                        st = self.state(branch)
+                        reusable = (
+                            st["passed"] and st["tested"] == head and st["main"] == self._main()
+                        )
+                        if reusable:
+                            self._tested(branch, builder)
+                    if not reusable and not self.trial(branch, builder):
                         failures = [
                             r["check"] + ": " + r["last"]
                             for r in self.state(branch)["checks"]
@@ -764,7 +878,15 @@ class Gate:
                         ]
                         raise WorkerFailure("; ".join(failures))
                     step = "review"
-                    self.review(branch, builder)
+                    review = self.review_file(branch)
+                    if (
+                        review.exists()
+                        and json.loads(review.read_text()).get("tested")
+                        == self.state(branch)["tested"]
+                    ):
+                        self.validate_review(self.state(branch), review)
+                    else:
+                        self.review(branch, builder)
                     step = "open"
                     self.open(branch, title, body)
                     step = "land"
@@ -778,11 +900,15 @@ class Gate:
                                 outcome=(
                                     "worker_failure"
                                     if isinstance(primary, WorkerFailure)
+                                    else "review_pending"
+                                    if isinstance(primary, ReviewPending)
                                     else "lead_action"
                                     if primary
                                     else "landed"
                                 ),
                             )
+                            if self._attempt["outcome"] == "lead_action":
+                                self._attempt["failures"] += 1
                             self._save_attempt(branch)
                     except OSError as exc:
                         if primary is None:
@@ -802,6 +928,37 @@ class Gate:
             json.dumps(self._attempt) + "\n"
         )
 
+    def attempt(self, branch: str) -> dict:
+        path = self._state_file(branch).with_suffix(".attempt.json")
+        return json.loads(path.read_text()) if path.exists() else {}
+
+    def waiting(self, branch: str, head: str) -> str | None:
+        review = self.review_file(branch)
+        if review.exists():
+            record = json.loads(review.read_text())
+            if record.get("tested") == head:
+                try:
+                    self.validate_record(self.state(branch), record)
+                except ReviewPending:
+                    return "waiting for lead dispositions"
+        attempt = self.attempt(branch)
+        if attempt.get("commit") != head:
+            return None
+        if attempt.get("outcome") == "worker_failure":
+            return "waiting for worker changes"
+        if (
+            attempt.get("outcome") == "lead_action"
+            and attempt.get("failures", 1) >= self.retry_limit
+        ):
+            return "waiting for lead: transient retry limit reached; explicit auto retry available"
+        if attempt.get("outcome") == "running" and self.lock_path.exists():
+            with self.lock_path.open("a+") as lock:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    return "waiting for active landing to finish"
+        return None
+
     def pending(self, run_id: str | None = None) -> bool:
         cmd = [
             os.environ.get("ORCA_CLI_COMMAND", "orca-ide"),
@@ -818,12 +975,10 @@ class Gate:
             raise Refused(f"task-list failed: {run.stderr.strip()}")
         try:
             listing = json.loads(run.stdout)
-            completed = {
-                task["id"] for task in listing["result"]["tasks"] if task["status"] == "completed"
-            }
+            completed = {task["id"] for task in listing["result"]["tasks"]}
         except (ValueError, KeyError, TypeError) as exc:
             raise Refused("task-list did not return a completed-task listing") from exc
-        self._main()
+        fetched = False
         found = False
         for path in sorted(self.home.glob("*.dispatch.json")):
             task = json.loads(path.read_text())
@@ -838,12 +993,13 @@ class Gate:
             )
             if head.returncode:
                 continue
-            attempt = self._state_file(branch).with_suffix(".attempt.json")
-            if (
-                attempt.exists()
-                and json.loads(attempt.read_text())["commit"] == head.stdout.strip()
-            ):
+            waiting = self.waiting(branch, head.stdout.strip())
+            if waiting:
+                self.say(f"{branch}: {waiting}")
                 continue
+            if not fetched:
+                self._main()
+                fetched = True
             ancestor = subprocess.run(
                 [
                     "git",
@@ -900,8 +1056,10 @@ class Gate:
             rejected = re.search(r"\[rejected\]|non-fast-forward|fetch first", push.stderr, re.I)
             if not rejected:
                 raise Refused(f"push failed: {self.public_text(push.stderr.strip()[-500:])}")
+            error = self.public_text(push.stderr.strip()[-500:])
             raise WorkerFailure(
-                f"the push of {branch} was refused ({push.stderr.strip()[-120:]}): the branch "
+                f"the push of {branch} was refused ({error}): "
+                "the branch "
                 "was rewritten after an earlier push and is the worker's to reconcile"
             )
         found = json.loads(self.gh(["pr", "list", "--head", branch, "--json", "number"]) or "[]")
@@ -995,16 +1153,34 @@ class Gate:
         self.say(f"LANDED #{st['pr']}: main's tree equals the tested tree {landed[:12]}")
 
 
+def positive_seconds(value: str) -> float:
+    seconds = float(value)
+    if not 0 < seconds < float("inf"):
+        raise argparse.ArgumentTypeError("deadline must be a positive finite number of seconds")
+    return seconds
+
+
 def main(argv: list[str]) -> int:
     if argv[:1] == ["_hold"]:
         return lock_server(Path(argv[1]), json.loads(argv[2]))
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="command", required=True)
-    for name in ("trial", "review", "auto", "register", "open", "land"):
+    for name in ("trial", "review", "auto", "register", "open", "land", "close"):
         sub = subs.add_parser(name)
         sub.add_argument("branch")
         if name in {"trial", "review", "auto", "register"}:
             sub.add_argument("--builder", choices=["codex", "claude"], required=name != "trial")
+        if name in {"review", "auto"}:
+            sub.add_argument("--review-level", choices=["medium", "high"], default="medium")
+            sub.add_argument("--review-timeout", type=positive_seconds, default=900.0)
+        if name in {"open", "auto"}:
+            sub.add_argument("--ci-timeout", type=positive_seconds, default=1800.0)
+        if name == "close":
+            sub.add_argument("number", type=int)
+            sub.add_argument("reason")
+            sub.add_argument(
+                "--also", nargs=2, action="append", default=[], metavar=("NUMBER", "REASON")
+            )
         if name == "register":
             sub.add_argument("--task", required=True)
         if name in {"auto", "open"}:
@@ -1015,11 +1191,20 @@ def main(argv: list[str]) -> int:
         if name == "land":
             sub.add_argument("squash", nargs="?", type=Path)
     subs.add_parser("release")
-    subs.add_parser("pending").add_argument("--run")
+    pending = subs.add_parser("pending")
+    pending.add_argument("--run")
+    pending.add_argument("--retry-limit", type=int, default=3)
     args = parser.parse_args(argv)
     try:
         gate = Gate(Path.cwd())
+        for name in ("review_level", "review_timeout", "ci_timeout", "retry_limit"):
+            if hasattr(args, name):
+                setattr(gate, name, getattr(args, name))
         match args.command:
+            case "close":
+                gate.close(
+                    args.branch, [(args.number, args.reason), *[(int(n), r) for n, r in args.also]]
+                )
             case "trial":
                 return 0 if gate.trial(args.branch, args.builder) else 1
             case "review":

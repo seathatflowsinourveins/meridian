@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Callable, Iterator, Sequence
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -340,6 +341,17 @@ def test_a_worktree_changed_during_the_checks_fails_the_trial(repo: Path, edit: 
     assert "changed during the checks" in failed[0]["last"]
 
 
+def review_output(*summaries: str) -> str:
+    return json.dumps(
+        {
+            "findings": [
+                {"file": "file.py", "line": 1, "summary": summary, "failure_scenario": "failure"}
+                for summary in summaries
+            ]
+        }
+    )
+
+
 def fake_reviewer(monkeypatch: pytest.MonkeyPatch, final: str = '{"findings": []}', code: int = 0):
     real_run = subprocess.run
     calls = []
@@ -352,7 +364,10 @@ def fake_reviewer(monkeypatch: pytest.MonkeyPatch, final: str = '{"findings": []
             Path(args[args.index("-o") + 1]).write_text(final)
             output = '{"type": "turn.completed"}'
         else:
-            output = json.dumps({"subtype": "success", "is_error": False, "result": final})
+            envelope = {"subtype": "success", "is_error": False, "result": final}
+            with suppress(ValueError):
+                envelope["structured_output"] = json.loads(final)
+            output = json.dumps(envelope)
         return subprocess.CompletedProcess(args, code, output, "")
 
     monkeypatch.setattr(subprocess, "run", run)
@@ -377,12 +392,21 @@ def test_review_records_final_message_and_opposite_family(
     g, fake = make(repo, ["pass"], builder=builder)
     g.register("feature", builder, "task-1")
     assert g.trial("feature")
-    calls = fake_reviewer(monkeypatch)
-    path = g.review("feature", builder)
+    calls = fake_reviewer(
+        monkeypatch, "- [P1] Candidate — file.py:1" if reviewer == "codex" else review_output()
+    )
+    if reviewer == "codex":
+        with pytest.raises(gate.ReviewPending):
+            g.review("feature", builder)
+        g.close("feature", [(1, "not reachable under the documented precondition")])
+        assert g.trial("feature", builder)
+        path = g.review_file("feature")
+    else:
+        path = g.review("feature", builder)
     record = json.loads(path.read_text())
     assert record["reviewer"] == reviewer and record["model"] == model
     assert record["tested"] == sh(wt(repo, "feature"), "rev-parse", "HEAD")
-    assert record["findings"] == []
+    assert len(record["findings"]) == (1 if reviewer == "codex" else 0)
     cmd, options = calls[0]
     assert cmd[0] == reviewer and options["cwd"] == wt(repo, "feature")
     if reviewer == "codex":
@@ -391,7 +415,7 @@ def test_review_records_final_message_and_opposite_family(
         assert "--output-schema" not in cmd
     else:
         assert cmd[:2] == ["claude", "-p"]
-        assert cmd[2].startswith("/code-review high feature\n")
+        assert cmd[2].startswith("Perform a medium-depth code review of branch feature")
         assert "git diff origin/main...HEAD" in cmd[2]
         assert "An empty diff has no findings" in cmd[2]
         assert cmd[cmd.index("--output-format") + 1] == "json"
@@ -447,22 +471,23 @@ def test_manual_review_dispositions_are_accepted(repo: Path, tmp_path: Path, sta
 
 
 @pytest.mark.parametrize(
-    "final",
+    "builder,final",
     [
-        '{"findings": [{"title": "[P1] A bug", "body": "explanation"}]}',
-        "- [P1] A bug — file.py:1\n  explanation",
+        ("codex", review_output("A bug")),
+        ("claude", "- [P1] A bug — file.py:1\n  explanation"),
     ],
 )
 def test_review_never_silently_closes_findings(
     repo: Path,
     monkeypatch: pytest.MonkeyPatch,
     final: str,
+    builder: str,
 ):
-    g, _ = make(repo, ["pass"])
+    g, _ = make(repo, ["pass"], builder=builder)
     assert g.trial("feature")
     fake_reviewer(monkeypatch, final)
     with pytest.raises(gate.Refused, match="unresolved"):
-        g.review("feature", "codex")
+        g.review("feature", builder)
     record = json.loads(g.review_file("feature").read_text())
     assert record["summary"] == final
     assert all(item["status"] == "open" for item in record["findings"])
@@ -612,7 +637,10 @@ def test_pending_matches_registered_completed_tasks_and_squash_merge_heads(
     def run(args, **kwargs):
         if args[1:3] == ["orchestration", "task-list"]:
             calls.append(args)
-            data = {"ok": True, "result": {"tasks": [{"id": "task-1", "status": status}]}}
+            data = {
+                "ok": True,
+                "result": {"tasks": [{"id": "task-1"}] if status == "completed" else []},
+            }
             return subprocess.CompletedProcess(args, 0, json.dumps(data), "")
         return real_run(args, **kwargs)
 
@@ -653,11 +681,10 @@ def test_trigger_detector_missing_package_fails(tmp_path: Path):
     assert run.returncode == 1 and "oh-my-codex is absent" in run.stderr
 
 
-def test_claude_prose_with_json_array_keeps_every_finding_separate():
-    final = 'Two findings:\n```json\n[{"summary":"one"},{"summary":"two"}]\n```'
-    assert len(gate.Gate.findings(final)) == 2
-    assert all(f["status"] == "open" for f in gate.Gate.findings(final))
-    assert gate.Gate.findings("Review incomplete\n```json\n[]\n```") == []
+def test_codex_fenced_json_is_never_a_review_record():
+    for final in ('```json\n[{"summary":"one"}]\n```', "```json\n[]\n```", "No findings."):
+        with pytest.raises(gate.Refused, match="unclassified"):
+            gate.Gate.findings(final)
 
 
 def test_trigger_script_uses_package_detector(tmp_path: Path):
@@ -887,7 +914,7 @@ def test_fixed_on_current_commit_is_refused_and_new_round_is_required(
     record = json.loads(path.read_text())
     record["findings"] = [{"text": "a real defect", "status": "fixed"}]
     path.write_text(json.dumps(record))
-    with pytest.raises(gate.WorkerFailure, match="cannot be marked fixed"):
+    with pytest.raises(gate.ReviewPending, match="cannot be marked fixed"):
         g.open("feature", "title", path, path, wait=False)
     assert not fake.calls
     commit(wt(repo, "feature"), "fix.txt", "fixed code", "fix defect")
@@ -964,10 +991,10 @@ def test_auto_sends_all_current_review_findings_together(
     g, fake = make(repo, ["pass"])
     output = []
     g.say = output.append
-    fake_reviewer(monkeypatch, '{"findings": ["first defect", "second defect", "third defect"]}')
+    fake_reviewer(monkeypatch, review_output("first defect", "second defect", "third defect"))
     (tmp_path / "body").write_text("body")
     assert not g.auto("feature", "codex", "title", tmp_path / "body")
-    messages = [text for text in output if text.startswith("SEND TO WORKER:")]
+    messages = [text for text in output if text.startswith("LEAD ACTION:")]
     assert len(messages) == 1
     assert all(text in messages[0] for text in ("first defect", "second defect", "third defect"))
     assert not fake.calls
@@ -992,11 +1019,9 @@ def test_review_citations_are_relative_when_record_is_built(
 ):
     g, _ = make(repo, ["pass"])
     assert g.trial("feature")
-    final = json.dumps(
-        {"findings": [f"See {wt(repo, 'feature')}/b.txt:1 and /home/example/private.txt"]}
-    )
+    final = review_output(f"See {wt(repo, 'feature')}/b.txt:1 and /home/example/private.txt")
     fake_reviewer(monkeypatch, final)
-    with pytest.raises(gate.WorkerFailure):
+    with pytest.raises(gate.ReviewPending):
         g.review("feature", "codex")
     text = g.review_file("feature").read_text()
     assert "b.txt:1" in text and str(wt(repo, "feature")) not in text
@@ -1010,7 +1035,7 @@ def test_land_revalidates_stored_review_dispositions(repo: Path, tmp_path: Path)
     state = g.state("feature")
     state["review"]["findings"] = [{"text": "still broken", "status": "fixed"}]
     g._save("feature", state)
-    with pytest.raises(gate.WorkerFailure, match="cannot be marked fixed"):
+    with pytest.raises(gate.ReviewPending, match="cannot be marked fixed"):
         g.land("feature")
     assert not any(call[:2] == ["pr", "merge"] for call in fake.calls)
 
@@ -1054,7 +1079,7 @@ def test_claude_review_base_excludes_commits_on_origin_with_stale_local_main(
         'Any surrounding prose\n```json\n{"findings": []}\n```\nDone.',
     ],
 )
-def test_auto_accepts_clean_prose_and_fenced_empty_findings(
+def test_claude_requires_schema_output_instead_of_clean_prose(
     repo: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1064,8 +1089,8 @@ def test_auto_accepts_clean_prose_and_fenced_empty_findings(
     body = tmp_path / "body"
     body.write_text("body")
     fake_reviewer(monkeypatch, final)
-    assert g.auto("feature", "codex", "title", body)
-    assert json.loads(g.review_file("feature").read_text())["findings"] == []
+    assert not g.auto("feature", "codex", "title", body)
+    assert not g.review_file("feature").exists()
 
 
 @pytest.mark.parametrize("final", ["I could not complete the review.", '{"findings": [null]}'])
@@ -1108,7 +1133,7 @@ def test_closure_cannot_claim_a_same_commit_fix(repo: Path, tmp_path: Path, stat
     record = json.loads(path.read_text())
     record["findings"] = [{"text": "the defect", "status": status}]
     path.write_text(json.dumps(record))
-    with pytest.raises(gate.WorkerFailure, match="cannot be marked fixed"):
+    with pytest.raises(gate.ReviewPending, match="cannot be marked fixed"):
         g.open("feature", "title", path, path, wait=False)
     assert not fake.calls
 
@@ -1366,7 +1391,7 @@ def test_empty_fixture_cannot_hide_priority_findings(
     output = []
     g.say = output.append
     assert not g.auto("feature", "codex", "title", body)
-    assert output[-1].startswith("LEAD ACTION:") and "disagree" in output[-1]
+    assert output[-1].startswith("LEAD ACTION:") and "unclassified" in output[-1]
     assert not fake.calls and not g.review_file("feature").exists()
 
 
@@ -1393,6 +1418,7 @@ def test_auto_releases_on_every_failure_and_records_attempt(
         "commit": sh(repo, "rev-parse", "feature"),
         "step": stage,
         "outcome": "worker_failure" if worker else "lead_action",
+        "failures": 0 if worker else 1,
     }
     other = gate.Gate(repo, setup=[], checks=[["true"]])
     assert other.trial("second")
@@ -1670,3 +1696,328 @@ def test_interrupted_auto_releases_and_records_outcome(
     assert g.holder() is None and flock_available(g)
     attempt = json.loads(g._state_file("feature").with_suffix(".attempt.json").read_text())
     assert attempt["outcome"] == "lead_action"
+
+
+def completed_listing(monkeypatch: pytest.MonkeyPatch, tasks=None):
+    original = subprocess.run
+
+    def run(args, **kwargs):
+        if args[1:3] == ["orchestration", "task-list"]:
+            data = {"result": {"tasks": [{"id": "task-1"}] if tasks is None else tasks}}
+            return subprocess.CompletedProcess(args, 0, json.dumps(data), "")
+        return original(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+
+def test_lead_closes_numbered_candidates_and_auto_resumes_without_paid_review(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    g, fake = make(repo, ["pass"])
+    calls = fake_reviewer(monkeypatch, review_output("first candidate", "second candidate"))
+    completed_listing(monkeypatch)
+    body = tmp_path / "body"
+    body.write_text("body")
+    output = []
+    g.say = output.append
+    assert not g.auto("feature", "codex", "title", body)
+    assert output[-1].startswith("LEAD ACTION:")
+    assert "1. " in output[-1] and "2. " in output[-1]
+    assert "first candidate" in output[-1] and "second candidate" in output[-1]
+    assert g.holder() is None and flock_available(g)
+    assert g.attempt("feature")["outcome"] == "review_pending"
+    assert not g.pending()
+    assert output[-1] == "feature: waiting for lead dispositions"
+    monkeypatch.setattr(g, "trial", lambda *_args: pytest.fail("same tested trial must be reused"))
+    assert not g.auto("feature", "codex", "title", body)
+    assert len(calls) == 1
+    with monkeypatch.context() as cli:
+        cli.setattr(gate, "Gate", lambda _path: g)
+        assert (
+            gate.main(
+                [
+                    "close",
+                    "feature",
+                    "1",
+                    "guard already covers this",
+                    "--also",
+                    "2",
+                    "not reachable",
+                ]
+            )
+            == 0
+        )
+    assert g.holder() is None
+    assert g.pending()
+    assert g.auto("feature", "codex", "title", body)
+    assert len(calls) == 1
+    assert any(call[:2] == ["pr", "merge"] for call in fake.calls)
+
+
+@pytest.mark.parametrize("reason", ["", "fixed", "closed: fixed in abc", "This was repaired"])
+def test_close_rejects_fix_claims_atomically(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, reason: str
+):
+    g, _ = make(repo, ["pass"])
+    assert g.trial("feature")
+    fake_reviewer(monkeypatch, review_output("one", "two"))
+    with pytest.raises(gate.ReviewPending):
+        g.review("feature", "codex")
+    before = g.review_file("feature").read_text()
+    with pytest.raises(gate.Refused):
+        g.close("feature", [(1, "false positive"), (2, reason)])
+    assert g.review_file("feature").read_text() == before
+    with pytest.raises(gate.Refused, match="outside"):
+        g.close("feature", [(3, "false positive")])
+    assert g.review_file("feature").read_text() == before
+
+
+def test_new_head_invalidates_closed_review(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    g, _ = make(repo, ["pass"])
+    calls = fake_reviewer(monkeypatch, review_output("candidate"))
+    body = tmp_path / "body"
+    body.write_text("body")
+    assert not g.auto("feature", "codex", "title", body)
+    g.close("feature", [(1, "false positive")])
+    commit(wt(repo, "feature"), "new.txt", "new", "new work")
+    with pytest.raises(gate.Refused, match="moved"):
+        g.close("feature", [(1, "false positive")])
+    assert not g.auto("feature", "codex", "title", body)
+    assert len(calls) == 2
+    assert json.loads(g.review_file("feature").read_text())["findings"][0]["status"] == "open"
+
+
+@pytest.mark.parametrize("fixture", ["[]", '[{"name":"ci","bucket":"pass"}]'])
+def test_codex_bullets_win_over_quoted_fixture(fixture: str):
+    final = (
+        f"Fixture:\n```json\n{fixture}\n```\n"
+        "- [P1] Data loss — src/store.py:12\nDetails\n- [P2] Race — src/job.py:8\nMore"
+    )
+    findings = gate.Gate.findings(final)
+    assert len(findings) == 2
+    assert "Data loss" in findings[0]["text"] and "Race" in findings[1]["text"]
+    assert all(fixture not in finding["text"] for finding in findings)
+
+
+@pytest.mark.parametrize("level", ["medium", "high"])
+def test_claude_schema_and_read_only_tools(repo: Path, monkeypatch: pytest.MonkeyPatch, level: str):
+    g, _ = make(repo, ["pass"])
+    g.review_level = level
+    assert g.trial("feature")
+    calls = fake_reviewer(monkeypatch)
+    g.review("feature", "codex")
+    args, options = calls[0]
+    assert f"{level}-depth" in args[2]
+    schema = json.loads(args[args.index("--json-schema") + 1])
+    assert schema["properties"]["findings"]["items"]["required"] == [
+        "file",
+        "line",
+        "summary",
+        "failure_scenario",
+    ]
+    assert args[args.index("--permission-mode") + 1] == "dontAsk"
+    assert args[args.index("--tools") + 1] == "Read,Grep,Glob"
+    assert "mcp__*" in args[args.index("--disallowedTools") + 1]
+    assert options["input"] == sh(wt(repo, "feature"), "diff", "origin/main...HEAD")
+    assert options["timeout"] == 900
+
+
+@pytest.mark.parametrize("builder", ["codex", "claude"])
+def test_reviewer_deadline_returns_to_lead_and_releases(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, builder: str
+):
+    g, _ = make(repo, ["pass"], builder=builder)
+    g.review_timeout = 0.02
+    original = subprocess.run
+
+    def run(args, **kwargs):
+        if args[0] in {"claude", "codex"}:
+            return original(
+                [sys.executable, "-c", "import time; print('partial',flush=True); time.sleep(10)"],
+                capture_output=True,
+                timeout=kwargs["timeout"],
+            )
+        return original(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    body = tmp_path / "body"
+    body.write_text("body")
+    output = []
+    g.say = output.append
+    assert not g.auto("feature", builder, "title", body)
+    assert output[-1].startswith("LEAD ACTION:") and "deadline" in output[-1]
+    assert g.holder() is None and flock_available(g)
+    assert g._state_file("feature").with_suffix(".review.log").exists()
+
+
+def test_ci_deadline_returns_to_lead_and_releases(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    g, _ = make(repo, ["pending"])
+    fake_reviewer(monkeypatch)
+    g.ci_timeout = 0.01
+    body = tmp_path / "body"
+    body.write_text("body")
+    output = []
+    g.say = output.append
+    assert not g.auto("feature", "codex", "title", body)
+    assert output[-1].startswith("LEAD ACTION:") and "CI deadline" in output[-1]
+    assert g.holder() is None and flock_available(g)
+
+
+@pytest.mark.parametrize(
+    "outcome,failures,expected",
+    [
+        ("worker_failure", 0, False),
+        ("running", 0, True),
+        ("lead_action", 1, True),
+        ("lead_action", 2, True),
+        ("lead_action", 3, False),
+    ],
+)
+def test_pending_retries_dead_or_transient_attempts_with_bound(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, outcome: str, failures: int, expected: bool
+):
+    g, _ = make(repo, ["pass"])
+    completed_listing(monkeypatch)
+    g._attempt = {
+        "commit": sh(repo, "rev-parse", "feature"),
+        "outcome": outcome,
+        "failures": failures,
+    }
+    g._save_attempt("feature")
+    output = []
+    g.say = output.append
+    if not expected:
+        monkeypatch.setattr(g, "_main", lambda: pytest.fail("waiting branch must not fetch"))
+    assert g.pending() is expected
+    if not expected:
+        assert "waiting for" in output[-1]
+
+
+def test_transient_failure_count_is_recorded_across_retries(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    g, _ = make(repo, ["pending"])
+    g.ci_timeout = 0.001
+    calls = fake_reviewer(monkeypatch)
+    body = tmp_path / "body"
+    body.write_text("body")
+    for count in range(1, 4):
+        assert not g.auto("feature", "codex", "title", body)
+        assert g.attempt("feature")["failures"] == count
+    assert len(calls) == 1
+
+
+def test_release_cleans_stale_after_empty_handshake(repo: Path, monkeypatch: pytest.MonkeyPatch):
+    g, _ = make(repo, ["pass"])
+    probes = iter([(False, "feature"), (True, "feature")])
+    monkeypatch.setattr(g, "_release_stale", lambda: next(probes))
+    monkeypatch.setattr(g, "holder", lambda: "feature")
+
+    def empty(*_args):
+        raise ValueError("empty handshake")
+
+    monkeypatch.setattr(g, "reservation", empty)
+    assert g.release() == "feature"
+
+
+@pytest.mark.parametrize("holder", ["feature", "other"])
+def test_legacy_lock_blocks_new_gate_before_trial(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, holder: str
+):
+    g, _ = make(repo, ["pass"])
+    legacy = g.home / "lock"
+    legacy.write_text(holder)
+    monkeypatch.setattr(g, "_main", lambda: pytest.fail("must not fetch past old lock"))
+    with pytest.raises(gate.Refused, match=f"legacy landing lock .* holds {holder}"):
+        g.trial("feature")
+    with pytest.raises(gate.Refused, match="legacy landing lock"):
+        g.release()
+    assert legacy.read_text() == holder and not g.lock_path.exists()
+
+
+def test_rejected_push_message_scrubs_home_paths(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    g, _ = make(repo, ["pass"])
+    fake_reviewer(monkeypatch)
+    original = subprocess.run
+
+    def run(args, **kwargs):
+        if args[0] == "git" and "push" in args:
+            return subprocess.CompletedProcess(
+                args,
+                1,
+                "",
+                "[rejected] /home/private-owner/hooks/reject C:\\Users\\private-owner\\hook",
+            )
+        return original(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    body = tmp_path / "body"
+    body.write_text("body")
+    output = []
+    g.say = output.append
+    assert not g.auto("feature", "codex", "title", body)
+    assert output[-1].startswith("SEND TO WORKER:") and "private-owner" not in output[-1]
+
+
+def test_pending_without_candidates_never_fetches(repo: Path, monkeypatch: pytest.MonkeyPatch):
+    g, _ = make(repo, ["pass"])
+    completed_listing(monkeypatch, [])
+    monkeypatch.setattr(g, "_main", lambda: pytest.fail("empty queue must not fetch"))
+    assert not g.pending()
+
+
+def test_manual_review_deadline_also_releases(repo: Path, monkeypatch: pytest.MonkeyPatch):
+    g, _ = make(repo, ["pass"])
+    assert g.trial("feature")
+    original = subprocess.run
+
+    def run(args, **kwargs):
+        if args[0] == "claude":
+            raise subprocess.TimeoutExpired(args, kwargs["timeout"], output=b"partial log")
+        return original(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(gate.Refused, match="deadline"):
+        g.review("feature", "codex")
+    assert g.holder() is None and flock_available(g)
+    assert g._state_file("feature").with_suffix(".review.log").read_text() == "partial log"
+
+
+def test_manual_ci_deadline_also_releases(repo: Path, tmp_path: Path):
+    g, _ = make(repo, ["pending"])
+    g.ci_timeout = 0.001
+    assert g.trial("feature")
+    review = review_record(g, tmp_path)
+    with pytest.raises(gate.Refused, match="CI deadline"):
+        g.open("feature", "title", review, review)
+    assert g.holder() is None and flock_available(g)
+
+
+def test_ci_query_uses_remaining_deadline(repo: Path, monkeypatch: pytest.MonkeyPatch):
+    g, _ = make(repo, ["pass"])
+    g.gh = gate.real_gh
+    g.check_timeout = 10
+    timeouts = []
+
+    def run(args, **kwargs):
+        timeouts.append(kwargs["timeout"])
+        raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+
+    with monkeypatch.context() as patch:
+        patch.setattr(subprocess, "run", run)
+        with pytest.raises(gate.Refused, match="deadline"):
+            g.wait_checks(7, gate.time.monotonic() + 0.2)
+    assert 0 < timeouts[0] <= 0.2
+
+
+@pytest.mark.parametrize("flag", ["--review-timeout", "--ci-timeout"])
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf"])
+def test_cli_refuses_unbounded_or_invalid_deadlines(flag: str, value: str):
+    with pytest.raises(SystemExit):
+        gate.main(["auto", "branch", "--builder", "codex", "title", "body", flag, value])

@@ -222,3 +222,66 @@ commit before waiting for CI, surviving retrial state replacement. Normal retrie
 PR title/body without reposting that comment. A crash between GitHub accepting a comment and
 writing the local ledger remains a distributed-transaction window; no atomic operation spans
 the local filesystem and GitHub.
+
+## Fourth review: lead triage and structured results (supersedes retry rules above)
+
+Candidates are not verified defects. Open review findings now produce one LEAD ACTION with
+stable one-based numbers, and auto releases its reservation. The lead verifies candidates,
+sends real defects to the worker, and records other dispositions using `close BRANCH NUMBER
+REASON`, with repeated `--also NUMBER REASON` for a batch. Invalid numbers, empty reasons and
+fix claims refuse the whole batch. Close validates the tested head and family; it retains an
+existing manual reservation or releases its own short reservation. A same-head auto retry
+reuses a passed trial when main is unchanged and reuses its validated, fully closed review.
+A changed commit or a merge of new main requires a new trial and review.
+
+Pending names waits for worker changes and lead dispositions. It retries dead running
+attempts and transient lead actions, with a default limit of three transient failures per
+head (`pending --retry-limit`). At that limit it names the required lead action; explicit
+auto retries remain possible. It trusts Orca's completed-status filter and fetches main only
+when a candidate survives the local checks. An old `meridian-gate/lock` refuses new landings,
+naming its path and holder; the old gate must finish or release it, then a fresh trial is
+required because historical state filenames are not migrated.
+
+Reviewer subprocesses have a 900-second ceiling (`--review-timeout`); CI watching has an
+1800-second total ceiling (`--ci-timeout`), including bounded gh queries. Deadline failures
+go to the lead and release reservations, including manual commands. Raw partial reviewer
+output stays in the local review log. Empty-handshake ValueError now gets the same stale
+release recovery as socket errors. Rejected push stderr is sanitized before worker delivery.
+
+Claude now uses `--json-schema` with an object containing a findings array of objects with
+`file`, `line`, `summary`, and `failure_scenario`. The gate requires the successful envelope's
+`structured_output` field and validates its fields; neither result prose nor fenced JSON is
+a substitute. The existing record format retains each structured item as finding text plus
+its disposition. Medium-depth review is the default; `--review-level high` is available.
+Codex parses only native `- [P#] title — path:line` bullets outside fenced blocks; all other
+output, including prose-only clean conclusions, is unclassified and goes to the lead with
+raw output retained locally, as required by the stricter parsing contract.
+
+`claude --help` confirms json-schema, dontAsk, tools, allowedTools and disallowedTools.
+[The headless documentation](https://code.claude.com/docs/en/headless) confirms that schema
+output belongs in structured_output, and that supplying the diff on stdin avoids needing
+Bash. The command uses dontAsk, exposes only Read/Grep/Glob, preapproves those readers and
+disallows Bash/Edit/Write/Agent/Task/MCP tools. Thus there is no editing or shell tool and no
+plan-mode instruction to produce a plan or ask questions; git supplies the exact diff.
+
+Two observed CLI constraints changed the command: strict-mcp-config was rejected before a
+model call because an enterprise MCP config is present, so the gate denies MCP tools instead.
+More significantly, `/code-review medium ... --json-schema ...` returned a successful local
+command envelope with `local_command: code_review`, `num_turns: 0`, and `result: Command
+completed`, but no structured_output. Its metadata recorded a model call, so it was not a
+valid certificate. A direct medium-depth review prompt with the same fields and schema then
+returned this actual result (exit 0, model claude-opus-5-5, no spawned subagents or permission
+denials):
+
+```json
+{
+  "subtype": "success",
+  "is_error": false,
+  "structured_output": {"findings": []}
+}
+```
+
+The supplied diff was origin/main...HEAD at b122b494845e2f6f3292da21fdfe9517c6c0b27f.
+This confirms the transport/format, not a review certificate of the later implementation.
+Exact command, full envelopes, stderr and a sanitized metadata excerpt are retained in
+`/tmp/meridian-clean-landing-review4/`; no subagent or helper worker was spawned.
