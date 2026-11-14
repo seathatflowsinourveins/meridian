@@ -206,11 +206,13 @@ Add `--report` for the engine's statistics, order/fill/position CSVs and standal
 5. Tests: it builds offline against the pinned engine, and it runs in the sandbox lane on the
    fake feed, as `tests/test_sandbox_lane.py` does with upstream's strategy. A strategy never
    adds an execution client.
-6. Simulate first: `uv run python -m meridian.sim` replays it offline through the engine's own
-   `BacktestNode`, catalog, fill, fee and latency models, session statuses, risk throttle and
-   reports, one node per parameter set, results under `runs/` (manifest and Alpaca gaps:
-   `docs/adr/data/m5-native-sim.md`). Then sandbox, then paper (plan 9.2). Every paper run is
-   the owner's, attended, and ends in a run record.
+6. Simulate first: `uv run python -m meridian.sim [--calendar ROWS.json]` replays it offline
+   through the engine's own `BacktestNode`, catalog, fill (with Alpaca paper's partial fills),
+   fee and latency models, session statuses, risk throttle and reports, with DAY expiry and
+   the lane's pacer, one node per parameter set, results under `runs/` (manifest and Alpaca
+   mirror: `docs/adr/data/m5-native-sim.md`). Holiday rows: `uv run python
+   research/xnys_calendar_rows.py START END ROWS.json`. Then sandbox, then paper (plan 9.2).
+   Every paper run is the owner's, attended, and ends in a run record.
 
 ## Goals
 

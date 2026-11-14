@@ -2,8 +2,10 @@
 
 Upstream pattern (NautilusTrader v2.0.0rc9): `examples/backtest/model_configs_example.py:50-92`
 (a cash venue with a fill model, a fee model and `StaticLatencyModel` in one
-`BacktestVenueConfig`) and `docs/concepts/backtesting/fill-models.md:72-99`. Every model is the
-engine's own; the mirror and its gaps are listed in `docs/adr/data/m5-native-sim.md`.
+`BacktestVenueConfig`) and `docs/concepts/backtesting/fill-models.md:72-99`. The fee and
+latency models are the engine's own; the fill model is a Python subclass of the engine's
+`FillModel` (`fills.py`) for Alpaca paper's partial fills. The mirror:
+`docs/adr/data/m5-native-sim.md`.
 
 Alpaca's paper page (https://docs.alpaca.markets/us/docs/paper-trading, read 2026-11-14) says
 paper fills match the NBBO when marketable and that paper does not account for slippage due
@@ -16,11 +18,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from nautilus_trader.backtest import BacktestVenueConfig
-from nautilus_trader.execution import DefaultFillModel, FixedFeeModel, StaticLatencyModel
-from nautilus_trader.model import AccountType, BookType, Currency, Money, OmsType
+from nautilus_trader.execution import FixedFeeModel, StaticLatencyModel
+from nautilus_trader.model import AccountType, BookType, Currency, Money, OmsType, OtoTriggerMode
 from nautilus_trader.risk import RiskEngineConfig
 
 from meridian.alpaca.commission import PAPER_US_EQUITY_COMMISSION
+
+from .fills import ALPACA_PAPER_PARTIAL_RATE, PaperFillModel
 
 PLACEHOLDER = "placeholder, uncalibrated: shows each model in the loop, not a tuned value"
 
@@ -42,9 +46,11 @@ class VenueModels:
     prob_fill_on_limit: float = 1.0
     prob_slippage: float = 0.0
     random_seed: int = 0  # fixed: the fill model's draws repeat run to run
+    partial_fill_rate: float = ALPACA_PAPER_PARTIAL_RATE  # Alpaca's stated rate, not tuned
     commission: Money = field(default_factory=paper_commission)
     max_order_submit_rate: str = "100/00:00:01"  # the engine's own default throttle
     cash_usd: int = 10_000_000
+    order_budget: bool = True  # the lane's account pacer in front of each submit (`budget`)
 
 
 # Several parameter sets for one command. Placeholders that make each model visible.
@@ -70,9 +76,14 @@ def venue_config(models: VenueModels, venue: str) -> BacktestVenueConfig:
         base_currency=Currency.from_str("USD"),
         book_type=BookType.L1_MBP,  # top of book from quotes, the lane's data
         allow_cash_borrowing=False,
-        fill_model=DefaultFillModel(
+        # Alpaca activates a bracket's exits once the entry "is completely filled" (orders
+        # page, "Bracket Orders"); rc9's default PARTIAL releases them on the first part.
+        oto_trigger_mode=OtoTriggerMode.FULL,
+        # A new model per run: the engine keeps a Python model's state across runs.
+        fill_model=PaperFillModel(
             prob_fill_on_limit=models.prob_fill_on_limit,
             prob_slippage=models.prob_slippage,
+            partial_rate=models.partial_fill_rate,
             random_seed=models.random_seed,
         ),
         # charge_commission_once: one charge per order, however many partial fills.

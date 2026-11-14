@@ -1,10 +1,10 @@
 """The runner: one `BacktestNode` per parameter set, on one catalog, with the engine's reports.
 
-`uv run python -m meridian.sim [--copies N]`. Upstream pattern (NautilusTrader v2.0.0rc9):
-`docs/getting_started/backtest_high_level.py:205-261` (data configs on the catalog, a run
-config, `node.build()`, a strategy added to the run, `node.run()`), and
-`docs/concepts/backtesting/apis-and-runs.md:287-306`: rc9's node takes one run config
-(`crates/backtest/src/node.rs:427-433`), so independent parameter sets are one node each,
+`uv run python -m meridian.sim [--copies N] [--calendar ROWS.json]`. Upstream pattern
+(NautilusTrader v2.0.0rc9): `docs/getting_started/backtest_high_level.py:205-261` (data
+configs on the catalog, a run config, `node.build()`, a strategy added to the run,
+`node.run()`), and `docs/concepts/backtesting/apis-and-runs.md:287-306`: rc9's node takes one
+run config (`crates/backtest/src/node.rs:427-433`), so independent parameter sets are one node each,
 created and disposed in turn. Reports: `BacktestNode.generate_*_report` and
 `nautilus_trader.analysis.tearsheet.create_tearsheet` with the node's result.
 
@@ -48,7 +48,7 @@ from meridian.strategy_template.report import _finite, require_research
 from meridian.strategy_template.sim import SCENARIOS, SIM_PARAMS, path
 from meridian.strategy_template.sim import problems as template_problems
 
-from . import catalog
+from . import budget, catalog
 from .strategies import BracketProbe, GatedBreakout
 from .venue import SETS, VenueModels, risk_config, venue_config
 
@@ -65,11 +65,19 @@ BRACKET_ARGS: dict[str, Any] = {
 Inspect = Callable[[BacktestNode, str, GatedBreakout, BracketProbe], None]
 
 
-def write_catalog(folder: Path, *, copies: int = 1, start_ns: int = catalog.START_NS) -> Path:
+def write_catalog(
+    folder: Path,
+    *,
+    copies: int = 1,
+    start_ns: int = catalog.START_NS,
+    calendar: catalog.Calendar | None = None,
+) -> Path:
+    """The catalog, and beside it the placeholder order-budget rows the pacer loads."""
     path = folder / "catalog"
     path.mkdir(parents=True, exist_ok=True)
     bracket = {BRACKET: catalog.quotes(BRACKET, BRACKET_BIDS, start_ns)}
-    catalog.write(path, copies=copies, start_ns=start_ns, extra=bracket)
+    catalog.write(path, copies=copies, start_ns=start_ns, extra=bracket, calendar=calendar)
+    budget.write_rows(folder)
     return path
 
 
@@ -101,16 +109,28 @@ def run_set(
     report_dir: Path | None = None,
     inspect: Inspect | None = None,
     template_type: type[GatedBreakout] = GatedBreakout,
+    calendar: catalog.Calendar | None = None,
 ) -> dict[str, Any]:
-    """One node, one run, one parameter set; the result as plain data."""
+    """One node, one run, one parameter set; the result as plain data.
+
+    `calendar` must be the rows the catalog was written with: the strategies' session rule
+    and DAY expiry read them, the venue reads the statuses made from them.
+    """
     ids = catalog.instrument_ids(SCENARIOS, copies)
     config = run_config(models, catalog_path, [*ids, BRACKET])
     node = BacktestNode([config])
     try:
         node.build()
         inputs = {name: spec[1:] for name, spec in SCENARIOS.items()}
-        template = template_type(params or TemplateParams.from_config(SIM_PARAMS), [*ids], inputs)
-        bracket = BracketProbe(BRACKET, **BRACKET_ARGS)
+        rows = catalog_path.parent / budget.ROWS_FILE if models.order_budget else None
+        template = template_type(
+            params or TemplateParams.from_config(SIM_PARAMS),
+            [*ids],
+            inputs,
+            calendar=calendar,
+            budget_rows=rows,
+        )
+        bracket = BracketProbe(BRACKET, **BRACKET_ARGS, calendar=calendar)
         node.add_strategy(config.id, template)
         node.add_strategy(config.id, bracket)
         (result,) = node.run()
@@ -127,6 +147,16 @@ def run_set(
                 for leg, oid in bracket.order_ids.items()
             },
             "session_refusals": template.session_refusals + bracket.session_refusals,
+            "day_expiries": template.day_expiries + bracket.day_expiries,
+            # Orders filled in more than one part: Alpaca paper's random partial fills.
+            "orders_partly_filled": int((fills.groupby("client_order_id").size() > 1).sum())
+            if len(fills)
+            else 0,
+            "budget": {
+                "paced": len(template.paced),
+                "deferred": sum(1 for _, asked, sent in template.paced if sent > asked),
+                "refusals": template.budget_refusals,
+            },
             "orders_total": len(orders),
             # The template's own orders at the venue: every one a DAY LIMIT, as in the lanes.
             "orders_not_day_limit": sum(
@@ -170,6 +200,8 @@ def problems(data: dict[str, Any], copies: int = 1) -> list[str]:
         found.append(f"the bracket did not fill its entry and take-profit: {data['bracket']}")
     if data["session_refusals"]:
         found.append(f"session refusals in a regular session: {data['session_refusals']}")
+    if data["budget"]["refusals"]:
+        found.append(f"the order budget refused: {data['budget']['refusals']}")
     return found
 
 
@@ -202,11 +234,18 @@ def write_report(node: BacktestNode, run_id: str, result: Any, folder: Path, dat
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="End-to-end simulation on the engine's own API.")
     parser.add_argument("--copies", type=int, default=1, help="copies of each scenario")
-    copies = max(parser.parse_args(argv).copies, 1)
+    parser.add_argument(
+        "--calendar",
+        type=Path,
+        help="calendar rows (JSON) covering the synthetic dates; default: the weekly window",
+    )
+    args = parser.parse_args(argv)
+    copies = max(args.copies, 1)
+    calendar = catalog.load_calendar(args.calendar) if args.calendar else None
     print("SIMULATION; not a lane; synthetic data and placeholder values only.", flush=True)
     folder = boundary.REPO_ROOT / "runs" / f"M5-sim-{uuid4().hex}"
     folder.mkdir(parents=True)
-    catalog_path = write_catalog(folder, copies=copies)
+    catalog_path = write_catalog(folder, copies=copies, calendar=calendar)
     record: dict[str, Any] = {
         "schema": "meridian.simulation-record/1",
         "milestone": "M5",
@@ -214,17 +253,22 @@ def main(argv: list[str] | None = None) -> int:
         "data_source": catalog.DATA_SOURCE,
         "engine": {"name": "NautilusTrader BacktestNode", "version": nautilus_trader.__version__},
         "copies": copies,
+        "calendar": "rows given" if calendar is not None else "weekly window only",
         "sets": [],
     }
     failed = False
     for models in SETS:
-        data = run_set(models, catalog_path, copies=copies, report_dir=folder / models.name)
+        data = run_set(
+            models, catalog_path, copies=copies, report_dir=folder / models.name, calendar=calendar
+        )
         record["sets"].append(data)
         stats = data["statistics"]
         print(
             f"set {models.name}: orders {data['orders_total']}, denied {data['orders_denied']},"
             f" rejected {data['orders_rejected']}, commissions {data['commissions_usd']} USD,"
-            f" bracket {data['bracket']}"
+            f" bracket {data['bracket']}, partly filled {data['orders_partly_filled']},"
+            f" paced {data['budget']['paced']} (deferred {data['budget']['deferred']}),"
+            f" DAY expiries {len(data['day_expiries'])}"
         )
         for group in ("pnls", "returns", "general"):
             values = stats[group].get("USD", {}) if group == "pnls" else stats[group]

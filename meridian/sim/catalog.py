@@ -11,12 +11,20 @@ Own code, where the engine has no primitive: the engine has no exchange calendar
 `InstrumentStatus` data does open and close a simulated market (the matching engine rejects
 an order while the market is not open, `crates/execution/src/matching_engine/mod.rs:3351`), so
 `status_events` turns `meridian.alpaca_sessions` windows into those statuses.
+
+Holidays and early closes come in as calendar rows, the shape of Alpaca's calendar
+(`date`, `open`, `close`, `session_open`, `session_close`;
+https://docs.alpaca.markets/us/reference/legacycalendar), which `alpaca_sessions` already
+reads: a date without a row is closed, its overnight session included. This package imports
+no calendar library (`tests/test_dependency_boundary.py`); `research/xnys_calendar_rows.py`
+writes the rows from `exchange-calendars` offline.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Mapping
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -46,6 +54,27 @@ DATA_SOURCE = "synthetic quotes and session statuses generated in process; no re
 EDGES = (time(4), time(9, 30), time(16), time(20))
 
 Scenarios = Mapping[str, tuple[list[Decimal], int | None, Decimal | None]]
+Calendar = Mapping[date, dict]
+ROW_KEYS = {"date", "open", "close", "session_open", "session_close"}
+
+
+def load_calendar(path: Path) -> dict[date, dict]:
+    """Calendar rows from a JSON list, keyed by date, in the shape `alpaca_sessions` reads."""
+    rows = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(rows, list) or not all(
+        isinstance(r, dict) and set(r) == ROW_KEYS for r in rows
+    ):
+        raise ValueError(f"calendar rows need exactly the keys {sorted(ROW_KEYS)}")
+    return {date.fromisoformat(r["date"]): r for r in rows}
+
+
+def _row_edges(row: Mapping[str, str]) -> list[time]:
+    return [
+        datetime.strptime(row["session_open"], "%H%M").time(),
+        time.fromisoformat(row["open"]),
+        time.fromisoformat(row["close"]),
+        datetime.strptime(row["session_close"], "%H%M").time(),
+    ]
 
 
 def equity(iid: InstrumentId, ts_ns: int = START_NS) -> Equity:
@@ -76,12 +105,13 @@ def quotes(iid: InstrumentId, bids: Iterable[Decimal], start_ns: int) -> list[Qu
     ]
 
 
-def _edges(start_ns: int, end_ns: int) -> list[int]:
+def _edges(start_ns: int, end_ns: int, calendar: Calendar | None = None) -> list[int]:
     day = datetime.fromtimestamp(start_ns // 1_000_000_000, UTC).astimezone(NEW_YORK).date()
     last = datetime.fromtimestamp(end_ns // 1_000_000_000, UTC).astimezone(NEW_YORK).date()
     out = []
     while day <= last:
-        for edge in EDGES:
+        row = None if calendar is None else calendar.get(day)
+        for edge in sorted({*EDGES, *(_row_edges(row) if row else ())}):
             ns = int(datetime.combine(day, edge, NEW_YORK).timestamp()) * 1_000_000_000
             if start_ns < ns <= end_ns:
                 out.append(ns)
@@ -89,16 +119,18 @@ def _edges(start_ns: int, end_ns: int) -> list[int]:
     return out
 
 
-def status_events(iid: InstrumentId, start_ns: int, end_ns: int) -> list[InstrumentStatus]:
+def status_events(
+    iid: InstrumentId, start_ns: int, end_ns: int, calendar: Calendar | None = None
+) -> list[InstrumentStatus]:
     """TRADING when an Alpaca session (overnight, pre, regular, after) opens, CLOSE when none.
 
-    The weekly window only: without Alpaca's calendar rows (a network read, not done here)
-    a holiday or an early close is not known.
+    Without calendar rows, the weekly window only: a holiday or an early close is not known.
+    With them, a date without a row is closed and a row's times move the session edges.
     """
     events: list[InstrumentStatus] = []
     was_open: bool | None = None
-    for ts in [start_ns, *_edges(start_ns, end_ns)]:
-        session = session_ns(ts)
+    for ts in [start_ns, *_edges(start_ns, end_ns, calendar)]:
+        session = session_ns(ts, calendar)
         if (session is not None) is was_open:
             continue
         was_open = session is not None
@@ -131,6 +163,7 @@ def write(
     copies: int = 1,
     start_ns: int = START_NS,
     extra: Mapping[InstrumentId, list[QuoteTick]] | None = None,
+    calendar: Calendar | None = None,
 ) -> list[InstrumentId]:
     """Write one catalog: each instrument, its quotes and its session statuses."""
     catalog = ParquetDataCatalog(str(path))
@@ -143,5 +176,5 @@ def write(
     for iid, ticks in series.items():
         # The catalog takes one instrument per write call.
         catalog.write_quote_ticks(ticks)
-        catalog.write_instrument_statuses(status_events(iid, start_ns, ticks[-1].ts_init))
+        catalog.write_instrument_statuses(status_events(iid, start_ns, ticks[-1].ts_init, calendar))
     return list(series)
