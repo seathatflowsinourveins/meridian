@@ -199,6 +199,9 @@ The simulation uses the [screener universe](adr/data/m4-universe.md): movers int
 most-actives, lane permission and owner-local price/volume floors and count cap.
 Lists apply only after receipt and expire; unknown outside-hours freshness refuses entries.
 Deployment parameters are null placeholders; data reads share a separate 200/minute budget.
+`--chart` (implies `--report`) adds `chart.html` in the same folder: per symbol one-second bid
+candles, a marker at each fill, the trail while held, and the statistics table, drawn by the
+verbatim Lightweight Charts file in `upstream/` embedded in the page. It opens offline.
 
 1. Start from an upstream template: the strategy template above, a NautilusTrader example or
    built-in strategy at the pinned version, or a cited published method. Name it in the strategy file's docstring (repository,
