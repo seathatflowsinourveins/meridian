@@ -352,7 +352,7 @@ def test_quote_reaches_real_engine_cache_and_strategy(data, monkeypatch, when, f
                 name=name,
                 quote_config=config,
                 cache=cache,
-                clock=clock,
+                clock=SimpleNamespace(timestamp_ns=lambda: timestamp_ns(when, "synthetic") + 10),
                 stream=data.AlpacaQuoteStream(KEYS),
             )
 
