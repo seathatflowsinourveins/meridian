@@ -289,7 +289,7 @@ in that turn. `codex features list` shows `goals` stable and on.
   (`claude-fable-5-2`; its workers run `claude-opus-5-5`), Codex (`gpt-6-astra`, `gpt-6.1-sol`
   for bulk) and Antigravity work and review, DeepSeek Harness works (code and research).
 - DeepSeek Harness from Orca: `orca-ide orchestration worker-start --agent dsh --spec-file <path> --worktree new-child --name <n>`. Headless: `dsh headless --permission-mode workspace-write --approval-policy never --add-dir <git common dir> --json - < task.txt`; a pass is exit 0 and `final.reason.kind` `completed`.
-- Its skills, `lsp` tool, ast-grep, agentsview and completion gate (`dsh-tui` profile only): [ADR 0016](adr/0016-dsh-worker-stack.md).
+- Its skills, `lsp` tool, ast-grep, agentsview and completion gate (both `dsh-tui` and `headless` profiles): [ADR 0016](adr/0016-dsh-worker-stack.md).
 - The agent runtimes start from checksummed pins in `deploy/wsl/setup.sh` and update themselves
   in sessions the owner starts (Orca's launches do not); `setup.sh agents-check` verifies them.
 - NautilusTrader 2.0 is a release-candidate line with breaking changes between candidates.

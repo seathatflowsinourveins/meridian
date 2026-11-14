@@ -126,7 +126,7 @@ DSH_SKILLS=(
 )
 # Code navigation: DeepSeek's own LSP packages at the engine's version (the seam, the stdio
 # provider that runs each worktree's own pyright-langserver, and the read-only `lsp` tool),
-# installed in the dsh-tui profile. Registry integrity values.
+# installed in the dsh-tui and headless profiles. Registry integrity values.
 DSH_LSP_INTEGRITY=sha512-pEh5ErmCK52WJjOrKWQne1ojdImjf9zLNAclaCI4uOwEB8tdGwuXHSNud16gVHSID+0PdK2nm6dJjZNgfp47ig==
 DSH_LSP_STDIO_INTEGRITY=sha512-2lC3pw/DyNkOLT42POj48J02L+2JBM3HJJQts467B/JrTEOJwc29gDYEzhID3mceePMrO/n/K1duVLS/So3mXw==
 DSH_TOOL_LSP_INTEGRITY=sha512-y+OHzHOcvh3mCHMZ8bbICxPZjNBhKeCFBfDffR4GkNlT7DHcOeyzwa0mX9XBnJ7dbaAGCbZ8PQZO5EhOSmtOGw==
@@ -1482,10 +1482,6 @@ cmd_dsh() {
     npm_pinned "@deepseek-harness-tui/dsh-tui@${DSH_TUI_VERSION}" "${DSH_TUI_INTEGRITY}"
     # The TUI lives in its own dsh profile; the global copy is the launcher on PATH (dsh-tui, dst).
     "${HOME}/.local/bin/dsh" plugin --profile dsh-tui add "@deepseek-harness-tui/dsh-tui@${DSH_TUI_VERSION}" </dev/null
-    npm_pinned "@deepseek-ai/dsh-hooks-claude-code@${DSH_VERSION}" "${DSH_HOOKS_INTEGRITY}"
-    npm_pinned "@deepseek-ai/dsh-hook-protocol@${DSH_VERSION}" "${DSH_HOOK_PROTOCOL_INTEGRITY}"
-    "${HOME}/.local/bin/dsh" plugin --profile dsh-tui add \
-      "@deepseek-ai/dsh-hooks-claude-code@${DSH_VERSION}" "@deepseek-ai/dsh-hook-protocol@${DSH_VERSION}" </dev/null
     npm install -g --strict-allow-scripts --legacy-peer-deps "@deepseek-harness-tui/dsh-tui@${DSH_TUI_VERSION}"
   fi
   dsh_stack
@@ -1621,11 +1617,15 @@ PY
   mv "${guide}.new" "${guide}"
 }
 
-# The worker stack of ADR 0016, for dsh only: skills, the LSP packages, ast-grep, agentsview, the
-# completion gate.
+# The worker stack of ADR 0016, for dsh only: skills, the LSP and hook packages in both the
+# interactive and the headless profile, ast-grep, agentsview, the completion gate.
 dsh_stack() {
   dsh_skills
-  dsh_lsp_packages
+  local profile
+  for profile in dsh-tui headless; do
+    dsh_lsp_packages "${profile}"
+    dsh_hook_packages "${profile}"
+  done
   dsh_release_binaries
   # The completion gate: a copy of the tracked script, and the hooks file the Meridian block's
   # second hook-bridge mount reads (Stop only; Orca's own hooks file is never touched).
@@ -1678,25 +1678,51 @@ dsh_skill_names() {
 }
 
 DSH_LSP_PACKAGES=(dsh-lsp dsh-lsp-stdio dsh-tool-lsp)
-# dsh_profile_package NAME: the version of @deepseek-ai/NAME the dsh-tui profile depends on.
+DSH_HOOK_PACKAGES=(dsh-hooks-claude-code dsh-hook-protocol)
+# dsh_profile_package PROFILE NAME: the version of @deepseek-ai/NAME that PROFILE depends on.
 dsh_profile_package() {
-  jq -r --arg name "@deepseek-ai/$1" '.dependencies[$name] // empty' \
-    "${HOME}/.dsh/profiles/dsh-tui/package.json" 2>/dev/null
+  jq -r --arg name "@deepseek-ai/$2" '.dependencies[$name] // empty' \
+    "${HOME}/.dsh/profiles/$1/package.json" 2>/dev/null
 }
 
-# The three LSP packages declare no dsh bundle: they go into the profile as plain dependencies,
-# as the hook packages do, and the Meridian block's rows mount them.
+# dsh_profile_init PROFILE: create a shipped profile from dsh's template on first use. dsh's
+# README ("Profiles") says the headless profile auto-initializes on first use from its shipped
+# template; a config dump is that use and makes no model call.
+dsh_profile_init() {
+  local profile="$1"
+  [ -e "${HOME}/.dsh/profiles/${profile}/package.json" ] && return 0
+  "${HOME}/.local/bin/dsh" --profile "${profile}" --dump-config </dev/null >/dev/null \
+    || fail "cannot initialize the ${profile} profile from dsh's template"
+}
+
+# The LSP packages and the hook bridge declare no dsh bundle: they go into the profile as plain
+# dependencies, as each other, and the Meridian block's rows mount them.
 dsh_lsp_packages() {
-  local name missing=0
+  local profile="$1" name missing=0
+  dsh_profile_init "${profile}"
   for name in "${DSH_LSP_PACKAGES[@]}"; do
-    version_ge "$(dsh_profile_package "${name}")" "${DSH_VERSION}" || missing=1
+    version_ge "$(dsh_profile_package "${profile}" "${name}")" "${DSH_VERSION}" || missing=1
   done
   [ "${missing}" = 1 ] || return 0
   npm_pinned "@deepseek-ai/dsh-lsp@${DSH_VERSION}" "${DSH_LSP_INTEGRITY}"
   npm_pinned "@deepseek-ai/dsh-lsp-stdio@${DSH_VERSION}" "${DSH_LSP_STDIO_INTEGRITY}"
   npm_pinned "@deepseek-ai/dsh-tool-lsp@${DSH_VERSION}" "${DSH_TOOL_LSP_INTEGRITY}"
-  "${HOME}/.local/bin/dsh" plugin --profile dsh-tui add "@deepseek-ai/dsh-lsp@${DSH_VERSION}" \
+  "${HOME}/.local/bin/dsh" plugin --profile "${profile}" add "@deepseek-ai/dsh-lsp@${DSH_VERSION}" \
     "@deepseek-ai/dsh-lsp-stdio@${DSH_VERSION}" "@deepseek-ai/dsh-tool-lsp@${DSH_VERSION}" </dev/null
+}
+
+# The hook bridge: Orca's status hooks and the completion gate each mount it.
+dsh_hook_packages() {
+  local profile="$1" name missing=0
+  dsh_profile_init "${profile}"
+  for name in "${DSH_HOOK_PACKAGES[@]}"; do
+    version_ge "$(dsh_profile_package "${profile}" "${name}")" "${DSH_VERSION}" || missing=1
+  done
+  [ "${missing}" = 1 ] || return 0
+  npm_pinned "@deepseek-ai/dsh-hooks-claude-code@${DSH_VERSION}" "${DSH_HOOKS_INTEGRITY}"
+  npm_pinned "@deepseek-ai/dsh-hook-protocol@${DSH_VERSION}" "${DSH_HOOK_PROTOCOL_INTEGRITY}"
+  "${HOME}/.local/bin/dsh" plugin --profile "${profile}" add \
+    "@deepseek-ai/dsh-hooks-claude-code@${DSH_VERSION}" "@deepseek-ai/dsh-hook-protocol@${DSH_VERSION}" </dev/null
 }
 
 ast_grep_version() { "${HOME}/.local/bin/ast-grep" --version 2>/dev/null </dev/null | sed -n 's/^ast-grep //p'; }
@@ -1751,9 +1777,11 @@ check_dsh() {
   jq -e '.completed == true and (.version | type) == "number" and .version >= 1' \
     "${HOME}/.dsh-tui/onboarding.json" >/dev/null \
     || fail "dsh-tui's first-run guide is not completed (run: deploy/wsl/setup.sh dsh)"
-  local config row
+  local config headless_config row
   config="$("${HOME}/.local/bin/dsh" --profile dsh-tui --dump-config </dev/null 2>/dev/null)" \
     || fail "dsh cannot build its configuration for the dsh-tui profile"
+  headless_config="$("${HOME}/.local/bin/dsh" --profile headless --dump-config </dev/null 2>/dev/null)" \
+    || fail "dsh cannot build its configuration for the headless profile"
   for row in session-log-deepseek plugin-package-inventory-deepseek; do
     dsh_row "${config}" "${row}" | grep -qx '    enabled: false' || fail "the ${row} upload is not off"
   done
@@ -1774,8 +1802,8 @@ check_dsh() {
   [ ! -e "${pick}" ] \
     || jq -e --arg model "${DSH_MODEL}" '.provider == "deepseek-official" and .model == $model' "${pick}" >/dev/null 2>&1 \
     || fail "${pick} picks another model than deepseek-official/${DSH_MODEL}"
-  check_dsh_stack "${config}"
-  ok "DeepSeek Harness $(dsh_version) with dsh-tui $(dsh_tui_version): ${DSH_MODEL}; uploads to DeepSeek off, no plugin tools"
+  check_dsh_stack "${config}" "${headless_config}"
+  ok "DeepSeek Harness $(dsh_version) with dsh-tui $(dsh_tui_version): ${DSH_MODEL}; the lsp tool and the completion gate in both dsh-tui and headless; uploads to DeepSeek off, no plugin tools"
 }
 
 # dsh_rows_named CONFIG PACKAGE: every row of `dsh --dump-config` that mounts PACKAGE.
@@ -1786,9 +1814,34 @@ dsh_rows_named() {
     END { if (hit) printf "%s", row }'
 }
 
-# check_dsh_stack CONFIG: the worker stack of ADR 0016 is what setup.sh pins and writes.
+# check_dsh_profile PROFILE CONFIG: the worker rows and packages that profile must carry.
+check_dsh_profile() {
+  local profile="$1" config="$2" row run="run: deploy/wsl/setup.sh dsh"
+  # No MCP server; the LSP rows and the gate are mounted, and none of them is switched off.
+  [ -z "$(dsh_rows_named "${config}" @deepseek-ai/dsh-mcp-client)" ] \
+    || fail "the ${profile} profile names an MCP server (ADR 0016 adds none)"
+  for row in meridian-lsp:dsh-lsp meridian-lsp-pyright:dsh-lsp-stdio meridian-tool-lsp:dsh-tool-lsp \
+    meridian-check-gate:dsh-hooks-claude-code; do
+    dsh_row "${config}" "${row%%:*}" | grep -qxF "  name: '@deepseek-ai/${row#*:}'" \
+      || fail "the ${row%%:*} row is not in the ${profile} profile's configuration (${run})"
+    ! dsh_row "${config}" "${row%%:*}" | grep -qx '  disabled: true' \
+      || fail "the ${row%%:*} row is switched off in the ${profile} profile"
+  done
+  # The dump folds a long argument over lines, so the row's lines are joined before matching.
+  dsh_row "${config}" meridian-lsp-pyright | tr -s ' \n' '  ' \
+    | grep -qF "exec python3 -I ${HOME}/.dsh/lsp/dsh-lsp-root.py \"\$top\" \"\$top/.venv/bin/pyright-langserver\" --stdio" \
+    && cmp -s "$(dirname "$(readlink -f "$0")")/dsh-lsp-root.py" "${HOME}/.dsh/lsp/dsh-lsp-root.py" \
+    || fail "the LSP provider does not run the worktree's own pyright-langserver at its root in the ${profile} profile (${run})"
+  for row in "${DSH_LSP_PACKAGES[@]}" "${DSH_HOOK_PACKAGES[@]}"; do
+    version_ge "$(dsh_profile_package "${profile}" "${row}")" "${DSH_VERSION}" \
+      || fail "@deepseek-ai/${row} is not in the ${profile} profile (${run})"
+  done
+}
+
+# check_dsh_stack CONFIG_TUI CONFIG_HEADLESS: the worker stack of ADR 0016 is what setup.sh
+# pins and writes, in both profiles.
 check_dsh_stack() {
-  local config="$1" entry repo commit path dir row patch="${HOME}/.dsh/cordis.patch.yml" run="run: deploy/wsl/setup.sh dsh"
+  local config_tui="$1" config_headless="$2" entry repo commit path dir config patch="${HOME}/.dsh/cordis.patch.yml" run="run: deploy/wsl/setup.sh dsh"
   python3 -I - "${patch}" <<'PY' || fail "~/.dsh/cordis.patch.yml has no single Meridian block above Orca's block (${run})"
 import sys
 
@@ -1797,32 +1850,15 @@ ours = [i for i, line in enumerate(lines) if line.startswith("# >>> meridian-man
 orca = [i for i, line in enumerate(lines) if line.startswith("# >>> orca-managed-dsh-hooks")]
 sys.exit(0 if len(ours) == 1 and (not orca or ours[0] < orca[0]) else 1)
 PY
-  # No MCP server; the LSP rows and the gate are mounted, and none of them is switched off.
-  [ -z "$(dsh_rows_named "${config}" @deepseek-ai/dsh-mcp-client)" ] \
-    || fail "dsh's configuration names an MCP server (ADR 0016 adds none)"
-  for row in meridian-lsp:dsh-lsp meridian-lsp-pyright:dsh-lsp-stdio meridian-tool-lsp:dsh-tool-lsp \
-    meridian-check-gate:dsh-hooks-claude-code; do
-    dsh_row "${config}" "${row%%:*}" | grep -qxF "  name: '@deepseek-ai/${row#*:}'" \
-      || fail "the ${row%%:*} row is not in dsh's configuration (${run})"
-    ! dsh_row "${config}" "${row%%:*}" | grep -qx '  disabled: true' \
-      || fail "the ${row%%:*} row is switched off in the dsh-tui profile"
-  done
-  # The dump folds a long argument over lines, so the row's lines are joined before matching.
-  dsh_row "${config}" meridian-lsp-pyright | tr -s ' \n' '  ' \
-    | grep -qF "exec python3 -I ${HOME}/.dsh/lsp/dsh-lsp-root.py \"\$top\" \"\$top/.venv/bin/pyright-langserver\" --stdio" \
-    && cmp -s "$(dirname "$(readlink -f "$0")")/dsh-lsp-root.py" "${HOME}/.dsh/lsp/dsh-lsp-root.py" \
-    || fail "the LSP provider does not run the worktree's own pyright-langserver at its root (${run})"
-  for row in "${DSH_LSP_PACKAGES[@]}"; do
-    version_ge "$(dsh_profile_package "${row}")" "${DSH_VERSION}" \
-      || fail "@deepseek-ai/${row} is not in the dsh-tui profile (${run})"
-  done
   # dsh 0.2.2-rc.2 and newer delete a Session's eligible worktrees when it is archived, unless
   # the worktree plugin retains them. dsh updates itself, so this fails until that is set.
-  if version_ge "$(dsh_version)" 0.2.2-rc.2 \
-    && [ -n "$(dsh_rows_named "${config}" @deepseek-ai/dsh-experimental-worktree)" ] \
-    && ! dsh_rows_named "${config}" @deepseek-ai/dsh-experimental-worktree | grep -qx '    retainOnArchive: true'; then
-    fail "dsh $(dsh_version) deletes worktrees on archive: set retainOnArchive: true on its worktree plugin (ADR 0016)"
-  fi
+  for config in "${config_tui}" "${config_headless}"; do
+    if version_ge "$(dsh_version)" 0.2.2-rc.2 \
+      && [ -n "$(dsh_rows_named "${config}" @deepseek-ai/dsh-experimental-worktree)" ] \
+      && ! dsh_rows_named "${config}" @deepseek-ai/dsh-experimental-worktree | grep -qx '    retainOnArchive: true'; then
+      fail "dsh $(dsh_version) deletes worktrees on archive: set retainOnArchive: true on its worktree plugin (ADR 0016)"
+    fi
+  done
   # Skills: exactly the pinned folders, each the same as its checkout at the pinned commit.
   [ "$(find "${HOME}/.dsh/skills" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort)" = "$(dsh_skill_names)" ] \
     || fail "~/.dsh/skills does not hold exactly the pinned skills (${run})"
@@ -1847,7 +1883,9 @@ PY
     && jq -e --arg command "${HOME}/.dsh/hooks/dsh-check-gate.sh" \
       '.hooks | keys == ["Stop"] and .Stop[0].hooks[0].command == $command' "${HOME}/.dsh/meridian-hooks.json" >/dev/null \
     || fail "the completion gate is not the repository's copy (${run})"
-  ok "dsh stack: $(dsh_skill_names | wc -l) skills, the lsp tool, ast-grep ${AST_GREP_VERSION}, agentsview ${AGENTSVIEW_VERSION}, completion gate"
+  check_dsh_profile dsh-tui "${config_tui}"
+  check_dsh_profile headless "${config_headless}"
+  ok "dsh stack: $(dsh_skill_names | wc -l) skills, the lsp tool, ast-grep ${AST_GREP_VERSION}, agentsview ${AGENTSVIEW_VERSION}, completion gate; dsh-tui and headless"
 }
 
 orca_cli() { "${ORCA_ROOT}/current/bin/orca-ide" "$@" </dev/null; }
