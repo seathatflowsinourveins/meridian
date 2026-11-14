@@ -4,7 +4,7 @@ config file, the command line or the repository.
 
 systemd.exec(5) of systemd 259 (the distro's version): `LoadCredentialEncrypted=ID:PATH`
 decrypts the file at start and places it, readable only by the unit's user, in the directory
-named by `$CREDENTIALS_DIRECTORY`. The unit is `deploy/systemd/meridian-alpaca-paper.service`;
+named by `$CREDENTIALS_DIRECTORY`. The unit is `deploy/systemd/meridian-alpaca-paper@.service`;
 the files the owner fills are described in `docs/adr/data/m3-alpaca.md`. No agent reads them.
 
 Error messages name a credential, never its content.
@@ -45,7 +45,7 @@ def load_paper_keys(environ: Mapping[str, str] = os.environ) -> PaperKeys:
     if not directory:
         raise PaperKeysUnavailable(
             "no $CREDENTIALS_DIRECTORY: the paper keys are loaded only by the systemd unit "
-            "deploy/systemd/meridian-alpaca-paper.service (see docs/adr/data/m3-alpaca.md)"
+            "deploy/systemd/meridian-alpaca-paper@.service (see docs/adr/data/m3-alpaca.md)"
         )
     base = Path(directory)
     key_id = _read(base, KEY_ID)
@@ -81,8 +81,8 @@ def _read(base: Path, name: str) -> str:
 def main() -> int:
     """`python -m meridian.alpaca.credentials`: check the unit's credentials, offline.
 
-    What the prepared unit runs until the lane's own entry point exists. It opens no socket and
-    prints no value: only whether both credentials are present and well formed.
+    For the owner, under the same credentials (an attended `systemd-run`). It opens no socket
+    and prints no value: only whether both credentials are present and well formed.
     """
     try:
         load_paper_keys()

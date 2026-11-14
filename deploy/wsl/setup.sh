@@ -27,6 +27,8 @@
 #   deploy/wsl/setup.sh codex-requirements  write /etc/codex/requirements.toml from meridian.user-data (sudo)
 #   deploy/wsl/setup.sh signins       list the sign-ins left for the owner, with their commands
 #   deploy/wsl/setup.sh orca-pair     owner, once, in Windows Terminal: pair the Windows Orca app
+#   deploy/wsl/setup.sh unattended    (sudo) install or update the unattended Alpaca lane; timers enabled once
+#   deploy/wsl/setup.sh unattended-check  its units, timers, last results and hold file (read only)
 #
 # Order: check, uv, gh, gitleaks, ocr, repo, gateway, then agents. Sign-ins are the owner's: see UPSTREAM.md.
 # Versions, checksums and the pages they were read from: UPSTREAM.md.
@@ -184,6 +186,16 @@ GATEWAY_LIBS="libgtk-3-0t64 libnss3 libnspr4 libasound2t64 libatk1.0-0t64 libatk
 REPO=seathatflowsinourveins/meridian
 REPO_DIR="${HOME}/src/meridian"
 USER_DATA="$(dirname "$(readlink -f "$0")")/meridian.user-data"
+# The unattended Alpaca lane (M7): release, settings, state and units, as deploy/systemd/ names
+# them. MERIDIAN_FAKE_ROOT is for tests only: a folder that stands in for /, with fake sudo,
+# systemctl and uv first on PATH. Unset, every path below is the real one.
+UA_ROOT="${MERIDIAN_FAKE_ROOT:-}"
+UNATTENDED_ROOT="${UA_ROOT}/opt/meridian"
+UNATTENDED_CONFIG="${UA_ROOT}/etc/meridian-alpaca-paper"
+UNATTENDED_STATE="${UA_ROOT}/var/lib/meridian-alpaca-paper"
+UNATTENDED_UNIT_DIR="${UA_ROOT}/etc/systemd/system"
+UNATTENDED_UNITS="meridian-alpaca-paper@.service meridian-alpaca-restart.timer meridian-alpaca-order.timer"
+UNATTENDED_TIMERS="meridian-alpaca-restart.timer meridian-alpaca-order.timer"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 ok() { echo "ok:   $*"; }
@@ -274,6 +286,122 @@ cmd_check() {
     *) fail "wsl-pro.service is running or waiting to restart" ;;
   esac
   ok "wsl-pro.service off"
+  check_unattended
+}
+
+check_unattended() {
+  # One read-only line for `check`; not installed is not a failure. Details: unattended-check.
+  if [ ! -L "${UNATTENDED_ROOT}/current" ]; then
+    echo "note: the unattended Alpaca lane is not installed (deploy/wsl/setup.sh unattended)"
+    return
+  fi
+  local timer states=""
+  for timer in ${UNATTENDED_TIMERS}; do
+    states="${states} ${timer}=$(systemctl is-active "${timer}" 2>/dev/null || true)"
+  done
+  ok "unattended Alpaca lane: release $(basename "$(readlink "${UNATTENDED_ROOT}/current")");${states}"
+}
+
+cmd_unattended() {
+  # Non-interactive and idempotent: a second run at the same commit changes nothing. Installs
+  # the checked-out commit, the settings and rows files from the templates if absent (values
+  # null; it never sets one, consent included), the state directory and the units. It enables
+  # and starts a timer only on its first install: an update leaves a timer the owner disabled or
+  # stopped as it is. It reads no credential and starts no lane run itself.
+  local src commit release cache name timer link state changed=0
+  src="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+  [ -z "$(git -C "${src}" status --porcelain)" ] || fail "the checkout has uncommitted changes"
+  id paper >/dev/null 2>&1 || fail "service user 'paper' is missing"
+  commit="$(git -C "${src}" rev-parse HEAD)"
+  release="${UNATTENDED_ROOT}/releases/${commit}"
+  # A release counts only once its marker exists, written last, after a successful sync: a
+  # failed sync leaves no marker, so a rerun synchronises again before anything is activated.
+  if [ ! -e "${release}/.meridian-release-complete" ]; then
+    sudo install -d -m 0755 "${release}"
+    git -C "${src}" archive "${commit}" | sudo tar -x -C "${release}" --no-same-owner
+    cache="$(mktemp -d)"
+    # The interpreter goes under /opt too: `paper` cannot read a home (ProtectHome=yes).
+    sudo env UV_CACHE_DIR="${cache}" UV_PYTHON_INSTALL_DIR="${UNATTENDED_ROOT}/python" \
+      "${HOME}/.local/bin/uv" sync --locked --no-default-groups --managed-python --project "${release}"
+    sudo rm -rf "${cache}"
+    sudo touch "${release}/.meridian-release-complete"
+  fi
+  [ "$(readlink "${UNATTENDED_ROOT}/current" || true)" = "${release}" ] \
+    || sudo ln -sfn "${release}" "${UNATTENDED_ROOT}/current"
+  ok "release ${commit} in ${UNATTENDED_ROOT}/current"
+  [ -d "${UNATTENDED_CONFIG}" ] || sudo install -d -o root -g paper -m 0750 "${UNATTENDED_CONFIG}"
+  for name in alpaca-lane alpaca-order-budget; do
+    sudo test -e "${UNATTENDED_CONFIG}/${name}.json" || sudo install -o root -g paper -m 0640 \
+      "${release}/deploy/${name}.template.json" "${UNATTENDED_CONFIG}/${name}.json"
+  done
+  ok "settings in ${UNATTENDED_CONFIG}: root-owned, read by paper; values are filled there"
+  [ -d "${UNATTENDED_STATE}" ] || sudo install -d -o paper -g paper -m 0700 "${UNATTENDED_STATE}"
+  for name in ${UNATTENDED_UNITS}; do
+    cmp -s "${release}/deploy/systemd/${name}" "${UNATTENDED_UNIT_DIR}/${name}" && continue
+    sudo install -m 0644 "${release}/deploy/systemd/${name}" "${UNATTENDED_UNIT_DIR}/${name}"
+    changed=1
+  done
+  [ "${changed}" = 0 ] || sudo systemctl daemon-reload
+  # No [Install] section in the units: the wants link is added here, on the first install only
+  # (systemctl(1)), and a marker under /opt records it once both steps succeeded. On an update a
+  # timer the owner stopped with `systemctl disable --now` stays disabled and stopped.
+  for timer in ${UNATTENDED_TIMERS}; do
+    if [ ! -e "${UNATTENDED_ROOT}/timers-enabled/${timer}" ]; then
+      [ -L "${UNATTENDED_UNIT_DIR}/timers.target.wants/${timer}" ] \
+        || sudo systemctl add-wants timers.target "${timer}"
+      sudo systemctl start "${timer}"
+      sudo install -D -m 0644 /dev/null "${UNATTENDED_ROOT}/timers-enabled/${timer}"
+      ok "${timer}: first install, enabled and started (stop: sudo systemctl disable --now ${timer})"
+    else
+      link=disabled
+      [ -L "${UNATTENDED_UNIT_DIR}/timers.target.wants/${timer}" ] && link=enabled
+      state="$(systemctl is-active "${timer}" 2>/dev/null || true)"
+      ok "${timer}: update, left as it is (${link}, ${state:-unknown})"
+    fi
+  done
+  cmd_unattended_check
+}
+
+cmd_unattended_check() {
+  # Read only: unit files, timers, the services' last results and the hold file's presence. It
+  # reads no credential and no settings value.
+  local name timer mode service hold
+  if [ -L "${UNATTENDED_ROOT}/current" ]; then
+    echo "release: $(basename "$(readlink "${UNATTENDED_ROOT}/current")")"
+  else
+    echo "release: not installed"
+  fi
+  for name in ${UNATTENDED_UNITS}; do
+    if [ ! -e "${UNATTENDED_UNIT_DIR}/${name}" ]; then
+      echo "${name}: not installed"
+    elif cmp -s "${UNATTENDED_ROOT}/current/deploy/systemd/${name}" "${UNATTENDED_UNIT_DIR}/${name}"; then
+      echo "${name}: installed"
+    else
+      echo "${name}: installed, differs from the release"
+    fi
+  done
+  for timer in ${UNATTENDED_TIMERS}; do
+    if [ -L "${UNATTENDED_UNIT_DIR}/timers.target.wants/${timer}" ]; then
+      echo "${timer}: enabled, $(systemctl is-active "${timer}" 2>/dev/null || true), next $(systemctl show -p NextElapseUSecRealtime --value "${timer}" 2>/dev/null || true)"
+    else
+      echo "${timer}: not enabled"
+    fi
+  done
+  for mode in restart order; do
+    service="meridian-alpaca-paper@${mode}.service"
+    echo "${service}: last result $(systemctl show -p Result --value "${service}" 2>/dev/null || true), exit status $(systemctl show -p ExecMainStatus --value "${service}" 2>/dev/null || true), at $(systemctl show -p ExecMainExitTimestamp --value "${service}" 2>/dev/null || true)"
+  done
+  if ! sudo -n test -d "${UNATTENDED_STATE}" 2>/dev/null; then
+    hold="unknown (no state directory, or no sudo)"
+  elif sudo -n test -e "${UNATTENDED_STATE}/hold"; then
+    hold="PRESENT: unattended orders refuse until the owner removes it"
+  else
+    hold="none"
+  fi
+  echo "hold file: ${hold}"
+  if sudo -n test -e "${UNATTENDED_STATE}/run-marker" 2>/dev/null; then
+    echo "run marker: PRESENT (a run is active, or one crashed or was killed; order refuses)"
+  fi
 }
 
 cmd_uv() {
@@ -2079,6 +2207,8 @@ case "${1:-}" in
     ;;
   signins) cmd_signins ;;
   orca-pair) cmd_orca_pair ;;
+  unattended) cmd_unattended ;;
+  unattended-check) cmd_unattended_check ;;
   agents-check)
     check_gh
     check_gitleaks
@@ -2095,5 +2225,5 @@ case "${1:-}" in
     ;;
   repo) cmd_repo ;;
   gateway) cmd_gateway ;;
-  *) sed -n '2,32p' "$0"; exit 2 ;;
+  *) sed -n '2,34p' "$0"; exit 2 ;;
 esac
