@@ -3,9 +3,9 @@ Venue identity and the one trading host. Paper only, hard-coded, with no switch.
 
 alpaca-py 0.45.0 (`alpaca/common/enums.py`, `BaseURL.TRADING_PAPER` and
 `BaseURL.TRADING_STREAM_PAPER`) names these two URLs. The adapter hands them to the SDK as
-`url_override`, so no `paper=` flag can choose another host, and `tests/test_alpaca_paper.py`
-checks that no other trading host appears in this package. `tests/test_paper_only.py` fails the
-build if a real-money endpoint appears anywhere in the repository.
+`url_override`. The runtime host guards in `wire.py` are the boundary. The source scans in
+`tests/test_alpaca_paper.py` and `tests/test_paper_only.py` are tripwires for recognizable
+hosts and switches; computed values and indirect calls can escape them.
 """
 
 from nautilus_trader.model import Venue
