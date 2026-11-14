@@ -8,6 +8,7 @@ agent files git may list are the skills in ``.agents/skills/`` and their links i
 owner's own sessions, which carries its own tests: AGENTS.md keeps such branches out of worktrees.
 """
 
+import json
 import re
 import subprocess
 
@@ -95,3 +96,49 @@ def test_the_setup_script_is_executable_in_git():
         text=True,
     ).stdout
     assert entry.startswith("100755 "), f"deploy/wsl/setup.sh is not executable in git: {entry!r}"
+
+
+def claude_settings_filter(function, settings):
+    # Exercise the actual jq expressions on fakes without sourcing or running setup.sh.
+    script = (DEPLOY / "setup.sh").read_text()
+    body = script.split(f"{function}() {{\n", 1)[1].split("\n}", 1)[0]
+    expression = re.search(r"jq [^\n]* '\n(.*?)\n  '", body, re.S)
+    assert expression, f"no jq settings expression in {function}"
+    return subprocess.run(
+        ["jq", "-e", "--arg", "model", "model", "--arg", "floor", "floor", expression[1]],
+        input=json.dumps(settings),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_claude_settings_enable_the_two_plugins_and_preserve_unrelated_settings():
+    original = {"hooks": {}, "enabledPlugins": {"unreviewed@example": True}}
+    result = claude_settings_filter("claude_settings", original)
+    assert result.returncode == 0, result.stderr
+    settings = json.loads(result.stdout)
+    assert settings["enabledPlugins"] == {
+        "codex@openai-codex": True,
+        "cc-plugin-you-should-know@builtin": True,
+        "unreviewed@example": True,
+    }
+    assert settings["hooks"] == original["hooks"]
+    assert claude_settings_filter("check_claude", settings).returncode == 1
+
+
+def test_claude_check_allows_only_the_two_plugin_names():
+    settings = json.loads(claude_settings_filter("claude_settings", {}).stdout)
+    settings["enabledPlugins"] = {
+        "codex@openai-codex": True,
+        "cc-plugin-you-should-know@builtin": True,
+    }
+    assert claude_settings_filter("check_claude", settings).returncode == 0
+    settings["enabledPlugins"]["unreviewed@example"] = True
+    assert claude_settings_filter("check_claude", settings).returncode == 1
+    settings["enabledPlugins"]["unreviewed@example"] = False
+    assert claude_settings_filter("check_claude", settings).returncode == 0
+    settings["enabledPlugins"]["cc-plugin-you-should-know@builtin"] = False
+    assert claude_settings_filter("check_claude", settings).returncode == 0
+    settings["disableClaudeAiConnectors"] = False
+    assert claude_settings_filter("check_claude", settings).returncode == 1
