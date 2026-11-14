@@ -74,6 +74,9 @@ write_files:
       [mcp_servers.openaiDeveloperDocs.identity]
       url = "https://developers.openai.com/mcp"
 
+      [mcp_servers.serena.identity]
+      command = "serena"
+
 package_update: true
 # Bring the image's packages up to date on first boot.
 package_upgrade: true

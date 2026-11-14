@@ -10,7 +10,7 @@
 **Selection:** one maintained, leading upstream per job.
 - `Yeachan-Heo/oh-my-codex` 0.22.6 for workflows (plans, long goals, review, verification), user scope, no MCP, team mode and prompt triage off.
 - `DietrichGebert/ponytail` 5.3.3 at its release commit, as a Codex plugin from a local marketplace.
-- OpenAI's documentation server, `openaiDeveloperDocs`, as the one MCP server; `kenn-io/agentsview` reads `~/.codex/sessions/`, so it is Codex's cost report too.
-- serena and three single skill folders follow the DeepSeek Harness stack (ADR 0016). Deferred, refused and no-pick items, with reasons and triggers, are in the data file.
+- Two MCP servers: OpenAI's documentation server `openaiDeveloperDocs`, and `oraios/serena` 2.1.0 with seven navigation and diagnostics tools on the project's own pyright. `kenn-io/agentsview` reads `~/.codex/sessions/`, so it is Codex's cost report too.
+- Three single skill folders follow the DeepSeek Harness stack (ADR 0016). Deferred, refused and no-pick items, with reasons and triggers, are in the data file.
 
 **Decision:** adopted. `/etc/codex/requirements.toml` names every MCP server allowed and pins ChatGPT apps off, and `check_codex` fails on an unnamed server or plugin: no order tool or broker connector reaches Codex. Supersedes ADR 0008 ([revisit](data/0008-revisits.md)); ADR 0007's decision stands ([revisit](data/0007-revisits.md)).

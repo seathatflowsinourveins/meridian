@@ -25,8 +25,8 @@ DEPLOY = REPO_ROOT / "deploy" / "wsl"
 GH_NEWEST_FIX = (2, 97, 0)
 
 # Folders the four agents (or Gemini CLI, whose layout Antigravity shares) read in a project, and
-# oh-my-codex's per-project state.
-AGENT_FOLDERS = (".agents/", ".claude/", ".codex/", ".gemini/", ".dsh/", ".omx/")
+# the per-project state of oh-my-codex and serena.
+AGENT_FOLDERS = (".agents/", ".claude/", ".codex/", ".gemini/", ".dsh/", ".omx/", ".serena/")
 ALLOWED = (".agents/skills/", ".claude/skills/")
 # Files an agent reads wherever they are: Claude Code's project MCP servers.
 AGENT_FILES = {".mcp.json"}
@@ -62,6 +62,7 @@ def test_no_agent_configuration_is_committed():
         ".gemini/settings.json",
         ".dsh/cordis.patch.yml",
         ".omx/setup-scope.json",
+        ".serena/project.yml",
     ],
 )
 def test_the_check_catches_agent_configuration(name):
@@ -322,13 +323,23 @@ def setup_function_body(name):
 
 
 def setup_constant(name):
-    found = re.search(rf"^{name}=(\S+)$", (DEPLOY / "setup.sh").read_text(), re.M)
+    found = re.search(
+        rf"^{name}=(\S+|'[^']*'|\"[^\"]*\")$", (DEPLOY / "setup.sh").read_text(), re.M
+    )
     assert found, f"setup.sh has no {name}"
-    return found[1]
+    return found[1].strip("'\"")
 
 
 DOCS_MCP = setup_constant("CODEX_DOCS_MCP")
 PONYTAIL = f"ponytail@{setup_constant('PONYTAIL_MARKET')}"
+SERENA_ARGS = setup_constant("SERENA_MCP_ARGS")
+SERENA_TOOLS = setup_constant("SERENA_TOOLS")
+SERENA = {
+    "command": "serena",
+    "args": ["start-mcp-server", "--project-from-cwd", "--context=codex"],
+    "startup_timeout_sec": 15,
+    "env": {"SERENA_USAGE_REPORTING": "false"},
+}
 
 
 def run_config_writer(name, tmp_path, helpers=()):
@@ -345,6 +356,7 @@ def run_config_writer(name, tmp_path, helpers=()):
             "pipefail",
             "-c",
             f"fixture_root=$1\nCODEX_MODEL=model\nDSH_MODEL=model\nCODEX_DOCS_MCP={DOCS_MCP}\n"
+            f"SERENA_MCP_ARGS='{SERENA_ARGS}'\nSERENA_TOOLS='{SERENA_TOOLS}'\n"
             'fail() { echo "$*" >&2; exit 1; }\n' + functions + f"\n{name}",
             "test-config",
             str(tmp_path),
@@ -481,7 +493,7 @@ def codex_config_check(path):
     home = path.parent
     return subprocess.run(
         [sys.executable, "-I", "-", str(path), "model", str(home / "hooks.json")]
-        + [str(home / ".omx-config.json"), DOCS_MCP, PONYTAIL],
+        + [str(home / ".omx-config.json"), DOCS_MCP, PONYTAIL, SERENA_ARGS],
         input=program,
         capture_output=True,
         text=True,
@@ -513,7 +525,7 @@ def test_codex_config_sets_the_stack_and_keeps_other_tables(tmp_path):
         expected["check_for_update_on_startup"] = False
         expected["model_reasoning_effort"] = "high"
         expected["features"] |= {"apps": False, "plugins": True}
-        expected["mcp_servers"] = {"openaiDeveloperDocs": {"url": DOCS_MCP}}
+        expected["mcp_servers"] = {"openaiDeveloperDocs": {"url": DOCS_MCP}, "serena": SERENA}
         assert tomllib.loads(path.read_text()) == expected
         once = path.read_bytes()
         write_codex_config(tmp_path)
@@ -544,6 +556,13 @@ ADD = "[analytics]"
         ('model_reasoning_effort = "high"', 'model_reasoning_effort = "medium"', "effort"),
         (ADD, '[mcp_servers.broker]\ncommand = "broker-mcp"\n\n' + ADD, "MCP servers"),
         (f'url = "{DOCS_MCP}"', 'url = "https://example.com/mcp"', "openaiDeveloperDocs"),
+        ('"--context=codex"', '"--context=agent"', "[mcp_servers.serena]"),
+        ('command = "serena"', 'command = "/tmp/serena"', "[mcp_servers.serena]"),
+        (
+            'SERENA_USAGE_REPORTING = "false"',
+            'SERENA_USAGE_REPORTING = "true"',
+            "[mcp_servers.serena]",
+        ),
         (ADD, '[plugins."broker@example"]\nenabled = true\n\n' + ADD, "plugins ["),
         (ADD, '[profiles.x.mcp_servers.y]\nurl = "https://example.com"\n\n' + ADD, "a profile"),
         ('trusted_hash = "sha256:x"\n', "", "hooks without trust"),
@@ -629,9 +648,49 @@ def test_codex_requirements_text_is_the_definitions_and_names_each_server(tmp_pa
     assert requirements["features"] == {"apps": False}
     write_codex_config(tmp_path)
     servers = tomllib.loads((tmp_path / ".codex/config.toml").read_text())["mcp_servers"]
+    # Codex compares the identity with the configured command or URL exactly.
     assert requirements["mcp_servers"] == {
-        name: {"identity": {"url": server["url"]}} for name, server in servers.items()
+        name: {"identity": {key: server[key] for key in ("url", "command") if key in server}}
+        for name, server in servers.items()
     }
+
+
+def serena_config_check(tmp_path):
+    body = setup_function_body("serena_config_check")
+    program = body.split("<<'PY'\n", 1)[1].split("\nPY", 1)[0]
+    return subprocess.run(
+        [sys.executable, "-I", "-", str(tmp_path / ".serena/serena_config.yml"), SERENA_TOOLS],
+        input=program,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("", ""),
+        ("agent_interface: tools", "agent_interface: REPL"),
+        ("web_dashboard: false", "web_dashboard: true"),
+        ("web_dashboard_open_on_launch: false", "web_dashboard_open_on_launch: true"),
+        ("fixed_tools: [", "fixed_tools: [execute_shell_command, "),
+        ("projects: []", "projects: []\nincluded_optional_tools: [open_dashboard]"),
+        ("ls_path: .venv/bin/pyright-langserver", "ls_path: pyright-langserver"),
+    ],
+)
+def test_serena_config_serves_only_navigation_and_diagnostics(tmp_path, old, new):
+    pytest.importorskip("yaml")
+    run_config_writer("serena_config", tmp_path)
+    path = tmp_path / ".serena/serena_config.yml"
+    path.write_text(path.read_text().replace(old, new, 1))
+    assert (serena_config_check(tmp_path).returncode == 0) == (old == new)
+
+
+def test_serena_tools_hold_no_shell_edit_or_memory_tool():
+    tools = SERENA_TOOLS.split(", ")
+    assert len(tools) == 7
+    assert all(t.startswith(("get_", "find_")) for t in tools), tools
 
 
 def test_dsh_writes_home_wide_guide_completion_and_preserves_other_state(tmp_path):

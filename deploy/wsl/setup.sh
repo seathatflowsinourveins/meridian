@@ -72,6 +72,14 @@ OMX_INTEGRITY=sha512-ZpMHipwnaiHV/T8rp/czmF5U+ugqVdUOb28obL5U61q9WQwvfKAmzP4k1V8
 PONYTAIL_COMMIT=7801d061243d7b753bad0e0b3c057cd250b11755
 PONYTAIL_MARKET=meridian-ponytail
 CODEX_DOCS_MCP=https://developers.openai.com/mcp
+# serena (code navigation and diagnostics over MCP): PyPI's file by its SHA-256, then uv installs
+# that release (its dependencies resolve on the day of the install). Only these tools are served,
+# and Codex starts it with exactly these arguments; the requirements name its command, `serena`.
+SERENA_VERSION=2.1.0
+SERENA_FILE=serena_agent-2.1.0-py3-none-any.whl
+SERENA_SHA256=cc6ae542c39b4de5d98cdf35a4ceb0b551f316c5f22e9d0f0b0c5f35d6b95d87
+SERENA_TOOLS="get_symbols_overview, find_symbol, find_referencing_symbols, find_implementations, find_declaration, get_diagnostics_for_file, get_diagnostics_for_symbol"
+SERENA_MCP_ARGS='["start-mcp-server", "--project-from-cwd", "--context=codex"]'
 # DeepSeek Harness: the engine (`dsh`), pnpm (dsh installs its profiles with it, and pins the
 # 11.x line), the community terminal UI that Orca launches for it (`dsh-tui`), and the two hook
 # packages that give Orca its status events (at the engine's version). Registry integrity values.
@@ -162,6 +170,15 @@ npm_user_prefix() {
 # the tarball it downloads against that same value.
 npm_pinned() {
   [ "$(npm view "$1" dist.integrity)" = "$2" ] || fail "$1 on the registry is not the pinned build"
+}
+
+# pypi_pinned PACKAGE VERSION FILE SHA256: PyPI serves FILE for that release with that digest.
+pypi_pinned() {
+  curl -fsS "https://pypi.org/pypi/$1/$2/json" | python3 -I -c '
+import json, sys
+files = {f["filename"]: f["digests"]["sha256"] for f in json.load(sys.stdin)["urls"]}
+sys.exit(0 if files.get(sys.argv[1]) == sys.argv[2] else 1)' "$3" "$4" \
+    || fail "$1 $2 on PyPI is not the pinned build"
 }
 
 [ "$(id -u)" -ne 0 ] || fail "run as the owner user, not root"
@@ -405,6 +422,7 @@ cmd_codex() {
   codex_config
   cmd_omx
   codex_ponytail
+  codex_serena
   check_codex
 }
 
@@ -481,6 +499,11 @@ codex_config() {
   done
   codex_setting "${file}" plugins features true
   codex_setting "${file}" url mcp_servers.openaiDeveloperDocs "\"${CODEX_DOCS_MCP}\""
+  codex_setting "${file}" command mcp_servers.serena '"serena"'
+  codex_setting "${file}" args mcp_servers.serena "${SERENA_MCP_ARGS}"
+  codex_setting "${file}" startup_timeout_sec mcp_servers.serena 15
+  # serena reports each start to its maker's server unless this is set (serena/agent.py).
+  codex_setting "${file}" SERENA_USAGE_REPORTING mcp_servers.serena.env '"false"'
 }
 
 codex_config_file() {
@@ -591,18 +614,89 @@ JSON
   fi
 }
 
+serena_version() { "${HOME}/.local/bin/serena" --version 2>/dev/null </dev/null | sed -n 's/^Serena //p' | tail -n 1; }
+serena_python() { printf '%s\n' "$("${HOME}/.local/bin/uv" tool dir)/serena-agent/bin/python"; }
+
+# serena (ADR 0018), Codex's code navigation: the pinned release through uv, its global config,
+# and the repository's shared exclude for the .serena/ folder it keeps in each project.
+codex_serena() {
+  local exclude
+  if [ "$(serena_version)" != "${SERENA_VERSION}" ]; then
+    pypi_pinned serena-agent "${SERENA_VERSION}" "${SERENA_FILE}" "${SERENA_SHA256}"
+    "${HOME}/.local/bin/uv" tool install "serena-agent==${SERENA_VERSION}"
+  fi
+  # serena adds its defaults, its project list and a secret to the file when it starts, so the
+  # file is written only when a setting below has changed.
+  serena_config_check "$(serena_python)" >/dev/null 2>&1 || serena_config
+  exclude="$(git -C "${REPO_DIR}" rev-parse --path-format=absolute --git-common-dir)/info/exclude" \
+    || fail "no repository at ${REPO_DIR} for serena's ignore line (run: deploy/wsl/setup.sh repo)"
+  grep -qxF '.serena/' "${exclude}" 2>/dev/null || printf '%s\n' '.serena/' >> "${exclude}"
+}
+
+serena_config() {
+  install -d -m 0700 "${HOME}/.serena"
+  cat > "${HOME}/.serena/serena_config.yml.new" <<YAML
+# Written by deploy/wsl/setup.sh codex (ADR 0018); serena adds its defaults when it starts.
+language_backend: LSP
+# One MCP tool per operation, so the list below is what Codex sees (the REPL interface runs Python).
+agent_interface: tools
+gui_log_window: false
+web_dashboard: false
+web_dashboard_open_on_launch: false
+fixed_tools: [${SERENA_TOOLS}]
+# The project's own pyright (relative to the project root), not one that uvx downloads.
+ls_specific_settings:
+  python:
+    ls_path: .venv/bin/pyright-langserver
+projects: []
+YAML
+  chmod 0600 "${HOME}/.serena/serena_config.yml.new"
+  mv "${HOME}/.serena/serena_config.yml.new" "${HOME}/.serena/serena_config.yml"
+}
+
+# serena_config_check PYTHON: the settings serena_config writes, read with PyYAML in serena's
+# own environment (it depends on it).
+serena_config_check() {
+  "$1" -I - "${HOME}/.serena/serena_config.yml" "${SERENA_TOOLS}" <<'PY'
+import sys
+
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    cfg = yaml.safe_load(f) or {}
+want = dict(
+    language_backend="LSP",
+    agent_interface="tools",
+    gui_log_window=False,
+    web_dashboard=False,
+    web_dashboard_open_on_launch=False,
+    fixed_tools=sys.argv[2].split(", "),
+    ls_specific_settings={"python": {"ls_path": ".venv/bin/pyright-langserver"}},
+)
+problems = [key for key, value in want.items() if cfg.get(key) != value]
+problems += [key for key in ("excluded_tools", "included_optional_tools") if cfg.get(key)]
+sys.exit(f"serena_config.yml: {', '.join(problems)}" if problems else 0)
+PY
+}
+
 check_codex() {
   version_ge "$(codex_version)" "${CODEX_VERSION}" \
     || fail "Codex CLI is older than ${CODEX_VERSION} or missing (run: deploy/wsl/setup.sh codex)"
   python3 -I - "${HOME}/.codex/config.toml" "${CODEX_MODEL}" "${HOME}/.codex/hooks.json" \
-    "${HOME}/.codex/.omx-config.json" "${CODEX_DOCS_MCP}" "ponytail@${PONYTAIL_MARKET}" <<'PY' \
+    "${HOME}/.codex/.omx-config.json" "${CODEX_DOCS_MCP}" "ponytail@${PONYTAIL_MARKET}" "${SERENA_MCP_ARGS}" <<'PY' \
     || fail "~/.codex is not what deploy/wsl/setup.sh codex writes"
 import json
 import re
 import sys
 import tomllib
 
-config, model, hooks_file, omx_file, docs_url, plugin = sys.argv[1:]
+config, model, hooks_file, omx_file, docs_url, plugin, serena_args = sys.argv[1:]
+serena = dict(
+    command="serena",
+    args=tomllib.loads(f"v = {serena_args}")["v"],
+    startup_timeout_sec=15,
+    env={"SERENA_USAGE_REPORTING": "false"},
+)
 with open(config, "rb") as f:
     cfg = tomllib.load(f)
 features = cfg.get("features", {})
@@ -644,8 +738,9 @@ problems = [
         *[(f"[features] {name}", features.get(name) is not False) for name in ("apps", "skill_mcp_dependency_install", "memories")],
         ("[features] plugins", features.get("plugins") is not True),
         ("[features] connectors (the old name of apps)", "connectors" in features),
-        (f"MCP servers {sorted(servers)}", set(servers) != {"openaiDeveloperDocs"}),
+        (f"MCP servers {sorted(servers)}", set(servers) != {"openaiDeveloperDocs", "serena"}),
         ("openaiDeveloperDocs", servers.get("openaiDeveloperDocs", {}) != {"url": docs_url}),
+        ("[mcp_servers.serena]", servers.get("serena", {}) != serena),
         (f"plugins {sorted(plugins)}", plugins != {plugin}),
         (
             "a profile sets features, MCP servers or plugins",
@@ -672,6 +767,8 @@ if waiting > 0:
 PY
   check_codex_requirements
   [ "$(omx_version)" = "${OMX_VERSION}" ] || fail "oh-my-codex is not ${OMX_VERSION} (run: deploy/wsl/setup.sh codex)"
+  [ "$(serena_version)" = "${SERENA_VERSION}" ] || fail "serena is not ${SERENA_VERSION} (run: deploy/wsl/setup.sh codex)"
+  serena_config_check "$(serena_python)" || fail "~/.serena/serena_config.yml is not what deploy/wsl/setup.sh codex writes"
   # omx doctor exits 0 whatever it finds; its summary line says what failed.
   local tmp doctor
   tmp="$(mktemp -d)"
@@ -679,7 +776,7 @@ PY
   rm -rf "${tmp}"
   grep -qE '^Results: [0-9]+ passed, [0-9]+ warnings, 0 failed$' <<<"${doctor}" \
     || fail "omx doctor: $(grep -E '^ *\[XX\]|^Results:' <<<"${doctor}" | tr -s ' ' | tr '\n' ';')"
-  ok "Codex CLI $(codex_version): ${CODEX_MODEL} at high effort, no ChatGPT apps or memories; oh-my-codex ${OMX_VERSION} (omx doctor: 0 failed), the ponytail plugin and the MCP servers ADR 0018 names"
+  ok "Codex CLI $(codex_version): ${CODEX_MODEL} at high effort, no ChatGPT apps or memories; oh-my-codex ${OMX_VERSION} (omx doctor: 0 failed), the ponytail plugin, serena ${SERENA_VERSION} (navigation and diagnostics only) and OpenAI's docs server"
 }
 
 # /etc/codex/requirements.toml: the text in deploy/wsl/meridian.user-data, byte for byte. It pins
