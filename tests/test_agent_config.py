@@ -10,6 +10,7 @@ out of worktrees.
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -219,8 +220,11 @@ def test_the_wrapper_name_suits_both_orca_and_claude_hud():
     assert WRAPPER.endswith(name[1])
 
 
-def run_wrapper(home, payload, launcher=None, reporter=None):
+def run_wrapper(home, payload, launcher=None, reporter=None, limit="300"):
     # The wrapper under a fake home: no real Orca, claude-hud or settings file is touched.
+    # claude-hud's time limit is far above anything a loaded CI runner needs to start node, so
+    # no test here depends on speed; the limit itself has its own test with a launcher that
+    # never returns.
     if launcher is not None:
         path = home / ".claude" / "plugins" / "claude-hud" / "statusline.mjs"
         path.parent.mkdir(parents=True)
@@ -230,7 +234,7 @@ def run_wrapper(home, payload, launcher=None, reporter=None):
         path.parent.mkdir(parents=True)
         path.write_text(reporter)
         path.chmod(0o755)
-    environment = {"HOME": str(home), "PATH": "/usr/local/bin:/usr/bin:/bin"}
+    environment = {"HOME": str(home), "PATH": os.environ["PATH"], "MERIDIAN_HUD_TIMEOUT": limit}
     return subprocess.run(
         [str(DEPLOY / "meridian-claude-hud.sh")],
         input=payload,
@@ -238,7 +242,7 @@ def run_wrapper(home, payload, launcher=None, reporter=None):
         text=True,
         check=False,
         env=environment,
-        timeout=20,
+        timeout=600,
     )
 
 
@@ -270,17 +274,37 @@ def test_the_wrapper_falls_back_when_claude_hud_fails_or_is_silent(tmp_path, lau
 
 
 def test_the_wrapper_feeds_orcas_reporter_without_waiting_for_it(tmp_path):
-    received = tmp_path / "received"
-    reporter = f'#!/bin/sh\ncat > "{received}"\nsleep 5\necho noise\necho noise >&2\n'
-    started = time.monotonic()
+    # The reporter stays alive until this test releases it, so "the wrapper returned first"
+    # does not depend on how fast the runner is; then it is let go, leaving no process behind.
+    received, release, finished = (tmp_path / name for name in ("received", "release", "done"))
+    reporter = (
+        f'#!/bin/sh\ncat > "{received}"\ni=0\n'
+        f'while [ ! -e "{release}" ] && [ "$i" -lt 3000 ]; do sleep 0.1; i=$((i + 1)); done\n'
+        f'touch "{finished}"\necho noise\necho noise >&2\n'
+    )
     result = run_wrapper(tmp_path, PAYLOAD, reporter=reporter)
-    assert time.monotonic() - started < 4, "the wrapper waited for Orca's reporter"
     assert (result.returncode, result.stdout, result.stderr) == (0, PLAIN_LINE, "")
-    for _ in range(40):
-        if received.exists() and received.read_text() == PAYLOAD:
-            break
-        time.sleep(0.05)
+    assert not finished.exists(), "the wrapper waited for Orca's reporter"
+
+    def wait_for(path):
+        for _ in range(3000):
+            if path.exists():
+                return
+            time.sleep(0.1)
+        raise AssertionError(f"{path.name} never appeared")
+
+    wait_for(received)
+    release.touch()
+    wait_for(finished)
     assert received.read_text() == PAYLOAD
+
+
+def test_the_wrapper_gives_claude_hud_a_time_limit(tmp_path):
+    # A launcher that never returns: after the limit (one second here) the plain line is used.
+    result = run_wrapper(tmp_path, PAYLOAD, launcher="setInterval(() => {}, 1000)\n", limit="1")
+    assert (result.returncode, result.stdout, result.stderr) == (0, PLAIN_LINE, "")
+    wrapper = (DEPLOY / "meridian-claude-hud.sh").read_text()
+    assert 'timeout "${MERIDIAN_HUD_TIMEOUT:-5}" node' in wrapper
 
 
 def test_the_wrapper_survives_an_empty_payload(tmp_path):
