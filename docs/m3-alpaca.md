@@ -69,8 +69,10 @@ Carried, each with offline tests (`tests/test_alpaca_{wire,trade_updates,reconci
 - IEX quotes only (`data.py`): JSON decimal text, pinned host before sign-in, no REST reads;
   a lost, unreadable or unmapped stream latches failure. `quote_age_ns` is None when unusable;
   the lane supplies its age limit and sourced round-lot sizes (sizes arrive in lots), with instruments loaded by execution.
-- No invented fee: connect refuses without a sourced per-fill commission (the old line's was a
-  sourced zero, sextant@33cdee7:lanes/paper/shared-node.params.json:L26-47).
+- No invented fee: connect refuses without a sourced per-fill commission. `AlpacaPaperExecClientConfig.for_paper_equities()`
+  uses `meridian/alpaca/commission.py`: zero USD is what Alpaca's paper simulation charges a US-equity fill.
+  This is only for this paper lane and models no cost of real trading. Two dated citations and exact quotes
+  are stored there: paper excludes regulatory fees but does not mention commissions; the commission page supplies that statement.
 
 Left out: modify and successor lineage, trailing stops and the exit guard (protection, M4); owner
 custody and claim lists (one writer per account); the fee registry; bars, trades and historical
