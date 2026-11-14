@@ -38,8 +38,8 @@ def test_polars_computes_a_replay_feature():
 
 
 def test_openbb_standardizes_offline_equity_reference_data():
-    # openbb is a metapackage; its core models work without building the SDK,
-    # loading user settings, or querying a data provider.
+    # Core models work without building the SDK, loading user settings,
+    # or querying a data provider.
     from openbb_core.provider.standard_models.equity_info import (
         EquityInfoData,
         EquityInfoQueryParams,
