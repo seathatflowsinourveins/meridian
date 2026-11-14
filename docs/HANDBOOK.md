@@ -45,7 +45,7 @@ Milestones (plan 9.2); each ends in a committed, scrubbed run record:
 | No credential or key value is read, printed, copied or moved | `AGENTS.md`; gitleaks over the whole history in CI | rule; CI tripwire |
 | Nothing derived from an account and no calibrated parameter in this public repository: account ids, raw order or fill history, reconciliation fixtures and tuned thresholds go to the private `meridian-evidence` (clone it as `~/src/meridian-evidence`); scrubbed run records may stay in `evidence/` | `tests/test_public_tree.py` (IBKR-style account-id shapes, allowlist copies); run records scrubbed before writing | CI tripwire |
 | CI is fork-safe: no self-hosted runner, no `pull_request_target`, no secret a fork's pull request could reach | `tests/test_public_tree.py`, which checks the workflow files | CI tripwire |
-| Everything installed or integrated has a row in `UPSTREAM.md`, added in the same commit: version or commit, the URL that was read, the date, what it is for, "upstream" or "own design"; start from upstream's own example | `AGENTS.md` | rule |
+| Everything installed, integrated or built on has an `UPSTREAM.md` row and code-area map, added in the same commit: version or commit, the URL that was read, the date, what it is for, "upstream" or "own design"; start from upstream's own example | `AGENTS.md`, `upstream-map.toml`, `tests/test_upstream_gate.py` | rule; CI |
 | Files under `upstream/` are verbatim copies, never edited (its `NOTICE.md` is the one file written here); harvested own-design files say what changed | `tests/test_upstream_unmodified.py`, `tests/test_order_budget_harvest.py` | CI |
 | `uv.lock` is committed; new releases wait 7 days; the engine is the one named exception and is pinned exactly | `pyproject.toml` (`exclude-newer`), Dependabot's cooldown | resolver |
 | One evidence ADR per ecosystem addition, at most 60 lines | `docs/adr/README.md`, `tests/test_size_budget.py` | rule; CI |
@@ -55,6 +55,10 @@ Milestones (plan 9.2); each ends in a committed, scrubbed run record:
 | MCP servers are off machine-wide for Claude Code and Codex; a skill, plugin or MCP server is added only by an ADR (`docs/adr/README.md`), and none gets an order tool or broker connector | `deploy/wsl/setup.sh agents-check` | check |
 | Ask the owner before adding a paid service or an account; no licence is chosen for this repo's own code: that is the owner's decision | the owner | rule |
 | One writer per account; plain DAY LIMIT entries, no brackets | plan 9.1 | rule; the M1 record fails an order that is not a DAY LIMIT |
+
+The offline gate requires exactly one map entry per `meridian/` or `deploy/` file, citing an upstream
+row, feature and local need; unused entries fail. Project and group dependency rows must match
+locked versions. Add the register row and map entry with the change; CI checks both.
 
 A tripwire catches a mistake, not a determined change: agents here run in bypass mode and can
 edit the tests too. The owner's GitHub settings are the lock, where GitHub offers one.
