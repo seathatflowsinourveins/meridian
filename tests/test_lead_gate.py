@@ -1351,3 +1351,322 @@ def test_review_resolves_worktree_once_and_still_detects_edits(
     monkeypatch.setattr(subprocess, "run", editing)
     with pytest.raises(gate.Refused, match="became dirty"):
         g.review("feature", "codex")
+
+
+@pytest.mark.parametrize("empty", ["[]", '{"findings": []}'])
+@pytest.mark.parametrize("first", [True, False])
+def test_empty_fixture_cannot_hide_priority_findings(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, empty: str, first: bool
+):
+    g, fake = make(repo, ["pass"])
+    body = tmp_path / "body"
+    body.write_text("body")
+    parts = [f"Fixture:\n```json\n{empty}\n```", "- [P1] The merge loses data"]
+    fake_reviewer(monkeypatch, "\n".join(parts if first else parts[::-1]))
+    output = []
+    g.say = output.append
+    assert not g.auto("feature", "codex", "title", body)
+    assert output[-1].startswith("LEAD ACTION:") and "disagree" in output[-1]
+    assert not fake.calls and not g.review_file("feature").exists()
+
+
+@pytest.mark.parametrize("stage", ["trial", "review", "open", "land"])
+@pytest.mark.parametrize("worker", [True, False])
+def test_auto_releases_on_every_failure_and_records_attempt(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str, worker: bool
+):
+    g, _ = make(repo, ["pass"])
+    second_branch(repo)
+    body = tmp_path / "body"
+    body.write_text("body")
+
+    def fail(*_args):
+        assert not flock_available(g)
+        raise (gate.WorkerFailure if worker else gate.Refused)("failed")
+
+    for name in ("trial", "review", "open", "land"):
+        monkeypatch.setattr(g, name, fail if name == stage else lambda *_args: True)
+    assert not g.auto("feature", "codex", "title", body)
+    assert g.holder() is None and flock_available(g)
+    attempt = json.loads(g._state_file("feature").with_suffix(".attempt.json").read_text())
+    assert attempt == {
+        "commit": sh(repo, "rev-parse", "feature"),
+        "step": stage,
+        "outcome": "worker_failure" if worker else "lead_action",
+    }
+    other = gate.Gate(repo, setup=[], checks=[["true"]])
+    assert other.trial("second")
+
+
+def test_pending_skips_attempted_trial_merge_until_worker_changes_head(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    g, _ = make(repo, ["pass"], passing=False)
+    before = sh(repo, "rev-parse", "feature")
+    move_main(repo)
+    body = tmp_path / "body"
+    body.write_text("body")
+    assert not g.auto("feature", "codex", "title", body)
+    attempt = json.loads(g._state_file("feature").with_suffix(".attempt.json").read_text())
+    assert attempt["commit"] == sh(repo, "rev-parse", "feature") != before
+    real_run = subprocess.run
+
+    def run(args, **kwargs):
+        if args[1:3] == ["orchestration", "task-list"]:
+            listing = {"result": {"tasks": [{"id": "task-1", "status": "completed"}]}}
+            return subprocess.CompletedProcess(args, 0, json.dumps(listing), "")
+        return real_run(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    g.gh = lambda _args: pytest.fail("unchanged attempts must not query GitHub")
+    assert not g.pending()
+    commit(wt(repo, "feature"), "fix.txt", "fix", "fix")
+    g.gh = lambda _args: "[]"
+    assert g.pending()
+
+
+def test_windows_homes_are_scrubbed_in_every_public_channel(repo: Path, tmp_path: Path):
+    g, fake = make(repo, ["pass"])
+    text = r"/mnt/c/Users/ExampleOwner/project/a.py C:\Users\ExampleOwner\project\b.py"
+    text += r" C:/Users/ExampleOwner /mnt/D/users/ExampleOwner"
+    fenced = "Example:\n```json\n" + json.dumps({"path": text}) + "\n```"
+    assert "ExampleOwner" not in g.public_text(fenced)
+    url = "https://example.org/mnt/c/Users/public/docs"
+    assert "ExampleOwner" not in g.public_text(text)
+    assert g.public_text(url) == url
+    assert json.loads(g.public_text(json.dumps({"path": text})))["path"].count("[local path]") == 4
+    assert g.trial("feature")
+    path = review_record(g, tmp_path)
+    record = json.loads(path.read_text())
+    record["summary"] = text
+    path.write_text(json.dumps(record))
+    body = tmp_path / "body"
+    body.write_text(text)
+    g.open("feature", text, body, path, wait=False)
+    g.land("feature", body)
+    for call in fake.calls:
+        assert "ExampleOwner" not in " ".join(call)
+        if "--body-file" in call:
+            posted = Path(call[call.index("--body-file") + 1]).read_text()
+            assert "ExampleOwner" not in posted
+            if call[:2] == ["pr", "comment"]:
+                assert "[local path]" in json.loads(posted)["summary"]
+
+
+@pytest.mark.parametrize("rejected", [True, False])
+def test_auto_routes_rejected_push_to_worker_and_push_outage_to_lead(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, rejected: bool
+):
+    g, fake = make(repo, ["pass"])
+    body = tmp_path / "body"
+    body.write_text("body")
+    if rejected:
+        sh(repo, "push", "-q", "origin", "feature")
+        sh(wt(repo, "feature"), "commit", "--amend", "-qm", "rewritten")
+    fake_reviewer(monkeypatch)
+    real_run = subprocess.run
+
+    def run(args, **kwargs):
+        if not rejected and args[0] == "git" and "push" in args:
+            return subprocess.CompletedProcess(args, 128, "", "Could not resolve host")
+        return real_run(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    output = []
+    g.say = output.append
+    assert not g.auto("feature", "codex", "title", body)
+    assert output[-1].startswith("SEND TO WORKER:" if rejected else "LEAD ACTION:")
+    assert ("reconcile" if rejected else "resolve host") in output[-1]
+    assert not fake.calls
+
+
+@pytest.mark.parametrize("stage", ["open", "land"])
+def test_cancelled_ci_is_a_lead_action(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str
+):
+    g, _ = make(repo, ["cancel"])
+    body = tmp_path / "body"
+    body.write_text("body")
+    fake_reviewer(monkeypatch)
+    if stage == "land":
+        original = g.open
+        monkeypatch.setattr(g, "open", lambda *args: original(*args, wait=False))
+    output = []
+    g.say = output.append
+    assert not g.auto("feature", "codex", "title", body)
+    assert output[-1].startswith(f"LEAD ACTION: feature: {stage}")
+    assert "c0" in output[-1] and "re-run CI" in output[-1]
+
+
+def test_failed_check_reports_both_streams_with_relative_locations(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("VIRTUAL_ENV", "/home/example/irrelevant")
+    script = (
+        "import os,sys; from pathlib import Path; assert 'VIRTUAL_ENV' not in os.environ; "
+        "print('progress'); print(str(Path.cwd()/'b.txt')+':12: stdout error'); "
+        "print(str(Path.cwd()/'b.txt')+':19: fatal stderr error',file=sys.stderr); sys.exit(1)"
+    )
+    g, _ = make(repo, ["pass"], check=[sys.executable, "-c", script])
+    body = tmp_path / "body"
+    body.write_text("body")
+    output = []
+    g.say = output.append
+    assert not g.auto("feature", "codex", "title", body)
+    assert "b.txt:12: stdout error" in output[-1]
+    assert "b.txt:19: fatal stderr error" in output[-1]
+    assert str(wt(repo, "feature")) not in output[-1]
+    assert str(wt(repo, "feature")) in g._state_file("feature").with_suffix(".log").read_text()
+
+
+def test_open_posts_review_once_per_commit_even_after_retrial(repo: Path, tmp_path: Path):
+    g, fake = make(repo, [])
+    assert g.trial("feature")
+    path = review_record(g, tmp_path)
+    with pytest.raises(gate.Refused, match="no CI checks"):
+        g.open("feature", "title", path, path)
+    fake.existing_pr = True
+    fake.ci = ["pass"]
+    g.open("feature", "updated title", path, path)
+    assert g.trial("feature")
+    g.open("feature", "updated again", path, path)
+
+    def comments():
+        return [c for c in fake.calls if c[:2] == ["pr", "comment"]]
+
+    assert len(comments()) == 1
+    assert len([c for c in fake.calls if c[:2] == ["pr", "edit"]]) == 2
+    commit(wt(repo, "feature"), "new.txt", "new", "new")
+    assert g.trial("feature")
+    path = review_record(g, tmp_path)
+    g.open("feature", "new commit", path, path)
+    assert len(comments()) == 2
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "the fixed-width parser is intentional",
+        "fixed-width parsing is intentional",
+        "out of scope, not addressed by this PR",
+        "the resolved path is deliberately normalized",
+    ],
+)
+def test_non_fix_closures_accept_descriptive_fix_words(repo: Path, tmp_path: Path, reason: str):
+    g, _ = make(repo, ["pass"])
+    assert g.trial("feature")
+    path = review_record(g, tmp_path)
+    record = json.loads(path.read_text())
+    record["findings"] = [{"text": "not a defect", "status": f"closed: {reason}"}]
+    path.write_text(json.dumps(record))
+    g.open("feature", "title", path, path, wait=False)
+
+
+@pytest.mark.parametrize("primary", [True, False])
+def test_dead_holder_cleanup_preserves_primary_failure(repo: Path, primary: bool):
+    g, _ = make(repo, ["pass"])
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            str(REPO_ROOT / ".agents/skills/lead/scripts/gate.py"),
+            "_hold",
+            str(g.lock_path),
+            json.dumps(g._identity("feature")),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    original = gate.WorkerFailure("original check failure")
+    try:
+        assert proc.stdout is not None and proc.stdout.readline().strip() == "ready"
+        with (
+            pytest.raises(
+                gate.Refused, match="original check" if primary else "cleanup failed"
+            ) as caught,
+            g.reservation("feature"),
+        ):
+            proc.kill()  # this test's own child PID only
+            proc.wait(timeout=5)
+            if primary:
+                raise original
+        if primary:
+            assert caught.value is original
+            assert "cleanup also failed" in original.__notes__[0]
+        assert g._connection is None
+        g.release()
+        assert g.holder() is None and flock_available(g)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        if proc.stdout:
+            proc.stdout.close()
+        if proc.stderr:
+            proc.stderr.close()
+
+
+@pytest.mark.parametrize("automatic", [False, True])
+def test_disconnected_auto_releases_but_manual_reservation_persists(repo: Path, automatic: bool):
+    import socket
+
+    g, _ = make(repo, ["pass"])
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            str(REPO_ROOT / ".agents/skills/lead/scripts/gate.py"),
+            "_hold",
+            str(g.lock_path),
+            json.dumps(g._identity("feature")),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert proc.stdout is not None and proc.stdout.readline().strip() == "ready"
+        with socket.socket(socket.AF_UNIX) as client:
+            client.settimeout(2)
+            client.connect(str(g.lock_path.with_suffix(".sock")))
+            identity = g._identity("feature")
+            if automatic:
+                identity["automatic"] = True
+            client.sendall((json.dumps(identity) + "\n").encode())
+            assert json.loads(client.recv(4096)) == {"ok": True}
+            assert not flock_available(g)
+        if automatic:
+            assert proc.wait(timeout=5) == 0
+            assert g.holder() is None and flock_available(g)
+        else:
+            # Same-connection handshake ensures the server has processed the EOF first.
+            with g.reservation("feature"):
+                assert not flock_available(g)
+            assert proc.poll() is None and g.holder() == "feature"
+            g.release()
+            assert proc.wait(timeout=5) == 0
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        if proc.stdout:
+            proc.stdout.close()
+        if proc.stderr:
+            proc.stderr.close()
+
+
+def test_interrupted_auto_releases_and_records_outcome(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    g, _ = make(repo, ["pass"])
+    body = tmp_path / "body"
+    body.write_text("body")
+
+    def interrupt(*_args):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(g, "trial", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        g.auto("feature", "codex", "title", body)
+    assert g.holder() is None and flock_available(g)
+    attempt = json.loads(g._state_file("feature").with_suffix(".attempt.json").read_text())
+    assert attempt["outcome"] == "lead_action"

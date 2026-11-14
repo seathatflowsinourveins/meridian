@@ -14,7 +14,8 @@ A local holder retains ~/.cache/meridian/landing.lock with flock through the who
 landing, including gaps between commands. Its adjacent owner record and Unix socket
 name the repository and branch; each command holds one socket connection, serializing
 commands even for the same branch. land or release ends the holder, without killing a
-PID. An interrupted client leaves the reservation intact. If the holder itself dies,
+PID. An interrupted manual client leaves the reservation intact; auto always releases it.
+If the holder itself dies,
 trial starts a new one and retests; open/land cannot resume an unheld reservation.
 
 `trial` merges origin/main on the branch itself, in the worktree that has it checked out (a
@@ -43,7 +44,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from functools import wraps
 from pathlib import Path
 
@@ -107,6 +108,7 @@ def lock_server(path: Path, owner: dict) -> int:
     sock_path = path.with_suffix(".sock")
     record = path.with_suffix(".owner.json")
     active = stream = None
+    automatic = False
     released = False
     with path.open("a+") as lock, socket.socket(socket.AF_UNIX) as server:
         try:
@@ -125,15 +127,19 @@ def lock_server(path: Path, owner: dict) -> int:
                 ready, _, _ = select.select([server, active] if active else [server], [], [])
                 if active is not None and active in ready and stream is not None:
                     try:
-                        finish = stream.readline(32).strip() == b"release"
+                        finish = stream.readline(32).strip() == b"release" or automatic
                     except OSError:
-                        finish = False
+                        finish = automatic
                     if finish:
                         record.unlink(missing_ok=True)
                         sock_path.unlink(missing_ok=True)
                         fcntl.flock(lock, fcntl.LOCK_UN)
                         released = True
+                        with suppress(OSError):
+                            active.sendall(b"released\n")
                         return 0
+                    with suppress(OSError):
+                        active.sendall(b"done\n")
                     stream.close()
                     active.close()
                     active = stream = None
@@ -145,6 +151,9 @@ def lock_server(path: Path, owner: dict) -> int:
                 try:
                     conn.settimeout(1)
                     request = json.loads(incoming.readline(8192))
+                    requested_auto = (
+                        request.pop("automatic", False) if isinstance(request, dict) else False
+                    )
                     if not isinstance(request, dict):
                         error = "landing handshake must be an object"
                     elif request != owner:
@@ -162,6 +171,7 @@ def lock_server(path: Path, owner: dict) -> int:
                     if error is None:
                         conn.settimeout(None)
                         active, stream = conn, incoming
+                        automatic = requested_auto
                         continue
                 except OSError, ValueError:
                     pass
@@ -189,6 +199,7 @@ class Gate:
         self.lock_path = Path.home() / ".cache/meridian/landing.lock"
         self._connection: socket.socket | None = None
         self._finish = False
+        self._attempt: dict | None = None
         self.check_timeout = 120.0
         self.check_interval = 2.0
 
@@ -209,7 +220,9 @@ class Gate:
         return {"repo": str(self.home.resolve()), "branch": branch}
 
     @contextmanager
-    def reservation(self, branch: str, create: bool = False) -> Iterator[None]:
+    def reservation(
+        self, branch: str, create: bool = False, automatic: bool = False
+    ) -> Iterator[None]:
         if self._connection is not None:
             yield
             return
@@ -241,9 +254,11 @@ class Gate:
                     proc.wait()
                     raise Refused(ready or "landing lock holder failed to start") from None
                 conn.connect(str(self.lock_path.with_suffix(".sock")))
-            with conn.makefile("rw") as stream:
-                stream.write(json.dumps(self._identity(branch)) + "\n")
-                stream.flush()
+            with conn.makefile("rb", buffering=0) as stream:
+                request = self._identity(branch)
+                if automatic:
+                    request["automatic"] = True
+                conn.sendall((json.dumps(request) + "\n").encode())
                 try:
                     reply = json.loads(stream.readline())
                 except TimeoutError as exc:
@@ -256,11 +271,19 @@ class Gate:
                 try:
                     yield
                 finally:
-                    stream.write("release\n" if self._finish else "done\n")
-                    stream.flush()
-                    # EOF acknowledges removal of the owner/socket and release of the flock.
-                    stream.read()
-                    self._connection = None
+                    primary = sys.exception()
+                    try:
+                        finish = self._finish or automatic
+                        conn.sendall(b"release\n" if finish else b"done\n")
+                        expected = b"released\n" if finish else b"done\n"
+                        if stream.readline(32) != expected:
+                            raise OSError("landing holder disconnected before acknowledging")
+                    except OSError as exc:
+                        if primary is None:
+                            raise Refused(f"landing reservation cleanup failed: {exc}") from exc
+                        primary.add_note(f"landing reservation cleanup also failed: {exc}")
+                    finally:
+                        self._connection = None
         finally:
             conn.close()
 
@@ -335,6 +358,9 @@ class Gate:
                 subprocess.run(["git", "-C", str(wt), "merge", "--abort"], capture_output=True)
                 raise WorkerFailure(f"origin/main conflicts with {branch}; the worker resolves it")
         tested = git(wt, "rev-parse", "HEAD")
+        if self._attempt is not None:
+            self._attempt["commit"] = tested
+            self._save_attempt(branch)
         results = self._run_checks(wt, branch)
         # The checks read the worktree: it must still be exactly the commit being certified.
         moved = git(wt, "rev-parse", "HEAD") != tested
@@ -402,12 +428,15 @@ class Gate:
                 or path.startswith(home + "/")
                 or path.startswith("~/")
                 or re.match(r"^/(?:home|Users)/[^/]+(?:/|$)", path)
+                or re.match(r"^/mnt/[a-z]/Users/[^/]+(?:/|$)", path, re.I)
+                or re.match(r"^[a-z]:[\\/]+Users[\\/]+[^\\/]+(?:[\\/]|$)", path, re.I)
             ):
                 return "[local path]" + suffix
             return token
 
         return re.sub(
             r"[A-Za-z][\w+.-]*://[^\s<>\"'`]+|"
+            r"(?<!\w)[A-Za-z]:[\\/][^\s<>\"'`]+|"
             r"(?<![\w/])(?:/|~/)[^\s<>\"'`\\]+",
             scrub,
             plain,
@@ -424,11 +453,23 @@ class Gate:
                     run = subprocess.run(cmd, cwd=wt, capture_output=True, text=True, env=env)
                     code, text = run.returncode, run.stdout + run.stderr
                     summary = run.stdout.strip() or run.stderr.strip()
+                    if code:
+                        tails = [
+                            "\n".join(
+                                line[:500]
+                                for line in [line for line in part.splitlines() if line.strip()][
+                                    -3:
+                                ]
+                            )
+                            for part in (run.stdout, run.stderr)
+                        ]
+                        summary = "\n".join(tail for tail in tails if tail)
                 except FileNotFoundError:
                     code, text = 127, f"{cmd[0]}: not found"
                     summary = text
                 out.write(f"$ {' '.join(cmd)}\n{self.plain_text(text)}\n")
-                last = (self.public_text(summary, wt).strip().splitlines() or [""])[-1][:120]
+                public = self.public_text(summary, wt).strip()
+                last = public if code else (public.splitlines() or [""])[-1][:120]
                 if cmd in self.checks:
                     results.append({"check": " ".join(cmd), "passed": code == 0, "last": last})
                 self.say(f"  {'ok  ' if code == 0 else 'FAIL'} {' '.join(cmd)}: {last}")
@@ -453,9 +494,12 @@ class Gate:
 
     @staticmethod
     def green_checks(checks: list[dict]) -> bool:
-        red = [c["name"] for c in checks if c["bucket"] in {"fail", "cancel"}]
+        red = [c["name"] for c in checks if c["bucket"] == "fail"]
         if red:
             raise WorkerFailure(f"CI is not green ({', '.join(red)})")
+        cancelled = [c["name"] for c in checks if c["bucket"] == "cancel"]
+        if cancelled:
+            raise Refused(f"CI was cancelled ({', '.join(cancelled)}); re-run CI")
         unknown = [c["name"] for c in checks if c["bucket"] not in GREEN | {"pending"}]
         if unknown:
             raise Refused(f"unknown CI status ({', '.join(unknown)})")
@@ -512,7 +556,7 @@ class Gate:
 
     @staticmethod
     def findings(final: str) -> list[dict]:
-        """Structured arrays are authoritative; unknown prose belongs to the lead."""
+        """Conflicting or unclassified reviewer output belongs to the lead."""
         arrays = []
         candidates = [final, *re.findall(r"```(?:json)?\s*\n(.*?)\n```", final, re.S | re.I)]
         for candidate in candidates:
@@ -524,6 +568,8 @@ class Gate:
             except ValueError, KeyError, TypeError:
                 continue
         if arrays:
+            if not any(arrays) and re.search(r"\[P[0-3]\]", final):
+                raise Refused("unclassified review: empty findings disagree with priority findings")
             for items in arrays:
                 for item in items:
                     if (
@@ -592,8 +638,10 @@ class Gate:
                 status.startswith("closed:")
                 and status[7:].strip()
                 and not re.search(
-                    r"\b(?:fix(?:ed|es|ing)?|resolved|repaired|corrected|addressed|remediated)\b",
-                    status[7:],
+                    r"^(?:(?:this|it|the (?:finding|issue))\s+(?:(?:was|is|has been)\s+)?)?"
+                    r"(?:fix(?:ed|es|ing)?|resolved|repaired|corrected|addressed|remediated)(?=\s|[.,;:]|$)"
+                    r"|\bfixed\s+in\s+\S+",
+                    status[7:].strip(),
                     re.I,
                 )
             ):
@@ -699,27 +747,60 @@ class Gate:
         try:
             body.read_text()  # Validate readability/encoding before checks, models or reservation.
             step = "reservation"
-            with self.reservation(branch, create=True):
-                step = "trial"
-                if not self.trial(branch, builder):
-                    failures = [
-                        r["check"] + ": " + r["last"]
-                        for r in self.state(branch)["checks"]
-                        if not r["passed"]
-                    ]
-                    raise WorkerFailure("; ".join(failures))
-                step = "review"
-                self.review(branch, builder)
-                step = "open"
-                self.open(branch, title, body)
-                step = "land"
-                self.land(branch)
+            with self.reservation(branch, create=True, automatic=True):
+                try:
+                    self._attempt = {
+                        "commit": git(self.repo, "rev-parse", f"refs/heads/{branch}"),
+                        "outcome": "running",
+                        "step": "trial",
+                    }
+                    self._save_attempt(branch)
+                    step = "trial"
+                    if not self.trial(branch, builder):
+                        failures = [
+                            r["check"] + ": " + r["last"]
+                            for r in self.state(branch)["checks"]
+                            if not r["passed"]
+                        ]
+                        raise WorkerFailure("; ".join(failures))
+                    step = "review"
+                    self.review(branch, builder)
+                    step = "open"
+                    self.open(branch, title, body)
+                    step = "land"
+                    self.land(branch)
+                finally:
+                    primary = sys.exception()
+                    try:
+                        if self._attempt is not None:
+                            self._attempt.update(
+                                step=step,
+                                outcome=(
+                                    "worker_failure"
+                                    if isinstance(primary, WorkerFailure)
+                                    else "lead_action"
+                                    if primary
+                                    else "landed"
+                                ),
+                            )
+                            self._save_attempt(branch)
+                    except OSError as exc:
+                        if primary is None:
+                            raise
+                        primary.add_note(f"attempt record also failed: {exc}")
+                    finally:
+                        self._attempt = None
         except Exception as exc:
             audience = "SEND TO WORKER" if isinstance(exc, WorkerFailure) else "LEAD ACTION"
             detail = str(exc) if isinstance(exc, Refused) else f"{type(exc).__name__}: {exc}"
             self.say(f"{audience}: {branch}: {step} failed: {detail}")
             return False
         return True
+
+    def _save_attempt(self, branch: str) -> None:
+        self._state_file(branch).with_suffix(".attempt.json").write_text(
+            json.dumps(self._attempt) + "\n"
+        )
 
     def pending(self, run_id: str | None = None) -> bool:
         cmd = [
@@ -756,6 +837,12 @@ class Gate:
                 text=True,
             )
             if head.returncode:
+                continue
+            attempt = self._state_file(branch).with_suffix(".attempt.json")
+            if (
+                attempt.exists()
+                and json.loads(attempt.read_text())["commit"] == head.stdout.strip()
+            ):
                 continue
             ancestor = subprocess.run(
                 [
@@ -810,7 +897,10 @@ class Gate:
             text=True,
         )
         if push.returncode:
-            raise Refused(
+            rejected = re.search(r"\[rejected\]|non-fast-forward|fetch first", push.stderr, re.I)
+            if not rejected:
+                raise Refused(f"push failed: {self.public_text(push.stderr.strip()[-500:])}")
+            raise WorkerFailure(
                 f"the push of {branch} was refused ({push.stderr.strip()[-120:]}): the branch "
                 "was rewritten after an earlier push and is the worker's to reconcile"
             )
@@ -834,7 +924,13 @@ class Gate:
                 ]
             )
             pr = int(url.rstrip("/").rsplit("/", 1)[-1])
-        self.gh(["pr", "comment", str(pr), "--body-file", str(public_review)])
+        posted_file = self._state_file(branch).with_suffix(".posted.json")
+        posted = json.loads(posted_file.read_text()) if posted_file.exists() else []
+        key = {"pr": pr, "tested": st["tested"]}
+        if key not in posted:
+            self.gh(["pr", "comment", str(pr), "--body-file", str(public_review)])
+            posted.append(key)
+            posted_file.write_text(json.dumps(posted) + "\n")
         st["review"] = record
         st["pr"] = pr
         self._save(branch, st)

@@ -61,8 +61,9 @@ repositories cannot reuse a branch name to take the reservation. Legacy flock-on
 are excluded even between commands; an owner record alone would not accomplish that.
 
 Land and explicit release remove the owner/socket and relinquish flock before acknowledging
-completion. Failed or interrupted clients leave the reservation for retry or explicit
-release, without killing processes. If the holder itself dies, the flock is released;
+completion. Failed or interrupted manual clients leave the reservation for retry or explicit
+release, without killing processes. Automatic clients release on every exit; the holder also
+releases on an automatic client disconnect, including abrupt process termination. If the holder itself dies, the flock is released;
 open/land refuse and trial must reacquire and retest. This is a local cooperative lock,
 not a replacement for GitHub's up-to-date branch protection. The gate retains its existing
 last-moment main comparison and loud post-merge tree check.
@@ -177,7 +178,8 @@ the required independent commands.
 
 ## Second review follow-up
 
-An empty findings array is authoritative even with prose around the JSON fence; common
+An empty findings array can establish a clean review with prose around the JSON fence,
+provided it does not contradict priority findings; common
 clean prose is recognized too. Unclassified output stays in the local review log and goes
 to LEAD ACTION, never a fabricated worker finding. Closing reasons that claim a fix are
 refused just like a bare fixed disposition. JSON CI polling routes named red checks to
@@ -195,3 +197,28 @@ with only ANSI controls removed. Publication scrubs decoded JSON values before s
 recognizes bare home directories, and preserves HTTP URLs with home-like path components.
 Review resolves its worktree once and validates dispatch/request/trial builder provenance
 in one helper, retaining the before/after HEAD and worktree checks around the model call.
+
+
+## Third review: unattended failures and retries
+
+Automatic attempts write a separate `.attempt.json` with `commit`, `step`, and `outcome`
+(`running`, `worker_failure`, `lead_action`, or `landed`). Trial updates the commit after
+merging main and before running checks. Pending skips the recorded commit without a GitHub
+query; a new worker commit becomes eligible, and the lead can explicitly retry auto after
+resolving a service failure. A disconnected automatic client releases its lease; the running
+attempt still suppresses an unchanged commit after an abrupt interruption. Manual commands
+retain their existing across-process reservation. Holder acknowledgements distinguish an
+actual release from a lost connection; cleanup cannot mask an existing command exception.
+
+An empty findings array that contradicts priority findings is unclassified and goes to the
+lead. Closing reasons may describe fixed-width parsing or explicitly say an issue was not
+addressed; reasons claiming a fix still require a new trial and review. Cancelled CI requests
+a lead rerun, rejected non-fast-forward pushes return to the worker, and transport failures
+stay with the lead. Failed check summaries include tails from both stdout and stderr, with
+repository-relative locations and complete local logs. Windows home paths are scrubbed too.
+
+A separate `.posted.json` ledger records each successful review comment by PR and tested
+commit before waiting for CI, surviving retrial state replacement. Normal retries update
+PR title/body without reposting that comment. A crash between GitHub accepting a comment and
+writing the local ledger remains a distributed-transaction window; no atomic operation spans
+the local filesystem and GitHub.
