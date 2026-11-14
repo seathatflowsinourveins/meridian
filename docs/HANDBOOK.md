@@ -213,6 +213,9 @@ Deployment parameters are null placeholders; data reads share a separate 200/min
 6. Sandbox first, then paper (plan 9.2). Every paper run is the owner's, attended, and ends in
    a run record.
 
+Claude lead/workers use `/autopilot --workflow meridian-full <task>` ([ADR 0019](adr/0019-claude-omc-stack.md)): cite upstream first; the upstream gate and owner boundaries apply inside every stage. QA runs `uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest`; Orca keeps the fleet and cross-family merge review.
+At a required owner decision use `[MERIDIAN_WAIT]`; a worker uses Orca `ask` and ends its turn.
+
 ## Goals
 
 A goal makes an agent runtime keep taking turns on its own until a stated end state holds. The
