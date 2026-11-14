@@ -64,9 +64,9 @@ def test_each_skill_names_itself(name):
     assert f"name: {name}" in head.splitlines()
 
 
-# Skills written here (none yet). A third-party skill is installed on the machine for the one
-# runtime that uses it, never vendored into this public repository (ADR 0016).
-OWN_DESIGN_SKILLS: set[str] = set()
+# Skills written here (UPSTREAM.md, "own design"). A third-party skill is installed on the
+# machine for the one runtime that uses it, never vendored into this public repository (ADR 0016).
+OWN_DESIGN_SKILLS = {"lead"}
 
 
 def test_the_shared_skills_are_orcas_two_and_named_own_designs():
