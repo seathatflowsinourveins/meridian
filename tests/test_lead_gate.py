@@ -89,12 +89,24 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     sh(work, "checkout", "-q", "-b", "feature")
     commit(work, "b.txt", "b\n", "feature")
     sh(work, "checkout", "-q", "main")
+    sh(work, "worktree", "add", "-q", str(tmp_path / "feature-wt"), "feature")  # the worker's
     return work
 
 
-def make(repo: Path, ci: list[str], passing: bool = True) -> tuple[Any, FakeGh]:
+def wt(repo: Path, branch: str) -> Path:
+    return repo.parent / f"{branch}-wt"
+
+
+def second_branch(repo: Path) -> None:
+    sh(repo, "worktree", "add", "-q", "-b", "second", str(wt(repo, "second")), "feature")
+
+
+def make(
+    repo: Path, ci: list[str], passing: bool = True, check: list[str] | None = None
+) -> tuple[Any, FakeGh]:
     fake = FakeGh(repo.parent / "origin.git", ci)
-    check = ["test", "-f", "b.txt"] if passing else ["test", "-f", "missing.txt"]
+    if check is None:
+        check = ["test", "-f", "b.txt"] if passing else ["test", "-f", "missing.txt"]
     g = gate.Gate(repo, gh=fake, setup=[], checks=[check])
     g.say = lambda _line: None
     return g, fake
@@ -152,7 +164,7 @@ def test_refuses_when_ci_is_not_green(repo: Path, tmp_path: Path, ci: list[str])
 
 
 def test_one_landing_at_a_time(repo: Path):
-    sh(repo, "branch", "second", "feature")
+    second_branch(repo)
     g, _ = make(repo, ["pass"])
     assert g.trial("feature")
     with pytest.raises(gate.Refused, match="feature is landing"):
@@ -164,24 +176,6 @@ def test_one_landing_at_a_time(repo: Path):
 def opened(g: Any, tmp_path: Path) -> None:
     (tmp_path / "b.md").write_text("b\n")
     g.open("feature", "t", tmp_path / "b.md", tmp_path / "b.md", wait=False)
-
-
-@pytest.mark.parametrize("fix", [False, True])
-def test_a_retried_trial_keeps_the_pushed_merge_so_its_push_fast_forwards(
-    repo: Path, tmp_path: Path, fix: bool
-):
-    g, _ = make(repo, ["pass"])
-    move_main(repo, "c.txt")
-    assert g.trial("feature")  # merges main in a detached tree; the local branch stays put
-    opened(g, tmp_path)
-    move_main(repo, "d.txt")  # main moves again
-    if fix:  # and the worker commits a fix on its local branch, which lacks the pushed merge
-        sh(repo, "checkout", "-q", "feature")
-        commit(repo, "e.txt", "e\n", "fix")
-        sh(repo, "checkout", "-q", "main")
-    assert g.trial("feature")
-    opened(g, tmp_path)  # a non-fast-forward push would raise here
-    g.land("feature")
 
 
 def test_main_is_compared_as_the_last_step_before_the_merge(repo: Path, tmp_path: Path):
@@ -206,7 +200,7 @@ def test_main_moving_during_the_merge_is_a_loud_fail(repo: Path, tmp_path: Path)
 
 
 def test_open_and_land_need_their_own_lock(repo: Path, tmp_path: Path):
-    sh(repo, "branch", "second", "feature")
+    second_branch(repo)
     g, fake = make(repo, ["pass"])
     assert g.trial("feature")
     opened(g, tmp_path)
@@ -220,21 +214,69 @@ def test_open_and_land_need_their_own_lock(repo: Path, tmp_path: Path):
     assert not any(c[:2] == ["pr", "merge"] for c in fake.calls)
 
 
-def test_a_rewritten_branch_after_open_is_refused_not_merged_back(repo: Path, tmp_path: Path):
-    g, fake = make(repo, ["pass"])
-    sh(repo, "checkout", "-q", "feature")
-    commit(repo, "x.txt", "x\n", "feature adds a second file")
-    sh(repo, "checkout", "-q", "main")
+def test_the_trial_merges_main_on_the_branch_itself(repo: Path):
+    g, _ = make(repo, ["pass"])
     move_main(repo)
     assert g.trial("feature")
-    opened(g, tmp_path)  # the pushed trial holds b.txt and x.txt
-    sh(repo, "checkout", "-q", "feature")
-    sh(repo, "rm", "-q", "x.txt")
-    sh(
-        repo, "commit", "-q", "--amend", "--allow-empty", "-m", "feature keeps one file"
-    )  # rewritten
-    sh(repo, "checkout", "-q", "main")
-    pushes = len(fake.calls)
-    with pytest.raises(gate.Refused, match="was rewritten"):
+    head = sh(repo, "rev-parse", "refs/heads/feature")
+    assert g.state("feature")["tested"] == head  # a merge commit on the branch, not detached
+    assert len(sh(repo, "rev-list", "--parents", "-n", "1", head).split()) == 3
+    assert g.state("feature")["tree"] == sh(repo, "rev-parse", f"{head}^{{tree}}")
+
+
+def test_a_dirty_worktree_or_a_conflict_is_refused(repo: Path):
+    g, _ = make(repo, ["pass"])
+    (wt(repo, "feature") / "b.txt").write_text("edited\n")
+    with pytest.raises(gate.Refused, match="uncommitted changes"):
         g.trial("feature")
-    assert len(fake.calls) == pushes
+    sh(wt(repo, "feature"), "checkout", "-q", "--", "b.txt")
+    other = repo.parent / "other-conflict"
+    subprocess.run(["git", "clone", "-q", str(repo.parent / "origin.git"), str(other)], check=True)
+    commit(other, "b.txt", "main's b\n", "main adds b too")
+    sh(other, "push", "-q", "origin", "main")
+    with pytest.raises(gate.Refused, match="conflicts with feature"):
+        g.trial("feature")
+    assert not sh(wt(repo, "feature"), "status", "--porcelain")  # the merge was aborted
+
+
+def test_a_retried_trial_after_main_moved_fast_forwards_the_remote_branch(
+    repo: Path, tmp_path: Path
+):
+    g, _ = make(repo, ["pass"])
+    move_main(repo, "c.txt")
+    assert g.trial("feature")
+    opened(g, tmp_path)
+    move_main(repo, "d.txt")
+    assert g.trial("feature")
+    opened(g, tmp_path)  # a plain push: it must fast-forward
+    origin = repo.parent / "origin.git"
+    assert sh(origin, "rev-parse", "feature") == sh(repo, "rev-parse", "refs/heads/feature")
+    g.land("feature")
+
+
+def test_an_amended_branch_after_open_is_refused_at_the_push(repo: Path, tmp_path: Path):
+    g, fake = make(repo, ["pass"])
+    assert g.trial("feature")
+    opened(g, tmp_path)
+    sh(wt(repo, "feature"), "commit", "-q", "--amend", "-m", "feature, amended")
+    assert g.trial("feature")
+    calls = len(fake.calls)
+    with pytest.raises(gate.Refused, match="was rewritten after an earlier push"):
+        opened(g, tmp_path)
+    assert len(fake.calls) == calls  # no pull request call after a refused push
+
+
+def test_a_failed_trial_then_an_amended_fix_lands(repo: Path, tmp_path: Path):
+    # Codex's case: open at A; the worker adds B, its trial fails; the worker amends B.
+    g, _ = make(repo, ["pass"], check=["test", "!", "-f", "bad.txt"])
+    assert g.trial("feature")
+    opened(g, tmp_path)
+    commit(wt(repo, "feature"), "bad.txt", "x\n", "B")
+    assert not g.trial("feature")
+    sh(wt(repo, "feature"), "rm", "-q", "bad.txt")
+    (wt(repo, "feature") / "good.txt").write_text("y\n")
+    sh(wt(repo, "feature"), "add", "good.txt")
+    sh(wt(repo, "feature"), "commit", "-q", "--amend", "-m", "B, fixed")
+    assert g.trial("feature")
+    opened(g, tmp_path)
+    g.land("feature")

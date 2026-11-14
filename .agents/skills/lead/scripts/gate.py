@@ -1,7 +1,7 @@
 """The lead's merge gate: one landing at a time, a tested tree, a pinned squash-merge (own design).
 
-    gate.py trial BRANCH                 trial-merge origin/main, run the five checks
-    gate.py open BRANCH TITLE BODY REVIEW  push the tested commit, open the PR, post the review
+    gate.py trial BRANCH                 merge origin/main on the branch, run the five checks
+    gate.py open BRANCH TITLE BODY REVIEW  push the tested branch, open the PR, post the review
                                          record, wait for CI
     gate.py land BRANCH [SQUASH]         squash-merge pinned to the tested head, compare trees
     gate.py release                      drop the landing lock (after an abandoned landing)
@@ -12,9 +12,10 @@ few lines. State and check logs live under the repository's common git directory
 `trial` takes it; `open` and `land` go on only while it names their branch; a landing drops only
 its own lock, and `release` is the explicit override that says whose lock it dropped.
 
-A retried trial keeps the earlier pushed trial merge in its ancestry (it merges the branch as
-pushed to origin before main), so its push is a fast-forward; it refuses instead when the
-worker's head recorded at that trial is no longer in the branch (an amend or a rebase).
+`trial` merges origin/main on the branch itself, in the worktree that has it checked out (a
+merge commit; never a rebase or a force), and refuses on a dirty worktree or a conflict; the
+tested tree is that commit's tree. `open` pushes the branch as it is, a plain push, so a branch
+rewritten after an earlier push is refused by git and goes back to the worker.
 
 Remaining window: `land` fetches main and compares the trial-merged tree as the last step before
 `gh pr merge`, but GitHub's merge is not conditioned on main's revision, so a push to main in the
@@ -29,7 +30,6 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -127,79 +127,36 @@ class Gate:
         return git(self.repo, "merge-tree", "--write-tree", main, commit).splitlines()[0]
 
     # --- (a) trial ------------------------------------------------------------------------------
+    def worktree(self, branch: str) -> Path:
+        """The worktree that has the branch checked out: the trial merges main there."""
+        entries = git(self.repo, "worktree", "list", "--porcelain").split("\n\n")
+        for entry in entries:
+            lines = entry.splitlines()
+            if f"branch refs/heads/{branch}" in lines:
+                return Path(lines[0].removeprefix("worktree "))
+        raise Refused(f"{branch} is not checked out in any worktree")
+
     def trial(self, branch: str) -> bool:
         self._lock(branch)
         main = self._main()
-        head = git(self.repo, "rev-parse", f"refs/heads/{branch}")
-        with tempfile.TemporaryDirectory(prefix="gate-") as tmp:
-            wt = Path(tmp) / "tree"
-            git(self.repo, "worktree", "add", "-q", "--detach", str(wt), head)
-            try:
-                tested = head
-                pushed = self._remote_branch(branch)
-                if pushed and pushed != head and not self._is_ancestor(pushed, head):
-                    # The earlier trial's merge is on origin; keep it so the push fast-forwards,
-                    # but only if the worker's head of that trial is still in the branch: after
-                    # an amend or rebase, merging it back would restore what the worker removed.
-                    f = self._state_file(branch)
-                    earlier = json.loads(f.read_text()).get("head") if f.is_file() else None
-                    if not earlier or not self._is_ancestor(earlier, head):
-                        raise Refused(
-                            f"{branch} was rewritten since its pushed trial ({pushed[:12]}); "
-                            "reconcile the local and pushed branch by hand, then run trial"
-                        )
-                    if self._merge(wt, pushed):
-                        raise Refused(f"{branch} does not merge cleanly with its pushed trial")
-                    tested = git(wt, "rev-parse", "HEAD")
-                if subprocess.run(
-                    ["git", "-C", str(wt), "merge-base", "--is-ancestor", main, tested]
-                ).returncode:
-                    if self._merge(wt, main):
-                        raise Refused("origin/main does not merge cleanly; merge it on the branch")
-                    tested = git(wt, "rev-parse", "HEAD")
-                results = self._run_checks(wt, branch)
-            finally:
-                git(self.repo, "worktree", "remove", "--force", str(wt))
+        wt = self.worktree(branch)
+        if git(wt, "status", "--porcelain"):
+            raise Refused(f"{branch}'s worktree {wt} has uncommitted changes; the worker commits")
+        if subprocess.run(
+            ["git", "-C", str(wt), "merge-base", "--is-ancestor", main, "HEAD"]
+        ).returncode:
+            merge = ["git", "-C", str(wt), "merge", "-q", "--no-edit", "origin/main"]
+            if subprocess.run(merge, capture_output=True).returncode:
+                subprocess.run(["git", "-C", str(wt), "merge", "--abort"], capture_output=True)
+                raise Refused(f"origin/main conflicts with {branch}; the worker resolves it")
+        tested = git(wt, "rev-parse", "HEAD")
+        results = self._run_checks(wt, branch)
         ok = all(r["passed"] for r in results)
         tree = git(self.repo, "rev-parse", f"{tested}^{{tree}}")
-        self._save(
-            branch,
-            {
-                "branch": branch,
-                "head": head,
-                "main": main,
-                "tested": tested,
-                "tree": tree,
-                "checks": results,
-                "passed": ok,
-            },
-        )
+        state = {"main": main, "tested": tested, "tree": tree, "checks": results, "passed": ok}
+        self._save(branch, state)
         self.say(f"{'PASS' if ok else 'FAIL'} {branch}: tested {tested[:12]} on main {main[:12]}")
         return ok
-
-    def _remote_branch(self, branch: str) -> str | None:
-        out = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(self.repo),
-                "rev-parse",
-                "--verify",
-                "-q",
-                f"refs/remotes/origin/{branch}",
-            ],
-            capture_output=True,
-            text=True,
-        )
-        return out.stdout.strip() if out.returncode == 0 else None
-
-    def _is_ancestor(self, a: str, b: str) -> bool:
-        cmd = ["git", "-C", str(self.repo), "merge-base", "--is-ancestor", a, b]
-        return subprocess.run(cmd).returncode == 0
-
-    def _merge(self, wt: Path, rev: str) -> int:
-        cmd = ["git", "-C", str(wt), "merge", "-q", "--no-edit", rev]
-        return subprocess.run(cmd, capture_output=True).returncode
 
     def _run_checks(self, wt: Path, branch: str) -> list[dict]:
         log = self.home / (branch.replace("/", "__") + ".log")
@@ -227,7 +184,18 @@ class Gate:
         if not st["passed"]:
             failed = [r["check"] for r in st["checks"] if not r["passed"]]
             raise Refused(f"a check failed on the trial ({', '.join(failed)}); fix and run trial")
-        git(self.repo, "push", "-q", "origin", f"{st['tested']}:refs/heads/{branch}")
+        if git(self.repo, "rev-parse", f"refs/heads/{branch}") != st["tested"]:
+            raise Refused(f"{branch} moved since its trial; run trial again")
+        push = subprocess.run(
+            ["git", "-C", str(self.repo), "push", "-q", "origin", f"refs/heads/{branch}"],
+            capture_output=True,
+            text=True,
+        )
+        if push.returncode:
+            raise Refused(
+                f"the push of {branch} was refused ({push.stderr.strip()[-120:]}): the branch "
+                "was rewritten after an earlier push and is the worker's to reconcile"
+            )
         found = json.loads(self.gh(["pr", "list", "--head", branch, "--json", "number"]) or "[]")
         if found:
             pr = int(found[0]["number"])
