@@ -396,5 +396,6 @@ in that turn. `codex features list` shows `goals` stable and on.
 - ADRs: `docs/adr/README.md` lists last checks and revisit dates; read the Decision first.
   Recheck sources; append a dated kept/replaced/re-measured line in `docs/adr/data/NNNN-revisits.md`,
   then update the index; the weekly watch reports in the GitHub issue labelled `landscape`.
+  Runtime pins: the Orca automation "Meridian upkeep" turns that report into a pull request (`setup.sh drift`).
 - The IBKR lane's run commands, clean-account condition and pass criteria are in `AGENTS.md`
   ("The IBKR paper lane (owner only)"), not in this file.
