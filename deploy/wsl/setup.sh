@@ -882,9 +882,12 @@ YAML
   fi
   # The Meridian block (ADR 0016), rewritten whole on every run and kept above Orca's own marked
   # block, whose lines are never touched: the model row (a row's config replaces the default's
-  # as a whole, so it names the provider too), code navigation through DeepSeek's LSP packages
-  # (the server starts in the session's working directory, so `./.venv` is that worktree's
-  # own), and the completion gate's Stop hook, a second mount of the hook bridge beside Orca's.
+  # as a whole, so it names the provider too), code navigation through DeepSeek's LSP packages,
+  # and the completion gate's Stop hook, a second mount of the hook bridge beside Orca's. The
+  # provider starts the server in the session's working directory and sends it as the workspace;
+  # the server row finds the worktree root with git from there, runs that worktree's own
+  # pyright-langserver, and gives it the root as its workspace (deploy/wsl/dsh-lsp-root.py), so
+  # navigation resolves the repository's imports from any subdirectory.
   # A model row that an older run wrote outside the block is moved into it.
   local block
   block="$(cat <<YAML
@@ -902,7 +905,7 @@ YAML
         servers:
           pyright:
             command: sh
-            args: ['-c', 'exec ./.venv/bin/pyright-langserver --stdio']
+            args: ['-c', 'top="\$(git rev-parse --show-toplevel)" && exec python3 -I ${HOME}/.dsh/lsp/dsh-lsp-root.py "\$top" "\$top/.venv/bin/pyright-langserver" --stdio']
             extensionToLanguage:
               '.py': python
               '.pyi': python
@@ -974,6 +977,7 @@ dsh_stack() {
   # The completion gate: a copy of the tracked script, and the hooks file the Meridian block's
   # second hook-bridge mount reads (Stop only; Orca's own hooks file is never touched).
   install -D -m 0755 "$(dirname "$(readlink -f "$0")")/dsh-check-gate.sh" "${HOME}/.dsh/hooks/dsh-check-gate.sh"
+  install -D -m 0644 "$(dirname "$(readlink -f "$0")")/dsh-lsp-root.py" "${HOME}/.dsh/lsp/dsh-lsp-root.py"
   jq -n --arg command "${HOME}/.dsh/hooks/dsh-check-gate.sh" \
     '{hooks: {Stop: [{hooks: [{type: "command", command: $command, timeout: 1800}]}]}}' \
     > "${HOME}/.dsh/meridian-hooks.json.new"
@@ -1150,8 +1154,11 @@ PY
     ! dsh_row "${config}" "${row%%:*}" | grep -qx '  disabled: true' \
       || fail "the ${row%%:*} row is switched off in the dsh-tui profile"
   done
-  dsh_row "${config}" meridian-lsp-pyright | grep -qxF '          - exec ./.venv/bin/pyright-langserver --stdio' \
-    || fail "the LSP provider does not run the worktree's own pyright-langserver (${run})"
+  # The dump folds a long argument over lines, so the row's lines are joined before matching.
+  dsh_row "${config}" meridian-lsp-pyright | tr -s ' \n' '  ' \
+    | grep -qF "exec python3 -I ${HOME}/.dsh/lsp/dsh-lsp-root.py \"\$top\" \"\$top/.venv/bin/pyright-langserver\" --stdio" \
+    && cmp -s "$(dirname "$(readlink -f "$0")")/dsh-lsp-root.py" "${HOME}/.dsh/lsp/dsh-lsp-root.py" \
+    || fail "the LSP provider does not run the worktree's own pyright-langserver at its root (${run})"
   for row in "${DSH_LSP_PACKAGES[@]}"; do
     version_ge "$(dsh_profile_package "${row}")" "${DSH_VERSION}" \
       || fail "@deepseek-ai/${row} is not in the dsh-tui profile (${run})"

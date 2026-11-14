@@ -10,6 +10,7 @@ out of worktrees.
 """
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -18,6 +19,7 @@ import sys
 import tarfile
 import time
 import tomllib
+from pathlib import Path
 
 import pytest
 from test_paper_only import REPO_ROOT, git_files
@@ -568,9 +570,77 @@ def test_code_navigation_is_the_read_only_lsp_tool_on_the_worktrees_own_pyright(
     block = (tmp_path / ".dsh/cordis.patch.yml").read_text(encoding="utf-8")
     for package in ("dsh-lsp", "dsh-lsp-stdio", "dsh-tool-lsp"):
         assert f"      name: '@deepseek-ai/{package}'\n" in block
-    # The server starts in the session's working directory: `./.venv` is that worktree's own.
-    assert "args: ['-c', 'exec ./.venv/bin/pyright-langserver --stdio']" in block
     assert "dsh-mcp-client" not in block, "the stack adds no MCP server"
+
+
+FAKE_SERVER = """#!/usr/bin/env python3
+import json, os, sys
+header = b""
+while not header.endswith(b"\\r\\n\\r\\n"):
+    header += sys.stdin.buffer.read(1)
+length = int(header.split(b":")[1])
+params = json.loads(sys.stdin.buffer.read(length))["params"]
+rest = sys.stdin.buffer.read()
+print(json.dumps({"rootUri": params["rootUri"], "folders": params["workspaceFolders"],
+                  "args": sys.argv[1:], "rest": rest.decode()}))
+"""
+
+
+def frame(message: dict) -> bytes:
+    body = json.dumps(message).encode()
+    return b"Content-Length: %d\r\n\r\n" % len(body) + body
+
+
+def test_the_lsp_server_runs_at_the_worktree_root_from_a_subdirectory(tmp_path):
+    # The provider starts the server in the session's directory and sends it as the workspace.
+    # From a subdirectory, the row's command must still find the worktree's own server and give
+    # it the worktree root, or pyright resolves none of the repository's imports.
+    run_config_writer("dsh_home_files", tmp_path)
+    block = (tmp_path / ".dsh/cordis.patch.yml").read_text(encoding="utf-8")
+    command = re.search(r"^            args: \['-c', '(.*)'\]$", block, re.M)
+    assert command, "no server command in the LSP provider row"
+    shim = tmp_path / ".dsh/lsp/dsh-lsp-root.py"
+    shim.parent.mkdir(parents=True)
+    shim.write_bytes((DEPLOY / "dsh-lsp-root.py").read_bytes())
+    repo = tmp_path / "worktree"
+    (repo / ".venv/bin").mkdir(parents=True)
+    (repo / "meridian").mkdir()
+    server = repo / ".venv/bin/pyright-langserver"
+    server.write_text(FAKE_SERVER)
+    server.chmod(0o755)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subdirectory = (repo / "meridian").resolve()
+    initialize = frame(
+        {
+            "jsonrpc": "2.0",
+            "id": 0,
+            "method": "initialize",
+            "params": {"rootUri": subdirectory.as_uri(), "workspaceFolders": []},
+        }
+    )
+    later = frame({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+    result = subprocess.run(
+        ["sh", "-c", command[1]],
+        cwd=subdirectory,
+        input=initialize + later,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    seen = json.loads(result.stdout)
+    root = repo.resolve().as_uri()
+    assert seen["rootUri"] == root and seen["folders"] == [{"uri": root, "name": "worktree"}]
+    assert seen["args"] == ["--stdio"]
+    assert seen["rest"] == later.decode(), "a message after initialize was changed"
+
+
+def test_the_root_shim_leaves_every_other_message_alone():
+    spec = importlib.util.spec_from_file_location("dsh_lsp_root", DEPLOY / "dsh-lsp-root.py")
+    assert spec and spec.loader
+    shim = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(shim)
+    for body in (b'{"jsonrpc":"2.0","method":"initialized","params":{}}', b"not json", b"[1]"):
+        assert shim.with_root(body, Path("/repo")) is body
 
 
 def write_patch(tmp_path, text):
