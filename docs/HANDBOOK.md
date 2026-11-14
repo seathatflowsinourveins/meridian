@@ -298,4 +298,4 @@ in that turn. `codex features list` shows `goals` stable and on.
 - ADRs: `docs/adr/README.md` lists last checks and revisit dates; read the Decision first.
   Recheck sources; append a dated kept/replaced/re-measured line in `docs/adr/data/NNNN-revisits.md`,
   then update the index; the weekly watch reports in the GitHub issue labelled `landscape`.
-  Runtime pins: the Orca automation "Meridian upkeep" turns that report into a pull request (`setup.sh drift`).
+  Runtime pins: the Orca automation "Meridian upkeep" moves them, lands and applies the change (`setup.sh drift`).
