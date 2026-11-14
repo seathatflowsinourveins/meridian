@@ -1,0 +1,32 @@
+{
+  "date": "2026-11-13",
+  "codex_cli": "0.167.2",
+  "model_requested": "gpt-6-astra",
+  "reasoning_effort_requested": "high",
+  "guard_script": "docs/adr/data/0003_gateway_guard.sh",
+  "guard_exit": 3,
+  "guard_findings": [
+    "listener on paper Gateway port",
+    "process executable under owner Jts directory",
+    "java process"
+  ],
+  "codex_compatibility_probe_started": false,
+  "M1_runs_without": 0,
+  "M1_runs_with": 0,
+  "R2_runs_without": 0,
+  "R2_runs_with": 0,
+  "solved": null,
+  "model_input_tokens": null,
+  "model_wall_seconds": null,
+  "coordinator_direction": "Superseded: owner changed admission to upstream quality plus runtime/fidelity checks; no per-item model A/B series.",
+  "revisit_trigger": "Next release that preserves full pytest node IDs, or 2027-02-11.",
+  "claude_sessions_started": 0,
+  "rtk_version": "1.2.0",
+  "prereg_initial_sha256": "be01eb31c8931a24bae0c42a8f6927fe370b4ab5de4b83a695a360fe5f2958c8",
+  "prereg_amended_sha256": "43635f2852b771a3b57158f1d8a525a909a01fcc3184485acbfb2b09cbaed7c9",
+  "counter_self_test": "cl100k vectors, o200k vector/split and round trips all OK",
+  "model_series_status": "Retired by revised owner admission rule; not missing and not waiting on Gateway.",
+  "no_model_protocol_probes": 6,
+  "no_model_protocol_execution": "All six replacements exited as expected; not a host session test.",
+  "renumbering_note": "The preregistration hashes record the documents before the mechanical ADR renumbering; measurement results are unchanged."
+}

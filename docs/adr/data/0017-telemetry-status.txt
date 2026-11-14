@@ -1,0 +1,7 @@
+Telemetry status:
+  consent:       never asked
+  enabled:       no
+  device hash:   (telemetry not enabled; run `rtk telemetry enable` to opt in)
+
+Data controller: RTK AI Labs, contact@rtk-ai.app
+Details: https://github.com/rtk-ai/rtk/blob/master/docs/TELEMETRY.md

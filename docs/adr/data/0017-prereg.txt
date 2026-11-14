@@ -1,0 +1,87 @@
+ADR 0017 pre-registration, 2026-11-13; written before measurements.
+Candidate: rtk v1.2.0, full Linux x86_64 musl release, SHA-256
+70fee7b4a548c43dde94c77e2335550981b0bc2fb013691d8c8109b5bd0eda37.
+Source inspection may precede this registration; no measured result has been seen.
+
+COMPRESSION
+Use this branch's initial HEAD, 61536fc, in an isolated local archive checkout
+with a fresh git repository (no credentials or ignored owner files). Use the
+locked environment. Capture stdout+stderr and exit code for uv run ruff check .,
+uv run ruff format --check ., uv run pyright, uv run pytest, git status,
+git log -5, git diff for merged PR #31 (4fdaff6^..4fdaff6), and recorded gh pr
+checks 31 output. Repeat all eight with tests/test_adr0017_planted.py containing
+one asserting test and a typed int assigned a string. The file is formatted and
+lint-clean. PR diff and recorded check output naturally stay unchanged.
+Use the release's rewrite routing and filters, with no custom compression.
+If no rewrite exists, report passthrough as zero saving. Recorded outputs may be
+replayed using scratch executable stubs so both sides see identical bytes.
+RTK runs with an empty environment plus scratch HOME, minimal PATH and locale;
+no real settings, account data, credential environment or services available.
+Count o200k_base with 0001_count_tokens.py and its pinned vocabulary. Publish
+raw/compressed outputs after path normalization, exit codes and token counts.
+Fidelity script extracts every raw failing pytest node id, diagnostic file:line
+and error message; require each exact string in the compressed text. Record
+missing strings individually; a generic count or raw-output file pointer does
+not pass. Require identical exit status. Require >=25% aggregate token saving
+across all 16 cells AND 100% diagnostic/exit fidelity for adoption.
+
+CONTEXT AND REAL TASK
+Follow ab-codex.md, project-only init --codex, never -g; absolute hook binary
+path or per-process PATH, scratch RTK HOME/cache, owner's own Codex sign-in.
+Never read/copy auth. Per-run trusted-project flag prevents config writes;
+Orca hooks off by per-run hooks.state, bypass hook trust in both arms.
+First prove the installed runtime accepts this hook and actually rewrites its
+shell tool; if incompatible, omit model A/B and defer (unless another adoption
+criterion already fails, then not adopted). No bespoke integration workaround.
+Measure M1, three no-tool OK turns per arm at the same path: median input tokens,
+cached included; M2 prompt rendering as attribution only. Require <=500 extra
+M1 tokens. Measure the shared awareness text separately with o200k_base.
+Real task R2 in ab-tasks.md: three per arm, a1 b1 b2 a2 a3 b3, Codex 0.167.2,
+gpt-6-astra, high; no helper agents, same flags. Baseline one test fails.
+Use base-only fresh repositories and tests from 39cb68e; no history containing
+the fix. Identical brief extends R2's scope with explicit prohibition on reading
+history/other checkouts/credentials, running lanes, or using other agents;
+offline tests and fake loopback fixtures explicitly allowed. Same 60m timeout.
+Grade by all four checks, unchanged tests and scope limited to boundary.py.
+Scan tool calls for prohibited reads/actions; void with-arm runs count as fails.
+Record completed/solved, total input tokens (cached included), wall seconds.
+Adoption requires both arms 3/3 solved, >=25% fewer summed input tokens with RTK,
+and <=10% slower median wall time. If one-success gap or 2/3 tie, extend by two
+per arm once; use same all-solved and token/time rule over expanded series.
+Transient API/rate errors rerun later in same slot, not success evidence.
+
+DECISION AND CONTAINMENT
+Adopt only if every threshold passes and owner settings unchanged. A measured
+threshold failure means not adopted. Missing/incompatible evidence alone means
+deferred; never infer model token savings from CLI byte savings. No Claude run.
+Raw model transcripts remain outside the public repository; publish aggregates
+only. Remove downloads and scratch checkouts; never install on shared PATH.
+Record deviations explicitly without changing thresholds after seeing results.
+
+COORDINATOR AMENDMENT, 2026-11-13 (before failure/aggregate results were read)
+The Gateway guard refused before the Codex compatibility probe: port 4002 had a
+listener, a process executable was under ~/Jts, and java was running. No Codex
+session started. The coordinator directed that the owner's Gateway must remain
+untouched and the model arms be recorded as not run. Offline-only decision:
+not adopted if diagnostic/exit fidelity is below 100% or aggregate saving is
+under 25%; otherwise deferred. Adoption still requires the model evidence.
+Revisit when the owner next closes the Gateway; six Codex R2 runs and M1 are
+missing. This specializes, rather than relaxes, the original decision rule.
+At receipt, only the first three passing-command counts had been inspected
+(ruff check, format, pyright); no pytest, failing-tree or aggregate result had
+been inspected. The coordinator requested this amendment before looking at
+compression numbers; those three had already been inspected in the prior turn.
+
+OWNER ADMISSION-RULE CHANGE, 2026-11-13, relayed after about 23:10 ET
+The coordinator relayed the owner's new rule: admission by upstream quality
+(maintained, leading for its job, one per job) plus a works-on-runtime check,
+not a with-and-without model series for each item. The six Codex task runs and
+M1 are dropped permanently for this ADR, not missing and not waiting on the
+Gateway. Keep the offline token/fidelity evidence. Probe Codex and Claude hook
+processors without model calls using their runtime input protocol, then run
+safe rewritten repository commands. No Claude session, no DSH hook integration.
+Fidelity remains a hard veto: any lost failing node id, diagnostic file:line or
+error message means not adopted. If adopted, prepare pinned setup/agents-check
+and UPSTREAM/map changes in the repository only; never run the machine install.
+This supersedes the previous model and compression admission thresholds; their
+results remain evidence. Report precisely what a no-model hook probe establishes.

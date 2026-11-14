@@ -1,0 +1,4 @@
+{
+  "command": "gh pr checks 31 --repo seathatflowsinourveins/meridian",
+  "output": "Socket Security: Project Report\tpass\t2s\thttps://socket.dev/dashboard/org/e-73evww3z/sbom/8cc47dec-80da-4d76-902b-a9fccb669d00\t\nSocket Security: Pull Request Alerts\tpass\t3s\thttps://socket.dev\t\ncheck\tpass\t3m37s\thttps://github.com/seathatflowsinourveins/meridian/actions/runs/43552368751/job/132317481648\t\n"
+}

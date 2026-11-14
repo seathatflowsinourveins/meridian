@@ -1,0 +1,12 @@
+{
+  "cells": 16,
+  "raw_tokens": 37462,
+  "rtk_tokens": 14801,
+  "saving_percent": 60.491,
+  "diagnostic_strings_required": 7,
+  "diagnostic_strings_missing": 1,
+  "diagnostic_fidelity_percent": 85.714,
+  "exit_codes_preserved": true,
+  "model_runs": 0,
+  "decision": "not adopted"
+}

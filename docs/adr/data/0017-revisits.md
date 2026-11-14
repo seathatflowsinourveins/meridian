@@ -1,0 +1,1 @@
+2026-11-13 — Measured and not adopted under the owner's revised quality/runtime admission rule: the full pytest node id is missing from compressed failure output. Revisit on the next release that fixes this, or by 2027-02-11; repeat the failure capture and no-model protocol probes. Per-item Codex task A/B runs are retired, not pending.

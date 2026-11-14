@@ -1,0 +1,38 @@
+{
+  "without": {
+    "message_bytes": 37976,
+    "message_tokens_o200k": 8177,
+    "rtk_reference_present": false,
+    "awareness_body_present": false
+  },
+  "init_stdout": "\nRTK configured for Codex CLI.\n\n  RTK.md:    RTK.md\n  Hook:      .codex/hooks.json (registered)\n  AGENTS.md: @RTK.md reference added\n\n  Codex project instructions path: AGENTS.md\n\n  Restart Codex. For a project hook, approve it when Codex asks you to trust it.\n\n  Optional: if history recording fails with SQLITE_CANTOPEN in the\n  workspace-write sandbox, grant write access to the tracking directory:\n\nsandbox_mode = \"workspace-write\"\n\n[sandbox_workspace_write]\nwritable_roots = [\"<SCRATCH_HOME>/.local/share/rtk\"]\n\n  Merge this into Codex config.toml only if you want persistent history.\n  Keep existing writable_roots; do not add a duplicate table.\n  This grants access to the directory, including SQLite sidecar files.\n  No Codex permission settings have been changed.\n\n",
+  "with": {
+    "message_bytes": 37985,
+    "message_tokens_o200k": 8182,
+    "rtk_reference_present": true,
+    "awareness_body_present": false
+  },
+  "awareness": {
+    "AGENTS.md": {
+      "bytes": 8204,
+      "tokens_o200k": 2129,
+      "sha256": "465f8642a28945b4b4355bd71b14398cea2b694e0397f3a68c5902f8cbac0964"
+    },
+    "RTK.md": {
+      "bytes": 547,
+      "tokens_o200k": 127,
+      "sha256": "39ccf78247b5168fc938044b74c0f1789c87d8c7ff174e58a9fd787f2032d37e"
+    },
+    ".codex/hooks.json": {
+      "bytes": 213,
+      "tokens_o200k": 59,
+      "sha256": "b305e4924d8ad8a52e523ae3b4525a5783d9ea80648fac8f111f980cf758b94a"
+    }
+  },
+  "added_reference": {
+    "bytes": 9,
+    "tokens_o200k": 6
+  },
+  "M1": null,
+  "reason": "Gateway guard refused; no signed-in model sessions started. M2 excludes hook context and extension tools."
+}

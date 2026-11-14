@@ -1,0 +1,57 @@
+{
+  "reason": "First planted fixture had one extra blank line between module docstring and constant, so ruff format failed unexpectedly. Stopped the owned runner before finishing that arm; corrected whitespace and reran all failing cells. Passing cells retained. Thresholds unchanged.",
+  "invalid_rows": [
+    {
+      "tree": "failing",
+      "command": "uv run ruff check .",
+      "rewrite": "uv run rtk ruff check .",
+      "raw_exit": 0,
+      "rtk_exit": 0,
+      "raw_tokens": 4,
+      "rtk_tokens": 7,
+      "required_diagnostics": [],
+      "missing_diagnostics": []
+    },
+    {
+      "tree": "failing",
+      "command": "uv run ruff format --check .",
+      "rewrite": "uv run rtk ruff format --check .",
+      "raw_exit": 1,
+      "rtk_exit": 1,
+      "raw_tokens": 60,
+      "rtk_tokens": 60,
+      "required_diagnostics": [
+        "tests/test_adr0017_planted.py:3:1"
+      ],
+      "missing_diagnostics": []
+    },
+    {
+      "tree": "failing",
+      "command": "uv run pyright",
+      "rewrite": "rtk uv run pyright",
+      "raw_exit": 1,
+      "rtk_exit": 1,
+      "raw_tokens": 91,
+      "rtk_tokens": 74,
+      "required_diagnostics": [
+        "<TREE>/tests/test_adr0017_planted.py:4:23",
+        "Type \"Literal['adr0017-type-marker']\" is not assignable to declared type \"int\""
+      ],
+      "missing_diagnostics": []
+    }
+  ],
+  "invalid_outputs": {
+    "failing:uv run ruff check .": {
+      "raw": "All checks passed!\n",
+      "rtk": "Ruff: No issues found\n"
+    },
+    "failing:uv run ruff format --check .": {
+      "raw": "unformatted: File would be reformatted\n --> tests/test_adr0017_planted.py:3:1\n  |\n2 |\n  -\n3 | PLANTED_NUMBER: int = \"adr0017-type-marker\"\n  |\n\n1 file would be reformatted, 96 files already formatted\n",
+      "rtk": "unformatted: File would be reformatted\n --> tests/test_adr0017_planted.py:3:1\n  |\n2 |\n  -\n3 | PLANTED_NUMBER: int = \"adr0017-type-marker\"\n  |\n\n1 file would be reformatted, 96 files already formatted\n"
+    },
+    "failing:uv run pyright": {
+      "raw": "<TREE>/tests/test_adr0017_planted.py\n  <TREE>/tests/test_adr0017_planted.py:4:23 - error: Type \"Literal['adr0017-type-marker']\" is not assignable to declared type \"int\"\n  \u00a0\u00a0\"Literal['adr0017-type-marker']\" is not assignable to \"int\" (reportAssignmentType)\n1 error, 0 warnings, 0 informations\n",
+      "rtk": "<TREE>/tests/test_adr0017_planted.py:4:23 - error: Type \"Literal['adr0017-type-marker']\" is not assignable to declared type \"int\"\n\"Literal['adr0017-type-marker']\" is not assignable to \"int\" (reportAssignmentType)\n\n1 error, 0 warnings, 0 informations\n"
+    }
+  }
+}

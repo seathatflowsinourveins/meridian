@@ -1,0 +1,15 @@
+{
+  "exit": 0,
+  "stdout": "RTK uninstalled for Codex CLI:\n  - hooks.json: removed rtk hook codex entry\n  - RTK.md: RTK.md\n  - AGENTS.md: removed @RTK.md reference\n",
+  "stderr": "",
+  "agents_restored": false,
+  "rtk_md_exists": false,
+  "hooks_json_exists": true,
+  "remaining_hooks": {
+    "hooks": {
+      "PreToolUse": []
+    }
+  },
+  "backup_exists": true,
+  "agents_difference": "Only the final newline was removed."
+}

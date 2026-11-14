@@ -1,0 +1,189 @@
+[
+  {
+    "tree": "passing",
+    "command": "uv run ruff check .",
+    "rewrite": "uv run rtk ruff check .",
+    "raw_exit": 0,
+    "rtk_exit": 0,
+    "raw_tokens": 4,
+    "rtk_tokens": 7,
+    "required_diagnostics": [],
+    "missing_diagnostics": []
+  },
+  {
+    "tree": "passing",
+    "command": "uv run ruff format --check .",
+    "rewrite": "uv run rtk ruff format --check .",
+    "raw_exit": 0,
+    "rtk_exit": 0,
+    "raw_tokens": 5,
+    "rtk_tokens": 5,
+    "required_diagnostics": [],
+    "missing_diagnostics": []
+  },
+  {
+    "tree": "passing",
+    "command": "uv run pyright",
+    "rewrite": "rtk uv run pyright",
+    "raw_exit": 0,
+    "rtk_exit": 0,
+    "raw_tokens": 11,
+    "rtk_tokens": 11,
+    "required_diagnostics": [],
+    "missing_diagnostics": []
+  },
+  {
+    "tree": "passing",
+    "command": "uv run pytest",
+    "rewrite": "uv run rtk pytest",
+    "raw_exit": 0,
+    "rtk_exit": 0,
+    "raw_tokens": 648,
+    "rtk_tokens": 14,
+    "required_diagnostics": [],
+    "missing_diagnostics": []
+  },
+  {
+    "tree": "passing",
+    "command": "git status",
+    "rewrite": "rtk git status",
+    "raw_exit": 0,
+    "rtk_exit": 0,
+    "raw_tokens": 16,
+    "rtk_tokens": 15,
+    "required_diagnostics": [],
+    "missing_diagnostics": []
+  },
+  {
+    "tree": "passing",
+    "command": "git log -5",
+    "rewrite": "rtk git log -5",
+    "raw_exit": 0,
+    "rtk_exit": 0,
+    "raw_tokens": 1353,
+    "rtk_tokens": 439,
+    "required_diagnostics": [],
+    "missing_diagnostics": []
+  },
+  {
+    "tree": "passing",
+    "command": "git diff 4fdaff6^ 4fdaff6",
+    "rewrite": "rtk git diff 4fdaff6^ 4fdaff6",
+    "raw_exit": 0,
+    "rtk_exit": 0,
+    "raw_tokens": 16457,
+    "rtk_tokens": 6809,
+    "required_diagnostics": [],
+    "missing_diagnostics": []
+  },
+  {
+    "tree": "passing",
+    "command": "gh pr checks 31",
+    "rewrite": "rtk gh pr checks 31",
+    "raw_exit": 0,
+    "rtk_exit": 0,
+    "raw_tokens": 102,
+    "rtk_tokens": 22,
+    "required_diagnostics": [],
+    "missing_diagnostics": []
+  },
+  {
+    "tree": "failing",
+    "command": "uv run ruff check .",
+    "rewrite": "uv run rtk ruff check .",
+    "raw_exit": 0,
+    "rtk_exit": 0,
+    "raw_tokens": 4,
+    "rtk_tokens": 7,
+    "required_diagnostics": [],
+    "missing_diagnostics": []
+  },
+  {
+    "tree": "failing",
+    "command": "uv run ruff format --check .",
+    "rewrite": "uv run rtk ruff format --check .",
+    "raw_exit": 0,
+    "rtk_exit": 0,
+    "raw_tokens": 5,
+    "rtk_tokens": 5,
+    "required_diagnostics": [],
+    "missing_diagnostics": []
+  },
+  {
+    "tree": "failing",
+    "command": "uv run pyright",
+    "rewrite": "rtk uv run pyright",
+    "raw_exit": 1,
+    "rtk_exit": 1,
+    "raw_tokens": 91,
+    "rtk_tokens": 74,
+    "required_diagnostics": [
+      "\"Literal['adr0017-type-marker']\" is not assignable to \"int\" (reportAssignmentType)",
+      "<TREE>/tests/test_adr0017_planted.py:3:23",
+      "Type \"Literal['adr0017-type-marker']\" is not assignable to declared type \"int\""
+    ],
+    "missing_diagnostics": []
+  },
+  {
+    "tree": "failing",
+    "command": "uv run pytest",
+    "rewrite": "uv run rtk pytest",
+    "raw_exit": 1,
+    "rtk_exit": 1,
+    "raw_tokens": 796,
+    "rtk_tokens": 103,
+    "required_diagnostics": [
+      "AssertionError: adr0017-assertion-marker",
+      "assert (2 + 2) == 5",
+      "tests/test_adr0017_planted.py:7",
+      "tests/test_adr0017_planted.py::test_adr0017_planted_failure"
+    ],
+    "missing_diagnostics": [
+      "tests/test_adr0017_planted.py::test_adr0017_planted_failure"
+    ]
+  },
+  {
+    "tree": "failing",
+    "command": "git status",
+    "rewrite": "rtk git status",
+    "raw_exit": 0,
+    "rtk_exit": 0,
+    "raw_tokens": 58,
+    "rtk_tokens": 20,
+    "required_diagnostics": [],
+    "missing_diagnostics": []
+  },
+  {
+    "tree": "failing",
+    "command": "git log -5",
+    "rewrite": "rtk git log -5",
+    "raw_exit": 0,
+    "rtk_exit": 0,
+    "raw_tokens": 1353,
+    "rtk_tokens": 439,
+    "required_diagnostics": [],
+    "missing_diagnostics": []
+  },
+  {
+    "tree": "failing",
+    "command": "git diff 4fdaff6^ 4fdaff6",
+    "rewrite": "rtk git diff 4fdaff6^ 4fdaff6",
+    "raw_exit": 0,
+    "rtk_exit": 0,
+    "raw_tokens": 16457,
+    "rtk_tokens": 6809,
+    "required_diagnostics": [],
+    "missing_diagnostics": []
+  },
+  {
+    "tree": "failing",
+    "command": "gh pr checks 31",
+    "rewrite": "rtk gh pr checks 31",
+    "raw_exit": 0,
+    "rtk_exit": 0,
+    "raw_tokens": 102,
+    "rtk_tokens": 22,
+    "required_diagnostics": [],
+    "missing_diagnostics": []
+  }
+]

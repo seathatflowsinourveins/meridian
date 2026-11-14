@@ -1,0 +1,249 @@
+{
+  "kind": "Protocol-shaped synthetic inputs, grounded in runtime-owned schema/docs; standalone RTK processors and executed replacements, not a live session test.",
+  "model_calls": 0,
+  "init": {
+    "codex": {
+      "argv": [
+        "init",
+        "--codex"
+      ],
+      "stdout": "\nRTK configured for Codex CLI.\n\n  RTK.md:    RTK.md\n  Hook:      .codex/hooks.json (registered)\n  AGENTS.md: @RTK.md reference added\n\n  Codex project instructions path: AGENTS.md\n\n  Restart Codex. For a project hook, approve it when Codex asks you to trust it.\n\n  Optional: if history recording fails with SQLITE_CANTOPEN in the\n  workspace-write sandbox, grant write access to the tracking directory:\n\nsandbox_mode = \"workspace-write\"\n\n[sandbox_workspace_write]\nwritable_roots = [\"<SCRATCH_HOME>/.local/share/rtk\"]\n\n  Merge this into Codex config.toml only if you want persistent history.\n  Keep existing writable_roots; do not add a duplicate table.\n  This grants access to the directory, including SQLite sidecar files.\n  No Codex permission settings have been changed.\n\n",
+      "stderr": ""
+    },
+    "claude": {
+      "argv": [
+        "init",
+        "-g",
+        "--agent",
+        "claude",
+        "--hook-only",
+        "--auto-patch"
+      ],
+      "stdout": "\nRTK hook registered (hook-only mode).\n\n  Command: rtk hook claude\n  Note: No RTK.md created. Claude won't know about meta commands (gain, discover, bypass).\n\n  <SCRATCH_HOME>/.claude/settings.json: hook added\n  Restart Claude Code. Test with: git status\n\n\n",
+      "stderr": ""
+    }
+  },
+  "probes": [
+    {
+      "runtime": "codex",
+      "input": {
+        "session_id": "adr0017-synthetic-session",
+        "transcript_path": "<SCRATCH_HOME>/nonexistent-transcript.jsonl",
+        "cwd": "<TREE>",
+        "permission_mode": "default",
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_use_id": "adr0017-synthetic-tool",
+        "tool_input": {
+          "command": "git status",
+          "description": "Offline ADR command probe"
+        },
+        "model": "gpt-6-astra",
+        "turn_id": "adr0017-synthetic-turn"
+      },
+      "hook_exit": 0,
+      "hook_output": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "permissionDecisionReason": "RTK auto-rewrite",
+          "updatedInput": {
+            "command": "rtk git status",
+            "description": "Offline ADR command probe"
+          },
+          "permissionDecision": "allow"
+        }
+      },
+      "execution_exit": 0,
+      "execution_output": "* HEAD detached at 61536fc\n M AGENTS.md\n?? .codex/\n?? .venv\n?? RTK.md\n?? tests/test_adr0017_planted.py\n"
+    },
+    {
+      "runtime": "codex",
+      "input": {
+        "session_id": "adr0017-synthetic-session",
+        "transcript_path": "<SCRATCH_HOME>/nonexistent-transcript.jsonl",
+        "cwd": "<TREE>",
+        "permission_mode": "default",
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_use_id": "adr0017-synthetic-tool",
+        "tool_input": {
+          "command": "uv run ruff check .",
+          "description": "Offline ADR command probe"
+        },
+        "model": "gpt-6-astra",
+        "turn_id": "adr0017-synthetic-turn"
+      },
+      "hook_exit": 0,
+      "hook_output": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "permissionDecisionReason": "RTK auto-rewrite",
+          "updatedInput": {
+            "command": "uv run rtk ruff check .",
+            "description": "Offline ADR command probe"
+          },
+          "permissionDecision": "allow"
+        }
+      },
+      "execution_exit": 0,
+      "execution_output": "Ruff: No issues found\n"
+    },
+    {
+      "runtime": "codex",
+      "input": {
+        "session_id": "adr0017-synthetic-session",
+        "transcript_path": "<SCRATCH_HOME>/nonexistent-transcript.jsonl",
+        "cwd": "<TREE>",
+        "permission_mode": "default",
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_use_id": "adr0017-synthetic-tool",
+        "tool_input": {
+          "command": "uv run pyright",
+          "description": "Offline ADR command probe"
+        },
+        "model": "gpt-6-astra",
+        "turn_id": "adr0017-synthetic-turn"
+      },
+      "hook_exit": 0,
+      "hook_output": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "permissionDecisionReason": "RTK auto-rewrite",
+          "updatedInput": {
+            "command": "rtk uv run pyright",
+            "description": "Offline ADR command probe"
+          },
+          "permissionDecision": "allow"
+        }
+      },
+      "execution_exit": 1,
+      "execution_output": "<TREE>/tests/test_adr0017_planted.py:3:23 - error: Type \"Literal['adr0017-type-marker']\" is not assignable to declared type \"int\"\n\"Literal['adr0017-type-marker']\" is not assignable to \"int\" (reportAssignmentType)\n\n1 error, 0 warnings, 0 informations\n"
+    },
+    {
+      "runtime": "claude",
+      "input": {
+        "session_id": "adr0017-synthetic-session",
+        "transcript_path": "<SCRATCH_HOME>/nonexistent-transcript.jsonl",
+        "cwd": "<TREE>",
+        "permission_mode": "default",
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_use_id": "adr0017-synthetic-tool",
+        "tool_input": {
+          "command": "git status",
+          "description": "Offline ADR command probe"
+        },
+        "prompt_id": "adr0017-synthetic-prompt",
+        "scratchpad_dir": "<SCRATCH_HOME>/scratchpad"
+      },
+      "hook_exit": 0,
+      "hook_output": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "permissionDecisionReason": "RTK auto-rewrite",
+          "updatedInput": {
+            "command": "rtk git status",
+            "description": "Offline ADR command probe"
+          }
+        }
+      },
+      "execution_exit": 0,
+      "execution_output": "* HEAD detached at 61536fc\n M AGENTS.md\n?? .codex/\n?? .venv\n?? RTK.md\n?? tests/test_adr0017_planted.py\n"
+    },
+    {
+      "runtime": "claude",
+      "input": {
+        "session_id": "adr0017-synthetic-session",
+        "transcript_path": "<SCRATCH_HOME>/nonexistent-transcript.jsonl",
+        "cwd": "<TREE>",
+        "permission_mode": "default",
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_use_id": "adr0017-synthetic-tool",
+        "tool_input": {
+          "command": "uv run ruff check .",
+          "description": "Offline ADR command probe"
+        },
+        "prompt_id": "adr0017-synthetic-prompt",
+        "scratchpad_dir": "<SCRATCH_HOME>/scratchpad"
+      },
+      "hook_exit": 0,
+      "hook_output": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "permissionDecisionReason": "RTK auto-rewrite",
+          "updatedInput": {
+            "command": "uv run rtk ruff check .",
+            "description": "Offline ADR command probe"
+          }
+        }
+      },
+      "execution_exit": 0,
+      "execution_output": "Ruff: No issues found\n"
+    },
+    {
+      "runtime": "claude",
+      "input": {
+        "session_id": "adr0017-synthetic-session",
+        "transcript_path": "<SCRATCH_HOME>/nonexistent-transcript.jsonl",
+        "cwd": "<TREE>",
+        "permission_mode": "default",
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_use_id": "adr0017-synthetic-tool",
+        "tool_input": {
+          "command": "uv run pyright",
+          "description": "Offline ADR command probe"
+        },
+        "prompt_id": "adr0017-synthetic-prompt",
+        "scratchpad_dir": "<SCRATCH_HOME>/scratchpad"
+      },
+      "hook_exit": 0,
+      "hook_output": {
+        "hookSpecificOutput": {
+          "hookEventName": "PreToolUse",
+          "permissionDecisionReason": "RTK auto-rewrite",
+          "updatedInput": {
+            "command": "rtk uv run pyright",
+            "description": "Offline ADR command probe"
+          }
+        }
+      },
+      "execution_exit": 1,
+      "execution_output": "<TREE>/tests/test_adr0017_planted.py:3:23 - error: Type \"Literal['adr0017-type-marker']\" is not assignable to declared type \"int\"\n\"Literal['adr0017-type-marker']\" is not assignable to \"int\" (reportAssignmentType)\n\n1 error, 0 warnings, 0 informations\n"
+    }
+  ],
+  "settings": {
+    ".codex/hooks.json": {
+      "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "Bash",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "rtk hook codex"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "<SCRATCH_HOME>/.claude/settings.json": {
+      "hooks": {
+        "PreToolUse": [
+          {
+            "matcher": "Bash",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "rtk hook claude"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
