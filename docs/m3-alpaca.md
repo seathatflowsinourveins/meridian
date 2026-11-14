@@ -3,7 +3,7 @@
 Study written 2026-11-12 for M3 (plan 9.2); current behavior checked against `7bec9f4`, 2026-11-13.
 Historical sources: public `seathatflowsinourveins/sextant` at `33cdee7` and `sextant-paper` at `a991b73`, read with `gh api`, cited as `repo@commit:path:lines` or `repo#N`.
 A second reader re-checked each study claim at its source, not the note as it stands. Nothing here talked to Alpaca.
-Owner setup, commands, pass criteria and records: [handbook](HANDBOOK.md#alpaca-paper-lane-m3-owner-only).
+Owner setup, commands, pass criteria and records: [lanes](LANES.md#alpaca-paper-lane-m3-owner-only).
 
 ## 1. The earlier adapter
 
@@ -45,7 +45,7 @@ Offline coverage: `tests/test_alpaca_{wire,trade_updates,reconcile,node,paper,da
 - Executions pass once, never if the engine already holds them (including fills inferred from a read/check); out-of-sequence executions are gaps. Reads below known fills are reread. No report is volunteered ahead of stream fills; such a stream report is a gap.
 - `reconcile.py` reads the whole order history and refuses gaps; missing, malformed or engine-mismatched symbols refuse. Section 4 covers withheld unloaded history, pre-history fills and fixed, value-free stage traces. Ended unmappable history (`replaced`, brackets) is counted without fills and refuses with them.
 - Engine settings on rc9: no missing-order generation, unbounded lookback, unresolved submissions retained; open-order checks replace in-flight checks (the old node had neither), with no individual wait setting over a minute.
-- `data.py`: session-selected JSON decimal-text quotes (`alpaca_sessions.session_at` shares New York windows; admission also requires calendar rows), pinned host before sign-in, no REST; lost/unreadable/unmapped streams latch failure. Unusable `quote_age_ns` is None; execution loads instruments. [Quote-size restrictions and the lane's age limit](HANDBOOK.md#alpaca-paper-lane-m3-owner-only).
+- `data.py`: session-selected JSON decimal-text quotes (`alpaca_sessions.session_at` shares New York windows; admission also requires calendar rows), pinned host before sign-in, no REST; lost/unreadable/unmapped streams latch failure. Unusable `quote_age_ns` is None; execution loads instruments. [Quote-size restrictions and the lane's age limit](LANES.md#alpaca-paper-lane-m3-owner-only).
 - Connect refuses without sourced per-fill commission. `AlpacaPaperExecClientConfig.for_paper_equities()` uses `meridian/alpaca/commission.py`: zero USD for paper US-equity fills only, no real-trading cost model. Its two dated citations and exact quotes show that paper excludes regulatory fees but does not mention commissions; the commission page supplies that statement.
 - Unlike the earlier line, alpaca-py 0.45.0's asynchronous trade stream runs on the node loop and is pinned to the paper host before sign-in (websockets would follow redirects); every REST call has a timeout (open in sextant#463).
 - Order paging asks one microsecond past the edge, preserving edge rows for inclusive or exclusive `until` (the old pager refused exclusive). FILL paging stops past the oldest listed order. Another writer's activity stops new orders; its startup rule is in the handbook.
@@ -60,7 +60,7 @@ Omitted: modify/successor lineage, trailing stops and exit guard (protection, M4
 | ended orders in unloaded symbols | withheld and counted; a working one, at any leg depth, refuses | `test_failure_case_2_*` |
 | fills older than the order history | counted; a newer unexplained fill still refuses | `test_failure_case_3_*` |
 | start 3's whole shape | 437 orders and 8,822 fills: passes, reading 5 FILL pages, not 89 | `test_the_third_starts_shape_*` |
-| an old writer's orders | ended ones are history; [working-order rule](HANDBOOK.md#alpaca-paper-lane-m3-owner-only) | `test_failure_case_1_*` |
+| an old writer's orders | ended ones are history; [working-order rule](LANES.md#alpaca-paper-lane-m3-owner-only) | `test_failure_case_1_*` |
 | a fresh rc9 node treats every earlier order as external and drops it unless claimed | the strategy claims its universe (`external_order_instrument_ids`) | `test_without_the_claim_*` |
 
 ## 5. Order-budget interface
@@ -70,7 +70,7 @@ Omitted: modify/successor lineage, trailing stops and exit guard (protection, M4
 
 ## 6. Keys
 
-See [owner credential setup and the prepared unit](HANDBOOK.md#alpaca-credentials).
+See [owner credential setup and the prepared unit](LANES.md#alpaca-credentials).
 
 ## 7. Replay data on the Sextant disk
 
@@ -88,4 +88,4 @@ Receipts carry an account-scope hash: `meridian-evidence` only. They check repla
 
 ## 8. Left for the owner
 
-Owner steps: [keys, local rows, quote-age limit, attended restart and first order after confirming the previous writer stopped](HANDBOOK.md#alpaca-paper-lane-m3-owner-only); the section 7 subset, if wanted; the handbook command has not been run by an agent.
+Owner steps: [keys, local rows, quote-age limit, attended restart and first order after confirming the previous writer stopped](LANES.md#alpaca-paper-lane-m3-owner-only); the section 7 subset, if wanted; the handbook command has not been run by an agent.
