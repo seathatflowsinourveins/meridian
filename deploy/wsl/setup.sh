@@ -16,6 +16,9 @@
 #     codex-bridge  the Codex review plugin for Claude Code
 #     claude-hud    the claude-hud status line for Claude Code, beside Orca's usage reporter
 #   deploy/wsl/setup.sh agents-check  verify the agent runtimes and their settings
+#   deploy/wsl/setup.sh drift         installed against pinned; exit 0 when upkeep is due (changes nothing)
+#   deploy/wsl/setup.sh upkeep        bring this machine to the pins (not Orca's server: the owner's step)
+#   deploy/wsl/setup.sh orca-automation  once: the weekly Orca automation that opens upkeep pull requests
 #   deploy/wsl/setup.sh signins       list the sign-ins left for the owner, with their commands
 #   deploy/wsl/setup.sh orca-pair     owner, once, in Windows Terminal: pair the Windows Orca app
 #
@@ -1011,6 +1014,121 @@ cmd_gateway() {
   echo "start it with: ${GATEWAY_DIR}/ibgateway   (then log in to Paper Trading yourself)"
 }
 
+# Upkeep. Three pieces close the loop the weekly landscape watch opens (deploy/landscape_watch.py
+# reports new releases in the GitHub issue labelled `landscape`):
+#   drift            read-only: installed against pinned; exit 0 when there is something to do
+#   upkeep           this machine to the pins, and Claude Code to its newest release
+#   orca-automation  a weekly Orca automation: when drift says so, a worker moves the pins and
+#                    opens one pull request, which lands through review like any other
+drift_report() {
+  # stdin: one "name installed pinned" line per runtime; "-" stands for "not installed".
+  # Returns 0 when any runtime is off its pin.
+  local name have pin state due=1
+  while read -r name have pin; do
+    if [ "${have}" = "${pin}" ]; then
+      state="at the pin"
+    elif [ "${have}" != "-" ] && version_ge "${have}" "${pin}"; then
+      state="ahead of the pin"
+      due=0
+    else
+      state="behind the pin"
+      due=0
+    fi
+    printf '%-12s installed %-12s pinned %-12s %s\n' "${name}" "${have}" "${pin}" "${state}"
+  done
+  return "${due}"
+}
+
+claude_hud_version() {
+  jq -r '.plugins["claude-hud@claude-hud"][0].version // empty' "${HOME}/.claude/plugins/installed_plugins.json" 2>/dev/null
+}
+
+cmd_drift() {
+  # Nothing is installed or changed. The one network read is the list of open issues.
+  # `drift --pull` is the scheduled precheck: it runs from the main checkout, so it first
+  # fast-forwards that checkout and starts again from the script as it then is.
+  local due=1 issue v
+  if [ "${1:-}" = "--pull" ]; then
+    git -C "$(dirname "$(readlink -f "$0")")" pull -q --ff-only \
+      || echo "note: this checkout could not be fast-forwarded; its pins may be old"
+    exec "$0" drift
+  fi
+  v() { local have; have="$("$1" 2>/dev/null || true)"; printf '%s' "${have:--}"; }
+  drift_report <<EOF && due=0
+claude-code $(v claude_version) ${CLAUDE_VERSION}
+codex $(v codex_version) ${CODEX_VERSION}
+agy $(v agy_version) ${AGY_VERSION}
+dsh $(v dsh_version) ${DSH_VERSION}
+dsh-tui $(v dsh_tui_version) ${DSH_TUI_VERSION}
+orca $(v orca_version) ${ORCA_VERSION}
+gh $(v gh_version) ${GH_VERSION}
+claude-hud $(v claude_hud_version) ${CLAUDE_HUD_VERSION}
+EOF
+  issue="$(cd "$(dirname "$(readlink -f "$0")")" && gh_cli issue list --label landscape --state open --json number --jq '.[0].number' 2>/dev/null || true)"
+  if [ -n "${issue}" ]; then
+    echo "the weekly landscape watch has an open report: issue #${issue}"
+    due=0
+  fi
+  if [ "${due}" = 0 ]; then echo "drift: there is upkeep to do"; else echo "drift: nothing is due"; fi
+  return "${due}"
+}
+
+cmd_upkeep() {
+  # Claude Code's own updater first (it checks its download itself, as in a session the owner
+  # starts); then each installer, which does nothing when its runtime is at or ahead of the pin
+  # and otherwise installs the pinned release with its checksum check. Orca is left out: a new
+  # server restarts every session, so that step stays the owner's.
+  "${HOME}/.local/bin/claude" update </dev/null || echo "note: claude update did not complete"
+  cmd_claude
+  cmd_codex
+  cmd_agy
+  cmd_dsh
+  cmd_codex_bridge
+  cmd_claude_hud
+  version_ge "$(orca_version)" "${ORCA_VERSION}" \
+    || echo "owner: Orca $(orca_version) is behind its pin ${ORCA_VERSION}; run deploy/wsl/setup.sh orca when no session is working"
+}
+
+UPKEEP_NAME="Meridian upkeep"
+UPKEEP_PRECHECK="${REPO_DIR}/deploy/wsl/setup.sh drift --pull"
+UPKEEP_PROMPT='Weekly upkeep of the agent runtimes of this repository. Read AGENTS.md first: its boundaries hold here.
+
+Do this, in order:
+1. Run `deploy/wsl/setup.sh upkeep`, then `deploy/wsl/setup.sh drift`. Read the open GitHub issue labelled `landscape`, if there is one.
+2. For each runtime that drift shows ahead of its pin, or that the issue lists with a newer release (Claude Code, Codex, Antigravity, DeepSeek Harness, dsh-tui, Orca, gh, claude-hud): read its release notes at the source, then move its pin in deploy/wsl/setup.sh with the checksum, integrity value or signed manifest its installer already checks, and bring its UPSTREAM.md row up to date in place. claude-hud moves only to a tag whose commit GitHub marks verified.
+3. Claude Code: read its changelog between the old pin and the new one. For each setting or feature that is new, off by default and useful to this setup, either add it to claude_settings and check_claude with a test, or name it in the pull request as considered and left out, with the reason.
+4. If the installed Orca is newer than the version named in .agents/skills/NOTICE.md, refresh the two copied skills the way that file describes.
+5. If a model newer than the lead or worker model ids in deploy/wsl/setup.sh is listed on its vendor'"'"'s models page, say so in the pull request. Do not change a model id.
+6. Run `uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest`. Open one pull request with what changed and what you read. If nothing was due, say so and open none.
+
+Never: merge a pull request; run `deploy/wsl/setup.sh orca`, `orca-ide open` or `orca-ide serve`, or stop or restart the orca-serve service; start a lane (any `python -m meridian.` command); read or print a key or credential; edit anything under risk/ or a *.contract.json; add a plugin, skill or MCP server. Everything else a working session needs is allowed.'
+
+upkeep_automation() {
+  orca_cli automations list --json \
+    | jq -c --arg name "${UPKEEP_NAME}" '[.result.automations // .automations // [] | .[] | select(.name == $name)][0] // empty'
+}
+
+cmd_orca_automation() {
+  # Created once and then left alone: its schedule and prompt are the owner's to edit in Orca.
+  if [ -z "$(upkeep_automation)" ]; then
+    orca_cli automations create --name "${UPKEEP_NAME}" \
+      --trigger weekly --day 1 --time 07:00 --timezone America/New_York \
+      --provider claude --extra-agent-args="--model claude-opus-5-5" \
+      --repo "path:${REPO_DIR}" --setup run \
+      --precheck "${UPKEEP_PRECHECK}" --precheck-timeout 120 \
+      --prompt "${UPKEEP_PROMPT}" --enabled --json >/dev/null
+  fi
+  check_orca_automation
+}
+
+check_orca_automation() {
+  upkeep_automation | jq -e --arg precheck "${UPKEEP_PRECHECK}" '
+    .enabled == true and .precheck.command == $precheck
+  ' >/dev/null \
+    || fail "the Orca automation \"${UPKEEP_NAME}\" is missing, disabled or without its drift precheck (run: deploy/wsl/setup.sh orca-automation)"
+  ok "Orca automation \"${UPKEEP_NAME}\": weekly, behind the drift precheck"
+}
+
 case "${1:-}" in
   check) cmd_check ;;
   uv) cmd_uv ;;
@@ -1022,6 +1140,9 @@ case "${1:-}" in
   orca) cmd_orca ;;
   codex-bridge) cmd_codex_bridge ;;
   claude-hud) cmd_claude_hud ;;
+  drift) cmd_drift "${2:-}" ;;
+  upkeep) cmd_upkeep ;;
+  orca-automation) cmd_orca_automation ;;
   agents)
     cmd_claude
     cmd_codex
@@ -1042,8 +1163,9 @@ case "${1:-}" in
     check_orca
     check_codex_bridge
     check_claude_hud
+    check_orca_automation
     ;;
   repo) cmd_repo ;;
   gateway) cmd_gateway ;;
-  *) sed -n '2,23p' "$0"; exit 2 ;;
+  *) sed -n '2,26p' "$0"; exit 2 ;;
 esac
