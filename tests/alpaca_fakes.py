@@ -206,7 +206,24 @@ class FakeVenue:
             symbol = path.removeprefix("/assets/")
             if symbol not in self.assets:
                 raise api_error(404)
-            return {"id": uuid(), "class": "us_equity", "symbol": symbol, "tradable": True}
+            return {
+                "id": uuid(),
+                "class": "us_equity",
+                "symbol": symbol,
+                "tradable": True,
+                "overnight_tradable": True,
+                "overnight_halted": False,
+            }
+        if path == "/calendar":
+            return [
+                {
+                    "date": data["start"],
+                    "open": "09:30",
+                    "close": "16:00",
+                    "session_open": "0400",
+                    "session_close": "2000",
+                }
+            ]
         if path == "/positions":
             return [dict(row) for row in self.positions]
         if path == "/orders":
@@ -567,7 +584,8 @@ async def run(node: LiveNode, seconds: float = 10) -> BaseException | None:
     try:
         async with asyncio.timeout(seconds):
             await node.run_async()
-    except Exception as exc:
+    except (Exception, asyncio.CancelledError) as exc:
+        # Cancellation during a failed test also retains the native run awaitable.
         # Without its traceback: the frames would hold the node, and a node is one per thread.
         exc.__traceback__ = exc.__context__ = exc.__cause__ = None
         return exc

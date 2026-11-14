@@ -1,8 +1,9 @@
-"""IEX quotes only, after rc9's examples/live/_template/data.py; no REST calls.
+"""Session-selected prices only, after rc9's examples/live/_template/data.py; no REST calls.
 
 Alpaca's market-data-faq (read 2026-11-13) assigns regular users, including paper
 credentials, stream.data.alpaca.markets; its sandbox is for broker partners.
-The Basic plan includes IEX only (about-market-data-api, same date).
+Free overnight quotes are real-time indicative; pre/after-market uses delayed
+SIP. See alpaca_sessions.py and UPSTREAM.md (24/5 pages, read 2026-11-13).
 
 alpaca-py 0.45.0's StockDataStream supplies configuration and quote dispatch. Its
 MsgPack decoder and typed Quote use floats, so the wire hooks below use Alpaca's
@@ -36,12 +37,15 @@ from nautilus_trader.config import DataClientConfig
 from nautilus_trader.live.clients import DataClientFactory, MarketDataClient
 from nautilus_trader.model import Equity, InstrumentId, Price, Quantity, QuoteTick
 
+from meridian.alpaca_sessions import SIP_DELAY_NS, Session, session_ns
+
 from .constants import VENUE
 from .credentials import PaperKeys, load_paper_keys
 from .reports import decimal_text, timestamp_ns
 
 DATA_HOST = "stream.data.alpaca.markets"
 DATA_URL = "wss://stream.data.alpaca.markets/v2/iex"
+FEED_PATHS = {"iex": "/v2/iex", "overnight": "/v1beta1/overnight", "delayed_sip": "/v2/delayed_sip"}
 # Basic equities websocket limit: about-market-data-api (read 2026-11-13).
 MAX_SYMBOLS = 30
 # Authentication must finish within 10 seconds: streaming-market-data, same date.
@@ -79,7 +83,7 @@ def decode_frame(raw: Any) -> list[dict]:
     return rows
 
 
-class IexQuoteStream(StockDataStream):
+class AlpacaQuoteStream(StockDataStream):
     """The pinned SDK stream, JSON wire hooks, and no threaded or automatic runner."""
 
     def __init__(self, keys: PaperKeys) -> None:
@@ -90,6 +94,7 @@ class IexQuoteStream(StockDataStream):
             feed=DataFeed.IEX,
             url_override=DATA_URL,
         )
+        self.feed = "iex"
         # Keep the pinned SDK's ping defaults. Explicit host/port prevent cross-origin
         # redirects in locked websockets; disable environment proxy discovery.
         self._pinned_params: dict[str, Any] = {
@@ -99,11 +104,18 @@ class IexQuoteStream(StockDataStream):
             "proxy": None,
         }
 
+    def select_feed(self, feed: str) -> None:
+        if feed not in FEED_PATHS:
+            raise ValueError("unsupported quote feed")
+        self.feed = feed
+        self._endpoint = "wss://" + DATA_HOST + FEED_PATHS[feed]
+
     async def _connect(self) -> None:
-        if self._endpoint != DATA_URL:
+        endpoint = "wss://" + DATA_HOST + FEED_PATHS[self.feed]
+        if self._endpoint != endpoint:
             raise ConnectionError("quote endpoint changed")
         self._ws = await websockets.connect(
-            DATA_URL,
+            endpoint,
             additional_headers={"Content-Type": "application/json"},
             **self._pinned_params,
         )
@@ -113,7 +125,7 @@ class IexQuoteStream(StockDataStream):
             or not uri.secure
             or uri.host != DATA_HOST
             or uri.port != 443
-            or uri.path != "/v2/iex"
+            or uri.path != FEED_PATHS[self.feed]
         ):
             await self.close()
             raise ConnectionError("quote stream host or feed mismatch")
@@ -149,7 +161,9 @@ class IexQuoteStream(StockDataStream):
 class AlpacaQuoteClient(MarketDataClient):
     """One stream; failed data stays unusable until a new client is constructed."""
 
-    def __init__(self, *, quote_config: AlpacaQuoteConfig, stream: IexQuoteStream, **kwargs: Any):
+    def __init__(
+        self, *, quote_config: AlpacaQuoteConfig, stream: AlpacaQuoteStream, **kwargs: Any
+    ):
         super().__init__(config=quote_config, venue=VENUE, **kwargs)
         self._config = quote_config
         self._stream = stream
@@ -158,6 +172,13 @@ class AlpacaQuoteClient(MarketDataClient):
         self._acknowledged: set[str] = set()
         self._pending: list[set[str]] = []
         self._last: dict[InstrumentId, int] = {}
+        self._received: dict[InstrumentId, int] = {}
+        self.session: Session | None = None
+        self.session_now: Callable[[], Session | None] = lambda: session_ns(
+            self.clock.timestamp_ns()
+        )
+        self._switch_lock = asyncio.Lock()
+        self._stream_ready = asyncio.Event()
         self._task: asyncio.Task | None = None
         self.failure_reason: str | None = None
         self.stream_live = False
@@ -171,6 +192,7 @@ class AlpacaQuoteClient(MarketDataClient):
         stamp = self._last.get(instrument_id)
         if (
             not self.stream_live
+            or self.session != self.session_now()
             or self.failure_reason
             or stamp is None
             or instrument_id.symbol.value not in self._acknowledged
@@ -178,7 +200,10 @@ class AlpacaQuoteClient(MarketDataClient):
         ):
             return None
         age = self.clock.timestamp_ns() - stamp
-        return age if age >= 0 else None
+        if age < 0:
+            return None
+        delay = SIP_DELAY_NS if self.session and self.session.feed == "delayed_sip" else 0
+        return max(age, delay + self.clock.timestamp_ns() - self._received[instrument_id])
 
     def _fail(self, reason: str) -> None:
         self.failure_reason = self.failure_reason or reason
@@ -189,9 +214,7 @@ class AlpacaQuoteClient(MarketDataClient):
         if self.failure_reason:
             raise RuntimeError("quote client failed; construct a new client")
         try:
-            async with asyncio.timeout(AUTH_TIMEOUT):
-                await self._stream._start_ws()
-            self.stream_live = True
+            await self._switch_session()
             self._task = self.create_task(self._read(), "alpaca-quotes")
         except asyncio.CancelledError:
             self._fail("quote stream connection cancelled")
@@ -201,6 +224,34 @@ class AlpacaQuoteClient(MarketDataClient):
             self._fail("quote stream connection failed")
             await self._stream.close()
             raise RuntimeError(self.failure_reason) from None
+
+    @property
+    def feed(self) -> str | None:
+        return None if self.session is None else self.session.feed
+
+    async def _switch_session(self) -> None:
+        async with self._switch_lock:
+            current = self.session_now()
+            if self.session == current and (self.stream_live or current is None):
+                return
+            self.stream_live = False
+            self._stream_ready.clear()
+            self.session = current  # Invalidate a receive before closing its old socket.
+            self._last.clear()
+            self._received.clear()
+            self._acknowledged.clear()
+            self._pending.clear()
+            await self._stream.close()
+            if current is None:
+                return
+            self._stream.select_feed(current.feed)
+            async with asyncio.timeout(AUTH_TIMEOUT):
+                await self._stream._start_ws()
+            self.stream_live = True
+            self._stream_ready.set()
+            if self._subscribed:
+                self._pending.append(set(self._subscribed))
+                await self._stream.subscribe(self._on_quote, sorted(self._subscribed))
 
     async def _disconnect(self) -> None:
         self.stream_live = False
@@ -215,8 +266,10 @@ class AlpacaQuoteClient(MarketDataClient):
 
     async def _subscribe_quotes(self, command: Any) -> None:
         try:
-            if not self.stream_live or self.failure_reason:
+            if self.failure_reason:
                 raise ValueError("quote stream unavailable")
+            if self.session != self.session_now():
+                await self._switch_session()
             ids = command.instrument_ids
             if any(i not in self._config.universe for i in ids):
                 raise ValueError("instrument outside quote universe")
@@ -230,8 +283,9 @@ class AlpacaQuoteClient(MarketDataClient):
             symbols = sorted({i.symbol.value for i in ids} - self._subscribed)
             if symbols:
                 self._subscribed.update(symbols)
-                self._pending.append(set(self._subscribed))
-                await self._stream.subscribe(self._on_quote, symbols)
+                if self.stream_live:
+                    self._pending.append(set(self._subscribed))
+                    await self._stream.subscribe(self._on_quote, symbols)
         except Exception:
             self._fail("quote subscription failed")
             raise RuntimeError(self.failure_reason) from None
@@ -242,7 +296,7 @@ class AlpacaQuoteClient(MarketDataClient):
             self._last.pop(self._universe[symbol], None)
         self._subscribed.difference_update(symbols)
         self._acknowledged.difference_update(symbols)
-        if symbols:
+        if symbols and self.stream_live:
             try:
                 self._pending.append(set(self._subscribed))
                 await self._stream.unsubscribe(symbols)
@@ -252,8 +306,35 @@ class AlpacaQuoteClient(MarketDataClient):
 
     async def _read(self) -> None:
         try:
-            while self.stream_live:
-                for row in await self._stream.receive():
+            while not self.failure_reason:
+                if self.session != self.session_now():
+                    await self._switch_session()
+                if not self.stream_live:
+                    # A subscription can open the feed once execution's calendar
+                    # arrives. Wake immediately: a quiet symbol's only quote must
+                    # not age in the queue behind the closed-session poll.
+                    try:
+                        async with asyncio.timeout(1):
+                            await self._stream_ready.wait()
+                    except TimeoutError:
+                        pass
+                    continue
+                receiving_session = self.session
+                timeout = asyncio.timeout(1)
+                try:
+                    async with timeout:
+                        rows = await self._stream.receive()
+                except TimeoutError:
+                    if timeout.expired():
+                        continue
+                    raise  # A transport timeout is a failure, not the session poll timer.
+                except Exception:
+                    if self.session != receiving_session:
+                        continue  # A subscription changed sessions and closed that socket.
+                    raise
+                if self.session != receiving_session or self.session != self.session_now():
+                    continue  # Never publish a frame from the previous session.
+                for row in rows:
                     if row.get("T") == "subscription":
                         symbols = row.get("quotes")
                         if (
@@ -283,7 +364,7 @@ class AlpacaQuoteClient(MarketDataClient):
             await self._stream.close()
 
     async def _on_quote(self, row: Any) -> None:
-        if self.failure_reason or not self.stream_live:
+        if self.failure_reason or not self.stream_live or self.session != self.session_now():
             return
         iid = self._universe[row["S"]]
         instrument = self.cache.instrument(iid)
@@ -293,6 +374,8 @@ class AlpacaQuoteClient(MarketDataClient):
         event = timestamp_ns(row.get("t"), "quote timestamp")
         if event <= 0 or event > now:
             raise ValueError("invalid quote time")
+        if self.session is None or event < int(self.session.start.timestamp()) * 1_000_000_000:
+            return  # Old session quotes cannot authorize an order, even with a large age limit.
         prices = [decimal_text(row.get(key), key) for key in ("bp", "ap")]
         if any(value <= 0 for value in prices) or prices[0] > prices[1]:
             raise ValueError("invalid quote prices")
@@ -306,8 +389,9 @@ class AlpacaQuoteClient(MarketDataClient):
         unknown = Quantity.from_decimal_dp(Decimal(0), instrument.size_precision)
         if event <= self._last.get(iid, 0):
             return  # replayed/out-of-order quotes do not refresh the last event
-        self._handle_data(QuoteTick(iid, bid, ask, unknown, unknown, event, now))
         self._last[iid] = event
+        self._received[iid] = now
+        self._handle_data(QuoteTick(iid, bid, ask, unknown, unknown, event, now))
 
 
 class AlpacaQuoteFactory(DataClientFactory):
@@ -325,7 +409,7 @@ def build_quote_client(
     cache: Any,
     clock: Any,
     keys: Callable[[], PaperKeys] = load_paper_keys,
-    stream: Callable[[PaperKeys], IexQuoteStream] = IexQuoteStream,
+    stream: Callable[[PaperKeys], AlpacaQuoteStream] = AlpacaQuoteStream,
 ) -> AlpacaQuoteClient:
     if not isinstance(config, AlpacaQuoteConfig):
         raise TypeError("expected AlpacaQuoteConfig")

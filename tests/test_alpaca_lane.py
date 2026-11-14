@@ -130,6 +130,7 @@ def test_record_pass_and_scrubbing(lane, monkeypatch, settings_file, tmp_path, m
     )
     if mode == "order":
         record.order_built(type="LIMIT", time_in_force="DAY", side="BUY", quantity="1")
+        record.data["venue_working_seen"] = True
         record.event("OrderAccepted", 1)
         record.event("OrderCanceled", 2)
     record.reason("fake", "private-account-marker")
@@ -175,6 +176,7 @@ def test_failed_record_never_becomes_evidence(lane, monkeypatch, settings_file, 
     record.data["checks_unchanged_after_run"] = problem != "gate"
     record.order_built(type="LIMIT", time_in_force="DAY", side="BUY", quantity="1")
     if problem != "not_accepted":
+        record.data["venue_working_seen"] = True
         record.event("OrderAccepted", 1)
     if problem == "fill":
         record.event("OrderFilled", 2)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -18,15 +18,17 @@ import nautilus_trader
 from nautilus_trader.common import Environment
 from nautilus_trader.live import LiveNode, LiveNodeConfig
 from nautilus_trader.live.clients import DataClientFactory, ExecutionClientFactory
-from nautilus_trader.model import TraderId
+from nautilus_trader.model import ClientOrderId, TraderId
 
 from meridian import boundary
+from meridian.alpaca.budget import ActionKind
 from meridian.alpaca.config import AlpacaPaperExecClientConfig
 from meridian.alpaca.data import AlpacaQuoteConfig, AlpacaQuoteFactory
 from meridian.alpaca.execution import AlpacaPaperExecutionClient
 from meridian.alpaca.factories import build_client, production_wiring
 from meridian.alpaca.reconcile import engine_config
 from meridian.alpaca_lane import INSTRUMENT, Preflight, RunRecord
+from meridian.alpaca_sessions import Session, session_ns
 from meridian.alpaca_strategy import HOUSE_PREFIX, INSTRUMENT_ID
 from meridian.alpaca_strategy import OnePaperOrder as OnePaperOrder
 from meridian.ibkr_node import AUTO_STOP_SECONDS, _output_to
@@ -41,9 +43,55 @@ class LaneExecutionClient(AlpacaPaperExecutionClient):
     record: RunRecord
     quote_usable: Callable[[], bool]
 
+    calendar: dict[date, dict] | None = None
+    working_orders: set[str]
+    working_callback: Callable[[ClientOrderId], None]
+
+    def current_session(self) -> Session | None:
+        return session_ns(self.clock.timestamp_ns(), self.calendar or {})
+
+    async def _connect(self) -> None:
+        await super()._connect()
+        window = session_ns(self.clock.timestamp_ns())
+        self.calendar = {}
+        if window is not None:
+            day = window.trade_date
+            end = day + timedelta(days=1)
+            rows = await self._call(
+                ActionKind.QUERY,
+                "get",
+                "/calendar",
+                {"start": day.isoformat(), "end": end.isoformat()},
+            )
+            if not isinstance(rows, list) or len(rows) > 2:
+                raise ValueError("invalid lane calendar")
+            for row in rows:
+                if not isinstance(row, dict) or not isinstance(row.get("date"), str):
+                    raise ValueError("invalid lane calendar date")
+                trade_day = date.fromisoformat(row["date"])
+                if not day <= trade_day <= end or trade_day in self.calendar:
+                    raise ValueError("invalid lane calendar date")
+                self.calendar[trade_day] = row
+            current = self.current_session()  # Validate before startup completes.
+            self.record.data["session"] = "closed" if current is None else current.name
+            self.record.data["feed"] = None if current is None else current.feed
+
+    def _order_report(self, row: Any) -> Any:
+        report = super()._order_report(row)
+        # Engine ACCEPTED also represents broker acknowledgement/held states.
+        # Only venue `new` proves routing; a queued-and-cancelled order cannot pass.
+        if row.get("status") == "new" and self._is_house(row.get("client_order_id")):
+            self.record.data["venue_working_seen"] = True
+            self.working_orders.add(row["client_order_id"])
+            self.working_callback(ClientOrderId(row["client_order_id"]))
+        return report
+
     def _submit_admitted(self) -> bool:
+        current = self.current_session()
         return (
             self.record.data["mode"] == "order"
+            and current is not None
+            and current.name == self.record.data["session"]
             and self.quote_usable()
             and super()._submit_admitted()
         )
@@ -66,14 +114,24 @@ def build(state: Preflight, record: RunRecord) -> LiveNode:
 
     def usable() -> bool:
         quote = clients.get("quote")
+        execution = clients.get("execution")
+        session = None if execution is None else execution.current_session()
         age = None if quote is None else quote.quote_age_ns(INSTRUMENT_ID)
-        return type(age) is int and 0 <= age < state.settings.quote_max_age_ns
+        if record.data["order"] is None:
+            record.data["session"] = "closed" if session is None else session.name
+            record.data["feed"] = None if quote is None else quote.feed
+        return (
+            session is not None and type(age) is int and 0 <= age < state.settings.quote_max_age_ns
+        )
 
     class QuoteFactory(DataClientFactory):
         @staticmethod
         def create(**kwargs):
             client = AlpacaQuoteFactory.create(**kwargs)
             clients["quote"] = client
+            client.session_now = lambda: (
+                clients["execution"].current_session() if "execution" in clients else None
+            )
             return client
 
     class ExecFactory(ExecutionClientFactory):
@@ -87,6 +145,8 @@ def build(state: Preflight, record: RunRecord) -> LiveNode:
             assert isinstance(client, LaneExecutionClient)
             client.record = record
             client.quote_usable = usable
+            client.working_orders = set()
+            client.working_callback = lambda cid: clients["strategy"].on_venue_working(cid)
             clients["execution"] = client
             return client
 
@@ -109,6 +169,10 @@ def build(state: Preflight, record: RunRecord) -> LiveNode:
         data_factories={"ALPACA": QuoteFactory},
     )
     strategy = OnePaperOrder()
+    clients["strategy"] = strategy
+    strategy.venue_working = lambda cid: (
+        "execution" in clients and cid.value in clients["execution"].working_orders
+    )
     strategy._record = record
     strategy.quote_usable = usable
     strategy.execution_healthy = lambda: bool(
