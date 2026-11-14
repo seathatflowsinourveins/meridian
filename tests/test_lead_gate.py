@@ -1049,6 +1049,7 @@ def test_claude_review_base_excludes_commits_on_origin_with_stale_local_main(
     [
         "I found no issues",
         "I found no issues in this diff.",
+        "OK\n```JSON\n[]\n```",
         "The review is clean.\n```json\n[]\n```\nNothing to change.",
         'Any surrounding prose\n```json\n{"findings": []}\n```\nDone.',
     ],
@@ -1067,21 +1068,26 @@ def test_auto_accepts_clean_prose_and_fenced_empty_findings(
     assert json.loads(g.review_file("feature").read_text())["findings"] == []
 
 
+@pytest.mark.parametrize("final", ["I could not complete the review.", '{"findings": [null]}'])
 def test_unknown_review_goes_to_lead_not_worker(
     repo: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    final: str,
 ):
     g, fake = make(repo, ["pass"])
     body = tmp_path / "body"
     body.write_text("body")
     output = []
     g.say = output.append
-    fake_reviewer(monkeypatch, "I could not complete the review.")
+    fake_reviewer(monkeypatch, final)
     assert not g.auto("feature", "codex", "title", body)
     assert output[-1].startswith("LEAD ACTION:") and "unclassified" in output[-1]
     assert not any("SEND TO WORKER" in text for text in output) and not fake.calls
-    assert "I could not complete" in g._state_file("feature").with_suffix(".review.log").read_text()
+    assert (
+        final
+        in json.loads(g._state_file("feature").with_suffix(".review.log").read_text())["result"]
+    )
 
 
 @pytest.mark.parametrize(

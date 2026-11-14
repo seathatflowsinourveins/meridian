@@ -514,7 +514,7 @@ class Gate:
     def findings(final: str) -> list[dict]:
         """Structured arrays are authoritative; unknown prose belongs to the lead."""
         arrays = []
-        candidates = [final, *re.findall(r"```(?:json)?\s*\n(.*?)\n```", final, re.S)]
+        candidates = [final, *re.findall(r"```(?:json)?\s*\n(.*?)\n```", final, re.S | re.I)]
         for candidate in candidates:
             try:
                 value = json.loads(candidate)
@@ -524,6 +524,16 @@ class Gate:
             except ValueError, KeyError, TypeError:
                 continue
         if arrays:
+            for items in arrays:
+                for item in items:
+                    if (
+                        not isinstance(item, (str, dict))
+                        or not item
+                        or (isinstance(item, str) and not item.strip())
+                    ):
+                        raise Refused(
+                            "unclassified reviewer findings; lead must inspect the review log"
+                        )
             return [
                 {
                     "text": json.dumps(item) if isinstance(item, dict) else str(item),
