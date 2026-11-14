@@ -26,7 +26,7 @@ class AlpacaPaperExecClientConfig(ExecutionClientConfig):
 
     `commission_per_fill` is decimal text in USD and `commission_source` the official page it
     was read from. No Alpaca fill carries a fee, so without both the client refuses to connect
-    rather than invent one (the earlier line's rule; see docs/m3-alpaca.md).
+    rather than invent one (the earlier line's rule; see docs/adr/data/m3-alpaca.md).
     """
 
     def __init__(
