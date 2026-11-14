@@ -21,6 +21,8 @@ from meridian.alpaca.pacing import load_controls
 MODES = ("restart", "order")
 INSTRUMENT = "AAPL.ALPACA"  # Same equity as the upstream IBKR stock example.
 DEFAULT_SETTINGS = boundary.REPO_ROOT / "local/alpaca-lane.json"
+SETTINGS_FIELDS = ("order_budget_rows_path", "quote_max_age_ns")
+CONSENT = "unattended_orders_enabled"  # optional; only `true` consents
 
 
 class Refused(ValueError):
@@ -31,6 +33,8 @@ class Refused(ValueError):
 class Settings:
     rows_path: str = field(repr=False)
     quote_max_age_ns: int = field(repr=False)
+    # The owner's standing consent to unattended orders; the attended lane ignores it.
+    unattended_orders_enabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -60,11 +64,18 @@ def load_settings(path: Path) -> Settings:
     try:
         path = _private_path(path)
         row = json.loads(path.read_text(encoding="utf-8"))
-        if isinstance(row, dict) and set(row) == {"order_budget_rows_path", "quote_max_age_ns"}:
+        if isinstance(row, dict) and set(row) - {CONSENT} == {*SETTINGS_FIELDS}:
             rows, age = row["order_budget_rows_path"], row["quote_max_age_ns"]
-            if isinstance(rows, str) and rows.strip() and type(age) is int and age > 0:
+            consent = row.get(CONSENT)
+            if (
+                isinstance(rows, str)
+                and rows.strip()
+                and type(age) is int
+                and age > 0
+                and (consent is None or type(consent) is bool)
+            ):
                 rows_path = _private_path(path.parent / rows)
-                result = Settings(str(rows_path), age)
+                result = Settings(str(rows_path), age, consent is True)
     except OSError, ValueError, TypeError:
         pass
     if result is None:

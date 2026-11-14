@@ -163,13 +163,40 @@ All quotes are synthetic, generated in process: no market or recorded data, no r
 PASS means accepted, then cancelled, nothing filled and flat at stop; any fill means FAIL.
 Records go only to `runs/*-simulation.json`, never `evidence/`; it is offline and keyless.
 
+### Unattended Alpaca lane (M7)
+
+On the owner's instruction of 2026-11-13 ("you nmeed to resolute all in your end", "sudo with
+full sota automation seamless workflow") the landing session installs and enables these units;
+the owner can overrule. The engine places every order: no agent types PAPER or reads a key.
+
+- **Install or update** (idempotent; sudo): `deploy/wsl/setup.sh unattended` puts the checked-out
+  commit in `/opt/meridian/releases/<commit>` (`current` points to it), creates the settings and
+  rows files in `/etc/meridian-alpaca-paper/` from the templates if absent (root-owned, read by
+  `paper`), `/var/lib/meridian-alpaca-paper` and the three units, then enables both timers.
+  Keys: `docs/m3-alpaca.md` section 6. Fill the settings' nulls with sudo; the step sets none.
+- **Consent and schedule**: `unattended_orders_enabled: true` is the owner's standing consent;
+  null or false refuses `order`. `restart` 09:45 and 16:15, `order` 10:00, Monday to Friday, New
+  York time; no holiday calendar, no catch-up of a missed run.
+- **Refusals** (fixed text, nothing sent): not the unit with both credentials; settings writable
+  by `paper`; for `order`, no consent, a hold, or `order_window_open` false (09:30-15:55 NY today).
+- **Hold file** `/var/lib/meridian-alpaca-paper/hold`: written before an order run's engine starts
+  and removed only on a pass; a failed restart writes one. It refuses `order`, not `restart`. Read
+  the last record, settle the account by hand if needed, then `sudo rm` the hold.
+- **Watch**: `deploy/wsl/setup.sh unattended-check` (units, timers, last results, next runs, the
+  hold); `sudo -u paper /opt/meridian/current/.venv/bin/python -m meridian.alpaca_unattended
+  status` (last outcomes); `journalctl -u 'meridian-alpaca-paper@*'`. Records ("Run records",
+  plus `"unattended": true`) go to the state directory's `runs/` (full) and `evidence/` (scrubbed
+  passes), never to this repository.
+- **Stop**: `sudo systemctl disable --now meridian-alpaca-order.timer`, set the consent to false,
+  or leave a hold file. Not yet run: the install, the credentials as `paper`, an unattended run.
+
 ## Rules
 
 | Rule | Where it is held | How |
 |---|---|---|
 | Paper only: no route to a real-money account is created, enabled or tested | `meridian/boundary.py` for IBKR; the sandbox's wiring; Alpaca's hard-coded paper endpoint (M3) | refused at run time |
 | | `tests/test_paper_only.py`: live endpoints, ports, trading modes, key names | CI tripwire |
-| Only the engine places orders; no agent, script, skill or MCP server gets an order tool or broker connector; no agent starts a lane | `AGENTS.md` | rule |
+| Only the engine places orders; no agent, script, skill or MCP server gets an order tool or broker connector; no agent starts a lane; unattended runs only from the Alpaca units | `AGENTS.md`; `meridian/alpaca_unattended.py` | rule; refused at run time |
 | `risk/` and `*.contract.json` belong to the owner | `AGENTS.md`; `.gitignore` keeps every contract copy out of git | rule |
 | No credential or key value is read, printed, copied or moved | `AGENTS.md`; gitleaks over the whole history in CI | rule; CI tripwire |
 | Nothing derived from an account and no calibrated parameter in this public repository; such data goes to the private `meridian-evidence` | `tests/test_public_tree.py` (account-id shapes, allowlist copies); run records scrubbed before writing | CI tripwire |

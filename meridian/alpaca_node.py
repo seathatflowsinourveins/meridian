@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import nautilus_trader
@@ -135,9 +136,11 @@ async def run_until_stop(node: Any, seconds: int) -> None:
         await asyncio.gather(timer, return_exceptions=True)
 
 
-def run(state: Preflight, record: RunRecord) -> None:
+def run(state: Preflight, record: RunRecord, log_dir: Path | None = None) -> None:
+    """Engine output goes to `log_dir` (the unattended unit's state), else the tree's runs/."""
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    path = boundary.REPO_ROOT / "runs" / f"M3-alpaca-paper-{stamp}-{record.data['mode']}-engine.log"
+    folder = boundary.REPO_ROOT / "runs" if log_dir is None else log_dir
+    path = folder / f"M3-alpaca-paper-{stamp}-{record.data['mode']}-engine.log"
     # Catch and report only fixed text, including build errors and interruption.
     try:
         with _output_to(path):

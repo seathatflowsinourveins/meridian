@@ -1,0 +1,7 @@
+# One order run per weekday, inside the lane's 09:30-15:55 window; no [Install]: owner enables it.
+[Unit]
+Description=Meridian Alpaca paper lane: one unattended order run per trading day
+
+[Timer]
+OnCalendar=Mon..Fri 10:00 America/New_York
+Unit=meridian-alpaca-paper@order.service

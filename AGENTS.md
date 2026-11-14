@@ -10,9 +10,10 @@ Lanes, rules, budgets and run records: `docs/HANDBOOK.md`. Size limits: `size-bu
   key name appears. That scan is a tripwire; the boundary itself is `meridian/boundary.py`.
 - **`risk/` and `*.contract.json` belong to the owner.** Read them. Never create or edit them.
 - **Only the engine places orders**, in a run the owner starts and attends in a terminal Orca
-  did not start. No agent, script or tool call submits, changes or cancels an order, and no
-  agent starts the lane in any mode or works around its typed-word check. That check only
-  proves a terminal, and any Orca session can type into one (`orca-ide terminal send`).
+  did not start, or in the Alpaca units enabled on the owner's instruction (`docs/HANDBOOK.md`).
+  No agent, script or tool call submits, changes or cancels an order, and no agent starts the
+  lane in any mode or works around its typed-word check. That check only proves a terminal, and
+  any Orca session can type into one (`orca-ide terminal send`).
 - **Never read, print, copy or move a credential or key value.**
 - **Account ids stay out of the repo and out of `evidence/`.** The allowlist holds SHA-256
   hashes. A hash of a short id can be reversed by trying every id, so treat

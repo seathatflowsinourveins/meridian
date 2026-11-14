@@ -27,7 +27,7 @@ from meridian.alpaca.factories import paper_stream
 from meridian.alpaca.wire import PaperTradingClient
 
 PACKAGE = REPO_ROOT / "meridian" / "alpaca"
-UNIT = REPO_ROOT / "deploy" / "systemd" / "meridian-alpaca-paper.service"
+UNIT = REPO_ROOT / "deploy" / "systemd" / "meridian-alpaca-paper@.service"
 HOST = re.compile(r"(?:[a-z0-9-]+\.)*alpaca\.markets")
 # The shape Alpaca API key ids are commonly issued in: PK (paper) or AK (live) and 16 to 20
 # more capitals or digits. An observed convention, used here only as a tripwire.
@@ -216,7 +216,9 @@ def test_the_unit_runs_as_paper_and_reads_both_keys_as_encrypted_credentials():
     assert sorted(loaded) == sorted(
         f"{name}:/etc/credstore.encrypted/{name}" for name in CREDENTIAL_NAMES
     )
-    assert settings[("[Service]", "ExecStart")].endswith("-m meridian.alpaca.credentials")
+    assert settings[("[Service]", "ExecStart")] == (
+        "/opt/meridian/current/.venv/bin/python -m meridian.alpaca_unattended %i"
+    )
 
 
 def test_the_unit_holds_no_value_and_cannot_be_enabled():
@@ -225,7 +227,7 @@ def test_the_unit_holds_no_value_and_cannot_be_enabled():
     # No value can travel in the unit: no environment, no inline or imported credential.
     assert not keys & {"Environment", "EnvironmentFile", "SetCredential", "SetCredentialEncrypted"}
     assert "ImportCredential" not in keys and "LoadCredential" not in keys
-    # Prepared, not enabled: without an [Install] section `systemctl enable` has nothing to do.
+    # Without an [Install] section `systemctl enable` has nothing to do; the owner adds the wants.
     assert "[Install]" not in {section for section, _, _ in rows}
     text = UNIT.read_text()
     assert HOST.search(text) is None

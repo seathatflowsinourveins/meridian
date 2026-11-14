@@ -124,7 +124,7 @@ A cancel costs two requests (read, DELETE); readers stop at the budget's page co
 
 ## 6. Keys
 
-`deploy/systemd/meridian-alpaca-paper.service` runs as `paper` and loads two encrypted credentials
+`deploy/systemd/meridian-alpaca-paper@.service` runs as `paper` and loads two encrypted credentials
 by absolute path, so a missing file stops it before it starts; the code also refuses without
 them and never reads the environment. The owner, in a distro terminal (no TPM, so the host key):
 
@@ -134,8 +134,8 @@ systemd-ask-password -n "Alpaca paper key id:" | sudo systemd-creds encrypt --wi
 systemd-ask-password -n "Alpaca paper secret key:" | sudo systemd-creds encrypt --with-key=host --name=alpaca-paper-secret-key - /etc/credstore.encrypted/alpaca-paper-secret-key
 ```
 
-The unit is not installed and has no `[Install]` section. It still
-runs only `python -m meridian.alpaca.credentials`: presence, no socket. M7 installs `/opt/meridian`.
+It is now the unattended lane's template unit (handbook, "Unattended Alpaca lane"), with no
+`[Install]` section: `setup.sh unattended` installs it in `/opt/meridian` and enables its timers.
 
 ## 7. Replay data on the Sextant disk
 
