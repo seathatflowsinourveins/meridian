@@ -184,7 +184,7 @@ Records go only to `runs/*-simulation.json`, never `evidence/`; it is offline an
 | No credential or key value is read, printed, copied or moved | `AGENTS.md`; gitleaks over the whole history in CI | rule; CI tripwire |
 | Nothing derived from an account and no calibrated parameter in this public repository; such data goes to the private `meridian-evidence` | `tests/test_public_tree.py` (account-id shapes, allowlist copies); run records scrubbed before writing | CI tripwire |
 | CI is fork-safe: no self-hosted runner, no `pull_request_target`, no secret a fork could reach | `tests/test_public_tree.py` | CI tripwire |
-| Every install or integration has an `UPSTREAM.md` row, marked upstream or own design | `AGENTS.md` | rule |
+| Every install, integration or build-on has an `UPSTREAM.md` row and code-area map | `upstream-map.toml`, `tests/test_upstream_gate.py` | CI |
 | Upstream files are verbatim copies; harvested own-design files say what changed | `tests/test_upstream_unmodified.py`, `tests/test_order_budget_harvest.py` | CI |
 | New Python releases wait 7 days; the engine is pinned exactly | `pyproject.toml` (`exclude-newer`), Dependabot's cooldown | resolver |
 | One evidence ADR per ecosystem addition, at most 60 lines | `docs/adr/README.md`, `tests/test_size_budget.py` | rule; CI |
@@ -192,6 +192,11 @@ Records go only to `runs/*-simulation.json`, never `evidence/`; it is offline an
 | The owner sets goals; a goal never names a lane run, an order, the IB Gateway, port 4002 or a step only the owner takes | "Goals" below | rule |
 | Work is reviewed by a different model family before it merges; findings are fixed or closed with a reason; nothing auto-files issues | plan 9.5 | rule |
 | One writer per account; plain DAY LIMIT entries, no brackets | plan 9.1 | rule; the M1 record fails an order that is not a DAY LIMIT |
+
+The upstream gate requires every file under `meridian/` and `deploy/` to match exactly one
+map entry, each citing an upstream row, its feature and why local work is needed; unused
+entries fail. Project dependencies and groups name register rows with the locked versions.
+Add the row and map entry with the change; the check runs offline in the normal test suite.
 
 A tripwire catches a mistake, not a determined change: agents here run in bypass mode and can
 edit the tests too. The owner's GitHub settings are the lock, where GitHub offers one.

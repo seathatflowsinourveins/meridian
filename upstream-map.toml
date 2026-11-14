@@ -1,0 +1,29 @@
+# Row names are exact UPSTREAM.md cells; paths use case-sensitive fnmatch (* includes /).
+# Each own-design area names its upstream feature and the gap it fills.
+[areas]
+"meridian/__init__.py" = { upstream = "NautilusTrader", how = "integrate", feature = "Python package", why = "the harness needs its own namespace" }
+"meridian/boundary.py" = { upstream = "NautilusTrader IB integration guide and reconciliation concept", how = "build-on", feature = "paper Gateway configuration", why = "the lane must verify paper state before constructing the engine" }
+"meridian/ib_probe.py" = { upstream = "IBKR Python API client source, read as text and not installed", how = "build-on", feature = "managed-accounts handshake", why = "the engine adapter trusts the configured account" }
+"meridian/ibkr_node.py" = { upstream = "`upstream/.../interactive_brokers/ib_v2_order_strategies.py`", how = "build-on", feature = "IbV2OrderStrategy", why = "the attended lane needs bounded order and fill proofs" }
+"meridian/ibkr_paper.py" = { upstream = "NautilusTrader", how = "build-on", feature = "IB node and reconciliation", why = "owner confirmation and scrubbed records are harness policy" }
+"meridian/sandbox_*.py" = { upstream = "Upstream example `examples/live/sandbox/exec_tester.py` (read, not copied)", how = "build-on", feature = "simulated execution with ExecTester", why = "the lane needs IB data and the paper gate" }
+"meridian/order_budget/*" = { upstream = "NautilusTrader's own order rate limits (read, not set here)", how = "build-on", feature = "execution request admission", why = "engine limits do not queue cancels and queries under one budget" }
+"meridian/alpaca/*" = { upstream = "NautilusTrader Python adapter interface", how = "build-on", feature = "execution and market-data client hooks", why = "the engine needs an Alpaca paper adapter" }
+"meridian/alpaca_lane.py" = { upstream = "NautilusTrader", how = "build-on", feature = "live node and reconciliation", why = "owner confirmation and scrubbed records are harness policy" }
+"meridian/alpaca_node.py" = { upstream = "NautilusTrader Python adapter interface", how = "build-on", feature = "client factories and node configuration", why = "the node must wire the paper adapter and bounded strategy" }
+"meridian/alpaca_strategy.py" = { upstream = "`upstream/.../interactive_brokers/ib_v2_order_strategies.py`", how = "build-on", feature = "once-only quote trigger and DAY LIMIT helper", why = "the strategy needs Alpaca instruments and the lane record" }
+"meridian/alpaca_sim.py" = { upstream = "NautilusTrader native `BacktestEngine`, cash simulated venue and `StaticLatencyModel`", how = "build-on", feature = "synthetic backtest and native latency", why = "the offline proof needs the lane strategy and run record" }
+"meridian/alpaca_sessions.py" = { upstream = "Alpaca 24/5 sessions and free overnight data", how = "build-on", feature = "New York session windows and calendar rules", why = "the lane needs shared scheduling and order-admission decisions" }
+"deploy/alpaca-lane.template.json" = { upstream = "NautilusTrader", how = "integrate", feature = "node and strategy settings", why = "the owner supplies lane settings separately from code" }
+"deploy/alpaca-order-budget.template.json" = { upstream = "Alpaca Trading API rate limit", how = "build-on", feature = "per-account request ceiling", why = "the owner must supply reviewed pacing controls" }
+"deploy/systemd/*" = { upstream = "systemd credentials (`LoadCredentialEncrypted=`, `systemd-creds`, `systemd-ask-password`)", how = "integrate", feature = "service credentials", why = "the lane needs a dedicated paper service definition" }
+"deploy/wsl/meridian.user-data" = { upstream = "cloud-init, WSL datasource", how = "integrate", feature = "first-boot distro configuration", why = "the image needs the harness users and settings" }
+"deploy/wsl/setup.sh" = { upstream = "Ubuntu WSL image", how = "install", feature = "user-level tool installation", why = "the distro needs the register's pinned tools and checks" }
+
+# Explicit aliases avoid guessing a package name from a prose component label.
+[dependencies]
+alpaca-py = "alpaca-py"
+nautilus-trader = "NautilusTrader"
+pyright = "pyright (with `nodejs-wheel-binaries` 24.19.0)"
+pytest = "pytest"
+ruff = "ruff"
