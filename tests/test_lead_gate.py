@@ -9,7 +9,7 @@ import importlib.util
 import json
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +51,8 @@ class FakeGh:
 
     def __init__(self, origin: Path, ci: list[str]) -> None:
         self.origin, self.ci, self.calls, self.branch = origin, ci, [], ""
+        self.on_checks: Callable[[], None] = lambda: None  # runs as CI is read
+        self.after_merge: Callable[[], None] = lambda: None  # runs right after the merge
 
     def __call__(self, args: Sequence[str]) -> str:
         args = list(args)
@@ -61,6 +63,7 @@ class FakeGh:
             self.branch = args[args.index("--head") + 1]
             return "https://github.invalid/o/r/pull/7"
         if args[:2] == ["pr", "checks"] and "--json" in args:
+            self.on_checks()
             return json.dumps([{"name": f"c{i}", "bucket": b} for i, b in enumerate(self.ci)])
         if args[:2] == ["pr", "merge"]:
             head = sh(self.origin, "rev-parse", f"refs/heads/{self.branch}")
@@ -68,6 +71,7 @@ class FakeGh:
             tree = sh(self.origin, "rev-parse", f"{head}^{{tree}}")
             new = sh(self.origin, "commit-tree", tree, "-p", "main", "-m", "squash")
             sh(self.origin, "update-ref", "refs/heads/main", new)
+            self.after_merge()
         return ""
 
 
@@ -96,10 +100,10 @@ def make(repo: Path, ci: list[str], passing: bool = True) -> tuple[Any, FakeGh]:
     return g, fake
 
 
-def move_main(repo: Path) -> None:
-    other = repo.parent / "other"
+def move_main(repo: Path, name: str = "c.txt") -> None:
+    other = repo.parent / f"other-{name}"
     subprocess.run(["git", "clone", "-q", str(repo.parent / "origin.git"), str(other)], check=True)
-    commit(other, "c.txt", "c\n", "main moved")
+    commit(other, name, "c\n", "main moved")
     sh(other, "push", "-q", "origin", "main")
 
 
@@ -155,3 +159,62 @@ def test_one_landing_at_a_time(repo: Path):
         g.trial("second")
     g.release()
     assert g.trial("second")
+
+
+def opened(g: Any, tmp_path: Path) -> None:
+    (tmp_path / "b.md").write_text("b\n")
+    g.open("feature", "t", tmp_path / "b.md", tmp_path / "b.md", wait=False)
+
+
+@pytest.mark.parametrize("fix", [False, True])
+def test_a_retried_trial_keeps_the_pushed_merge_so_its_push_fast_forwards(
+    repo: Path, tmp_path: Path, fix: bool
+):
+    g, _ = make(repo, ["pass"])
+    move_main(repo, "c.txt")
+    assert g.trial("feature")  # merges main in a detached tree; the local branch stays put
+    opened(g, tmp_path)
+    move_main(repo, "d.txt")  # main moves again
+    if fix:  # and the worker commits a fix on its local branch, which lacks the pushed merge
+        sh(repo, "checkout", "-q", "feature")
+        commit(repo, "e.txt", "e\n", "fix")
+        sh(repo, "checkout", "-q", "main")
+    assert g.trial("feature")
+    opened(g, tmp_path)  # a non-fast-forward push would raise here
+    g.land("feature")
+
+
+def test_main_is_compared_as_the_last_step_before_the_merge(repo: Path, tmp_path: Path):
+    g, fake = make(repo, ["pass"])
+    assert g.trial("feature")
+    opened(g, tmp_path)
+    fake.on_checks = lambda: move_main(repo)  # main moves while CI is read
+    with pytest.raises(gate.Refused, match="main moved"):
+        g.land("feature")
+    assert not any(c[:2] == ["pr", "merge"] for c in fake.calls)
+
+
+def test_main_moving_during_the_merge_is_a_loud_fail(repo: Path, tmp_path: Path):
+    g, fake = make(repo, ["pass"])
+    assert g.trial("feature")
+    opened(g, tmp_path)
+    fake.after_merge = lambda: move_main(repo)
+    tested = g.state("feature")["tree"]
+    with pytest.raises(gate.Refused, match="run the checks on main") as failed:
+        g.land("feature")
+    assert str(failed.value).startswith("FAIL") and tested in str(failed.value)
+
+
+def test_open_and_land_need_their_own_lock(repo: Path, tmp_path: Path):
+    sh(repo, "branch", "second", "feature")
+    g, fake = make(repo, ["pass"])
+    assert g.trial("feature")
+    opened(g, tmp_path)
+    assert g.release() == "feature"
+    assert g.trial("second")
+    with pytest.raises(gate.Refused, match="does not name feature"):
+        g.land("feature")
+    with pytest.raises(gate.Refused, match="does not name feature"):
+        opened(g, tmp_path)
+    assert g.holder() == "second"  # the other landing's lock is untouched
+    assert not any(c[:2] == ["pr", "merge"] for c in fake.calls)

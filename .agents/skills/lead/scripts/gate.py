@@ -9,7 +9,17 @@
 It wraps `git`, `gh` (its own sign-in; this script reads no token) and the checks, and prints a
 few lines. State and check logs live under the repository's common git directory, in
 `meridian-gate/`, never in the tree. The lock is a file there naming the branch that is landing:
-`trial` takes it, `land` drops it, and another branch's `trial` refuses while it is held.
+`trial` takes it; `open` and `land` go on only while it names their branch; a landing drops only
+its own lock, and `release` is the explicit override that says whose lock it dropped.
+
+A retried trial keeps the earlier pushed trial merge in its ancestry (it merges the branch as
+pushed to origin before main), so its push is a fast-forward.
+
+Remaining window: `land` fetches main and compares the trial-merged tree as the last step before
+`gh pr merge`, but GitHub's merge is not conditioned on main's revision, so a push to main in the
+seconds between that fetch and the merge lands an untested tree; the post-merge comparison then
+FAILs loudly. Only branch protection requiring an up-to-date branch (also for administrators), an
+owner's repository setting, closes it.
 """
 
 from __future__ import annotations
@@ -88,8 +98,25 @@ class Gate:
             if holder != branch:
                 raise Refused(f"{holder} is landing; one landing at a time") from None
 
-    def release(self) -> None:
+    def holder(self) -> str | None:
+        lock = self.home / "lock"
+        return lock.read_text() if lock.is_file() else None
+
+    def _own_lock(self, branch: str) -> None:
+        holder = self.holder()
+        if holder != branch:
+            who = f"{holder} holds it" if holder else "nobody holds it"
+            raise Refused(f"the landing lock does not name {branch} ({who}); run trial {branch}")
+
+    def _drop_own_lock(self, branch: str) -> None:
+        if self.holder() == branch:
+            (self.home / "lock").unlink()
+
+    def release(self) -> str | None:
+        holder = self.holder()
         (self.home / "lock").unlink(missing_ok=True)
+        self.say(f"released the lock of {holder}" if holder else "no lock was held")
+        return holder
 
     def _main(self) -> str:
         git(self.repo, "fetch", "-q", "origin")
@@ -108,14 +135,16 @@ class Gate:
             git(self.repo, "worktree", "add", "-q", "--detach", str(wt), head)
             try:
                 tested = head
+                pushed = self._remote_branch(branch)
+                if pushed and pushed != head and not self._is_ancestor(pushed, head):
+                    # The earlier trial's merge is on origin; keep it so the push fast-forwards.
+                    if self._merge(wt, pushed):
+                        raise Refused(f"{branch} does not merge cleanly with its pushed trial")
+                    tested = git(wt, "rev-parse", "HEAD")
                 if subprocess.run(
-                    ["git", "-C", str(wt), "merge-base", "--is-ancestor", main, head]
+                    ["git", "-C", str(wt), "merge-base", "--is-ancestor", main, tested]
                 ).returncode:
-                    merged = subprocess.run(
-                        ["git", "-C", str(wt), "merge", "-q", "--no-edit", main],
-                        capture_output=True,
-                    )
-                    if merged.returncode:
+                    if self._merge(wt, main):
                         raise Refused("origin/main does not merge cleanly; merge it on the branch")
                     tested = git(wt, "rev-parse", "HEAD")
                 results = self._run_checks(wt, branch)
@@ -138,6 +167,30 @@ class Gate:
         self.say(f"{'PASS' if ok else 'FAIL'} {branch}: tested {tested[:12]} on main {main[:12]}")
         return ok
 
+    def _remote_branch(self, branch: str) -> str | None:
+        out = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(self.repo),
+                "rev-parse",
+                "--verify",
+                "-q",
+                f"refs/remotes/origin/{branch}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        return out.stdout.strip() if out.returncode == 0 else None
+
+    def _is_ancestor(self, a: str, b: str) -> bool:
+        cmd = ["git", "-C", str(self.repo), "merge-base", "--is-ancestor", a, b]
+        return subprocess.run(cmd).returncode == 0
+
+    def _merge(self, wt: Path, rev: str) -> int:
+        cmd = ["git", "-C", str(wt), "merge", "-q", "--no-edit", rev]
+        return subprocess.run(cmd, capture_output=True).returncode
+
     def _run_checks(self, wt: Path, branch: str) -> list[dict]:
         log = self.home / (branch.replace("/", "__") + ".log")
         results = []
@@ -159,6 +212,7 @@ class Gate:
 
     # --- (b) open ------------------------------------------------------------------------------
     def open(self, branch: str, title: str, body: Path, review: Path, wait: bool = True) -> int:
+        self._own_lock(branch)
         st = self.state(branch)
         if not st["passed"]:
             failed = [r["check"] for r in st["checks"] if not r["passed"]]
@@ -193,17 +247,12 @@ class Gate:
 
     # --- (c) land ------------------------------------------------------------------------------
     def land(self, branch: str, squash: Path | None = None) -> None:
+        self._own_lock(branch)
         st = self.state(branch)
         if not st["passed"]:
             raise Refused("the trial failed; nothing lands")
         if "pr" not in st:
             raise Refused("no pull request recorded; run open first")
-        main = self._main()
-        if self._merged_tree(main, st["tested"]) != st["tree"]:
-            raise Refused(
-                f"main moved ({st['main'][:12]} -> {main[:12]}) and the merged tree "
-                "differs from the tested one; run trial again"
-            )
         checks = json.loads(self.gh(["pr", "checks", str(st["pr"]), "--json", "name,bucket"]))
         red = [c["name"] for c in checks if c["bucket"] not in GREEN]
         if not checks or red:
@@ -212,12 +261,21 @@ class Gate:
         if squash is not None:
             subject, _, rest = squash.read_text().partition("\n")
             args += ["--subject", subject, "--body", rest.strip()]
+        # Last step before the merge call: main as it is now must still give the tested tree.
+        main = self._main()
+        if self._merged_tree(main, st["tested"]) != st["tree"]:
+            raise Refused(
+                f"main moved ({st['main'][:12]} -> {main[:12]}) and the merged tree "
+                "differs from the tested one; run trial again"
+            )
         self.gh(args)
-        landed = git(self.repo, "rev-parse", f"{self._main()}^{{tree}}")
-        self.release()
+        after = self._main()
+        landed = git(self.repo, "rev-parse", f"{after}^{{tree}}")
+        self._drop_own_lock(branch)
         if landed != st["tree"]:
             raise Refused(
-                f"MISMATCH: main's tree {landed[:12]} is not the tested {st['tree'][:12]}"
+                f"FAIL: main {after[:12]} has tree {landed}, not the tested tree {st['tree']}; "
+                "main moved during the merge and holds an untested tree: run the checks on main now"
             )
         self.say(f"LANDED #{st['pr']}: main's tree equals the tested tree {landed[:12]}")
 
