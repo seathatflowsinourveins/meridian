@@ -11,6 +11,12 @@ is in the order path.
 selection (maintained, leading, one upstream per job) in one ADR, without a with-and-without
 run per item (`docs/adr/README.md`).
 
+2026-11-13 (ADR 0018, the Codex worker stack): `Yeachan-Heo/oh-my-codex` moves from "measured
+here and not adopted" to layer 7, in use for Codex; `DietrichGebert/ponytail` from "measure" to
+in use, as a Codex plugin; `rtk-ai/rtk` is not adopted (ADR 0017).
+2026-11-14 (ADR 0018): `oraios/serena` is in use for Codex as its MCP server for navigation and
+diagnostics (layer 7 row); its placement stays in layer 8, where ADR 0016 put it.
+
 ### Layer 1, base system
 | Job | Rests on | State |
 |---|---|---|
@@ -80,12 +86,15 @@ run per item (`docs/adr/README.md`).
 ### Layer 7, skills and context
 | Job | Rests on | State |
 |---|---|---|
+| Claude session lifecycle | `Yeachan-Heo/oh-my-claudecode` 5.8.4 | selected 2026-11-13; ADR 0019, install after merge |
 | Skill format | `agentskills/agentskills`, Orca's two skills, the built-in "You should know" | in use |
 | The few-line instruction file | the four maintained sources named in section 1 | add |
-| Shell-output compression | `rtk-ai/rtk` | measure |
+| Shell-output compression | `rtk-ai/rtk` | not adopted, 2026-11-13 (ADR 0017) |
 | Status line: context, plan limits, activity, and token and cost accounting | `jarrodwatts/claude-hud` (ADR 0015) | in use |
 | Token and cost accounting for DeepSeek Harness | `kenn-io/agentsview` (reads dsh's sessions) | in use for DeepSeek Harness (ADR 0016) |
-| Write-less-code skill | `DietrichGebert/ponytail` | measure |
+| Write-less-code skill | `DietrichGebert/ponytail` | in use for Codex, 2026-11-13 (ADR 0018) |
+| Codex workflow layer | `Yeachan-Heo/oh-my-codex` | in use, 2026-11-13 (ADR 0018) |
+| Code navigation and diagnostics for Codex | `oraios/serena` | in use, 2026-11-14 (ADR 0018) |
 | DeepSeek Harness skills: spec, self-review, source reading, test first, root cause, proof before "done", research, the pull request body | `addyosmani/agent-skills`, `obra/superpowers`, `mattpocock/skills` (single folders at a pin) | in use for DeepSeek Harness (ADR 0016) |
 | Structural search | `ast-grep/ast-grep` | in use for DeepSeek Harness (ADR 0016) |
 
@@ -191,13 +200,13 @@ so the rows with `starred` = no go from 17 to 18.
 | `ast-grep/ast-grep` | Layer 7, skills and context | yes | no |
 | `ccusage/ccusage` | Context and status tools | no | no |
 | `DietrichGebert/ponytail` | Layer 7, skills and context | yes | yes |
+| `Yeachan-Heo/oh-my-codex` | Layer 7, skills and context | yes | yes |
 | `gastownhall/beads` | Layer 8, memory and retrieval | yes | yes |
 | `microsoft/markitdown` | Layer 8, memory and retrieval | yes | yes |
 | `VectifyAI/PageIndex` | Layer 8, memory and retrieval | yes | yes |
 | `obra/superpowers` | Layer 7, skills and context | yes | yes |
 | `EveryInc/compound-engineering-plugin` | Measured here and not adopted | no | yes |
 | `openai/plugins` | Measured here and not adopted | no | yes |
-| `Yeachan-Heo/oh-my-codex` | Measured here and not adopted | no | yes |
 | `trailofbits/skills` | Measured here and not adopted | no | yes |
 | `awesome-dsh-plugin/awesome-dsh-plugin` | Measured here and not adopted | no | yes |
 | `MinishLab/semble` | Measured here and not adopted | no | yes |
@@ -333,7 +342,7 @@ so the rows with `starred` = no go from 17 to 18.
 | `affaan-m/ECC` | Skill packs and frameworks | no | yes |
 | `addyosmani/agent-skills` | Layer 7, skills and context | yes | yes |
 | `wshobson/agents` | Skill packs and frameworks | no | yes |
-| `Yeachan-Heo/oh-my-claudecode` | Skill packs and frameworks | no | yes |
+| `Yeachan-Heo/oh-my-claudecode` | Layer 7, skills and context | yes | yes |
 | `SuperClaude-Org/SuperClaude_Framework` | Skill packs and frameworks | no | yes |
 | `tw93/Waza` | Skill packs and frameworks | no | yes |
 | `mindfold-ai/Trellis` | Skill packs and frameworks | no | yes |
@@ -547,3 +556,5 @@ so the rows with `starred` = no go from 17 to 18.
 | `ZSeven-W/openpencil` | Outside the ecosystem | no | yes |
 | `Osmantic/ODS` | Outside the ecosystem | no | yes |
 | `languagetool-org/languagetool` | Outside the ecosystem | no | yes |
+
+2026-11-14: oh-my-claudecode moved from Skill packs and frameworks into architecture layer 7, admitted by the owner on 2026-11-13; user lifecycle only, Orca retains the fleet (ADR 0019).

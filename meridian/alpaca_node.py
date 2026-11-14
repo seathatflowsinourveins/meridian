@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import nautilus_trader
@@ -74,6 +75,9 @@ class LaneExecutionClient(AlpacaPaperExecutionClient):
             current = self.current_session()  # Validate before startup completes.
             self.record.data["session"] = "closed" if current is None else current.name
             self.record.data["feed"] = None if current is None else current.feed
+            # Only here, after the venue's own calendar was read: the unattended lane skips
+            # rather than fails a run on a day this says is closed.
+            self.record.data["venue_closed"] = current is None
 
     def _order_report(self, row: Any) -> Any:
         report = super()._order_report(row)
@@ -199,9 +203,11 @@ async def run_until_stop(node: Any, seconds: int) -> None:
         await asyncio.gather(timer, return_exceptions=True)
 
 
-def run(state: Preflight, record: RunRecord) -> None:
+def run(state: Preflight, record: RunRecord, log_dir: Path | None = None) -> None:
+    """Engine output goes to `log_dir` (the unattended unit's state), else the tree's runs/."""
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    path = boundary.REPO_ROOT / "runs" / f"M3-alpaca-paper-{stamp}-{record.data['mode']}-engine.log"
+    folder = boundary.REPO_ROOT / "runs" if log_dir is None else log_dir
+    path = folder / f"M3-alpaca-paper-{stamp}-{record.data['mode']}-engine.log"
     # Catch and report only fixed text, including build errors and interruption.
     try:
         with _output_to(path):

@@ -20,7 +20,7 @@
 "AGENTS.md" = 30 # the few lines every context loads (plan of 2026-11-13, section 1); 27 now
 "CLAUDE.md" = 1 # only the @AGENTS.md import
 "docs/HANDBOOK.md" = 400 # plan 9.5
-"docs/LANES.md" = 180 # the lanes, runbooks and Orca notes moved from the handbook and AGENTS.md
+"docs/LANES.md" = 191 # the lanes, runbooks and Orca notes moved from the handbook and AGENTS.md; +11 for the M7 unattended runbook (lead, 2026-11-14)
 "docs/adr/README.md" = 80 # the ADR format and the index
 
 [adr]
@@ -29,7 +29,7 @@ max_count = 20 # plan 8.6
 
 [totals]
 agent_instruction_lines = 31 # every AGENTS.md and CLAUDE.md, at any depth
-prose_lines = 2000 # owner-delegated M3 allowance: attended commands, quote-size convention and run criteria
+prose_lines = 2200 # raised by the owner on 2026-11-14 from 2,000 (itself the owner-delegated M3 allowance: attended commands, quote-size convention and run criteria): the stack ADRs of 2026-11-13/14 (Codex, DeepSeek Harness, Claude Code), with their register rows and handbook lines, took the total to the old limit
 config_lines = 520 # 450 before the owner's harness plan of 2026-11-13: its upstream map, dependency groups, weekly watch and unattended units come to 507
 workflows = 2 # lead delegation: weekly landscape issue automation alongside fork-safe CI
 skills = 6 # Orca's two (#1), and room for plan 8.6's first skill candidates
@@ -43,12 +43,17 @@ skills = 6 # Orca's two (#1), and room for plan 8.6's first skill candidates
 # Markdown anywhere else, evidence/ and upstream/ included, is prose.
 adr_data = ["docs/adr/data/*"]
 prose = ["*.md", "*.markdown"]
-not_counted = ["uv.lock", "evidence/*", "upstream/*", "*.py", "*.sh"]
+# upstream-map.toml is the upstream gate's register, like UPSTREAM.md, and its growth is checked by
+# the gate itself (an entry that matches no file fails), so it counts toward no total. The lead's
+# decision under the owner's delegation, put to the owner on 2026-11-14 at 00:48 ET; the owner can
+# overrule it.
+not_counted = ["uv.lock", "evidence/*", "upstream/*", "*.py", "*.sh", "upstream-map.toml"]
 config = [
   "*.toml",
   "*.yml",
   "*.yaml",
   "*.json",
+  "*.jsonc",
   "*.ini",
   "*.cfg",
   "*.conf",
