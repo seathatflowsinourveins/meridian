@@ -381,6 +381,10 @@ Codex's `create_goal` tool tells its model to start a goal only when the user or
 instructions ask; DeepSeek Harness refuses a model-created goal without a direct human request
 in that turn. `codex features list` shows `goals` stable and on.
 
+- DeepSeek Harness from Orca: `orca-ide orchestration worker-start --agent dsh --spec-file <path> --worktree new-child --name <n>`.
+- Headless: `dsh headless --permission-mode workspace-write --approval-policy never --add-dir <git common dir> --json - < task.txt`; a pass is exit 0 and `final.reason.kind` `completed`.
+- Its skills, `lsp` tool, ast-grep, agentsview and completion gate (`dsh-tui` profile only): [ADR 0016](adr/0016-dsh-worker-stack.md).
+
 ## Size budget, ADRs and this file
 
 - `size-budget.toml` sets the limits and `tests/test_size_budget.py` checks them: `AGENTS.md`
