@@ -13,7 +13,6 @@ order history. A failed start must also say why.
 """
 
 import asyncio
-import gc
 import json
 import time
 from decimal import Decimal
@@ -49,6 +48,7 @@ from nautilus_trader.model import (
     TimeInForce,
     VenueOrderId,
 )
+from node_lifetime import live_nodes as live_nodes
 
 from meridian.alpaca.budget import ActionKind
 from meridian.alpaca.execution import (
@@ -59,14 +59,16 @@ from meridian.alpaca.parsing import parse_equity
 from meridian.alpaca.reconcile import OTHER_INSTRUMENT
 from meridian.alpaca.reports import timestamp_ns
 
+pytestmark = pytest.mark.usefixtures("live_nodes")
+
 
 @pytest.fixture(autouse=True)
-def collect_node_cycles():
-    """A LiveNode is one per thread; a test's node, strategy and hooks form reference cycles,
-    so collect them after each test (as NautilusTrader's own `collect_node_cycles` fixture
-    does at v2.0.0rc9, `python/tests/conftest.py`)."""
-    yield
-    gc.collect()
+def regular_session(monkeypatch):
+    from meridian.alpaca import execution
+    from meridian.alpaca_sessions import session_ns
+
+    fixed = timestamp_ns("2026-11-02T15:00:00Z", "synthetic")
+    monkeypatch.setattr(execution, "session_ns", lambda _: session_ns(fixed))
 
 
 def started(seen: dict):

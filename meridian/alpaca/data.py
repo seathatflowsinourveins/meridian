@@ -178,6 +178,7 @@ class AlpacaQuoteClient(MarketDataClient):
             self.clock.timestamp_ns()
         )
         self._switch_lock = asyncio.Lock()
+        self._stream_ready = asyncio.Event()
         self._task: asyncio.Task | None = None
         self.failure_reason: str | None = None
         self.stream_live = False
@@ -234,6 +235,7 @@ class AlpacaQuoteClient(MarketDataClient):
             if self.session == current and (self.stream_live or current is None):
                 return
             self.stream_live = False
+            self._stream_ready.clear()
             self.session = current  # Invalidate a receive before closing its old socket.
             self._last.clear()
             self._received.clear()
@@ -246,6 +248,7 @@ class AlpacaQuoteClient(MarketDataClient):
             async with asyncio.timeout(AUTH_TIMEOUT):
                 await self._stream._start_ws()
             self.stream_live = True
+            self._stream_ready.set()
             if self._subscribed:
                 self._pending.append(set(self._subscribed))
                 await self._stream.subscribe(self._on_quote, sorted(self._subscribed))
@@ -307,7 +310,14 @@ class AlpacaQuoteClient(MarketDataClient):
                 if self.session != self.session_now():
                     await self._switch_session()
                 if not self.stream_live:
-                    await asyncio.sleep(1)
+                    # A subscription can open the feed once execution's calendar
+                    # arrives. Wake immediately: a quiet symbol's only quote must
+                    # not age in the queue behind the closed-session poll.
+                    try:
+                        async with asyncio.timeout(1):
+                            await self._stream_ready.wait()
+                    except TimeoutError:
+                        pass
                     continue
                 receiving_session = self.session
                 timeout = asyncio.timeout(1)
