@@ -151,6 +151,14 @@ class Gate:
                 raise Refused(f"origin/main conflicts with {branch}; the worker resolves it")
         tested = git(wt, "rev-parse", "HEAD")
         results = self._run_checks(wt, branch)
+        # The checks read the worktree: it must still be exactly the commit being certified.
+        moved = git(wt, "rev-parse", "HEAD") != tested
+        dirty = git(wt, "status", "--porcelain")
+        if moved or dirty:
+            why = "HEAD moved" if moved else f"{len(dirty.splitlines())} paths changed"
+            self.say(f"  FAIL the worktree changed during the checks ({why})")
+            last = f"the worktree changed during the checks ({why})"
+            results.append({"check": "worktree unchanged", "passed": False, "last": last})
         ok = all(r["passed"] for r in results)
         tree = git(self.repo, "rev-parse", f"{tested}^{{tree}}")
         state = {"main": main, "tested": tested, "tree": tree, "checks": results, "passed": ok}

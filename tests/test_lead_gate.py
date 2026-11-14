@@ -280,3 +280,17 @@ def test_a_failed_trial_then_an_amended_fix_lands(repo: Path, tmp_path: Path):
     assert g.trial("feature")
     opened(g, tmp_path)
     g.land("feature")
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [["sh", "-c", "echo edited > b.txt"], ["git", "commit", "-q", "--allow-empty", "-m", "x"]],
+)
+def test_a_worktree_changed_during_the_checks_fails_the_trial(repo: Path, edit: list[str]):
+    fake = FakeGh(repo.parent / "origin.git", ["pass"])
+    g = gate.Gate(repo, gh=fake, setup=[], checks=[["test", "-f", "b.txt"], edit])
+    g.say = lambda _line: None
+    assert not g.trial("feature")
+    failed = [r for r in g.state("feature")["checks"] if not r["passed"]]
+    assert [r["check"] for r in failed] == ["worktree unchanged"]
+    assert "changed during the checks" in failed[0]["last"]
