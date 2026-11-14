@@ -1863,7 +1863,7 @@ cmd_gateway() {
 #   upkeep           this machine to the pins, and Claude Code to its newest release
 #   orca-automation  a weekly Orca automation: when drift says so, a worker moves the pins, has
 #                    another model family review the change, lands it through the lead's merge
-#                    gate under the shared landing lock, and applies it with upkeep
+#                    gate (which owns the shared landing lock), and applies it with upkeep
 drift_report() {
   # stdin: one "name installed pinned newest" line per runtime; "-" stands for "not installed"
   # or "not read". Returns 0 when a runtime is off its pin or upstream has a newer release.
@@ -1971,8 +1971,8 @@ Do this, in order:
 3. Claude Code: read its changelog between the old pin and the new one. For each setting or feature that is new, off by default and useful to this setup, either add it to claude_settings and check_claude with a test, or name it in the pull request as considered and left out, with the reason.
 4. If Orca'"'"'s pin moves, the two copied skills move with it: after step 8 has installed the new server, refresh them the way .agents/skills/NOTICE.md describes, in a second small change landed the same way.
 5. If a model newer than the lead or worker model ids in deploy/wsl/setup.sh is listed on its vendor'"'"'s models page, say so in the pull request. Do not change a model id.
-6. Commit on this branch. Have another model family review it: `codex review --base origin/main`, run in this worktree. Fix each finding or answer it with a reason, and write the review, its findings and what you did into the review record for the pull request.
-7. Land it yourself through the merge gate. Take the shared lock for the whole landing (`flock ~/.cache/meridian/landing.lock`) and, inside it, from the main checkout `~/src/meridian` after `git pull --ff-only`, run the gate'"'"'s `trial`, `open` and `land` for this branch as the `lead` skill describes. If the gate refuses or a check fails, fix the cause and run `trial` again; never go around it.
+6. Commit on this branch and prepare the pull request title and body file. The gate in the next step obtains the other model family review and records it.
+7. Land it yourself through the merge gate from the main checkout `~/src/meridian` after `git pull --ff-only`. Register this branch with `register BRANCH --builder claude --task TASK_ID`, then run `auto BRANCH --builder claude TITLE BODY.md` as the `lead` skill describes. The gate runs the Codex review and holds `~/.cache/meridian/landing.lock` itself from `trial` through `land`; run the gate without an outer flock. Triage any `LEAD ACTION` candidates, record closures with `close`, fix confirmed defects, and retry `auto`; never go around it.
 8. After the merge, fast-forward the main checkout (`git -C ~/src/meridian pull --ff-only`) and confirm it holds the merged pins. From there run `~/src/meridian/deploy/wsl/setup.sh upkeep`: it installs the moved pins, Orca'"'"'s server last (its service restarts for a few seconds; the terminals stay). Then run `~/src/meridian/deploy/wsl/setup.sh agents-check` and `~/src/meridian/deploy/wsl/setup.sh drift`, and put the three outputs in a closing comment on the pull request; a runtime that drift still shows behind its pin is a failure to report, not a success.
 
 Never: merge or close any pull request but your own upkeep changes; start a lane (any `python -m meridian.` command); read or print a key or credential; edit anything under risk/ or a *.contract.json; add a plugin, skill or MCP server; change a model id; stop a process you did not start. Everything else a working session needs is allowed.'
