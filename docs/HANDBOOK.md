@@ -310,8 +310,8 @@ R2's band, R3a, R5 and the confidence rule (where: `strategy.py`'s docstring). V
 are counted by kind for the lane's pacer; ratchets are local. Subclass `TrailingTemplate`,
 implement `entry_signal` (and `rank`, `confidence`, `reclaim_qualified` for re-entry; missing
 means wait), and supply every `TemplateParams` value from configuration: there are no defaults.
-Practise offline: `uv run python -m meridian.strategy_template.sim [--copies N]`. Not yet
-wired into a lane.
+The package holds the template (`strategy.py`, `params.py`, `actions.py`) and its offline
+simulation, `uv run python -m meridian.strategy_template.sim [--copies N]`. Not yet in a lane.
 
 1. Start from an upstream template: the strategy template above, a NautilusTrader example or
    built-in strategy at the pinned version, or a cited published method. Name it in the strategy file's docstring (repository,

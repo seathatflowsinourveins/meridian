@@ -48,7 +48,6 @@ Lanes, rules, budgets and run records: `docs/HANDBOOK.md`. Size limits: `size-bu
 | `meridian/ibkr_paper.py`, `meridian/ibkr_node.py` | IBKR paper lane: gate, owner confirmation, run record; the engine side, built on upstream's example |
 | `meridian/order_budget/`, `meridian/sandbox_*.py` | M2: the order budget (the owner's pacer, from Sextant) and the sandbox lane (no broker) |
 | `meridian/alpaca/` | Alpaca paper execution adapter (M3 groundwork, own design); study in `docs/m3-alpaca.md` |
-| `meridian/strategy_template/` | M4: the template every strategy builds on (per-symbol emulated trailing exit, fast sell, re-entry, action counts) and its offline simulation |
 | `deploy/systemd/` | the Alpaca lane's unit for `paper`, prepared and not enabled; keys only as systemd credentials |
 | `upstream/` | upstream example files, unmodified |
 | `.agents/skills/` | skills every agent reads; each has a link in `.claude/skills/` for Claude Code |
