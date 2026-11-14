@@ -569,6 +569,50 @@ def drift_report(lines):
     )
 
 
+def upkeep_hold(tmp_path, reason, step):
+    # upkeep_held alone, then the first lines of cmd_upkeep up to its hold check, on a fake
+    # home: no installer is reached.
+    hold = tmp_path / ".cache" / "meridian" / "upkeep.hold"
+    hold.parent.mkdir(parents=True, exist_ok=True)
+    if reason is not None:
+        hold.write_text(reason)
+    body = setup_function_body("cmd_upkeep")
+    guard = body[: body.index('"${HOME}/.local/bin/claude" update')]
+    program = (
+        f'UPKEEP_HOLD="{hold}"\nfail() {{ echo "FAIL: $*" >&2; exit 1; }}\n'
+        f"upkeep_held() {{\n{setup_function_body('upkeep_held')}\n}}\n"
+        f"guarded_upkeep() {{\n{guard}\n  echo installers-would-run\n}}\n{step}"
+    )
+    return subprocess.run(
+        ["bash", "-eu", "-o", "pipefail", "-c", program],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_a_hold_file_with_a_reason_stops_upkeep_and_says_why(tmp_path):
+    held = upkeep_hold(tmp_path, "ponytail off by hand until the fix lands\n", "guarded_upkeep")
+    assert held.returncode == 1 and "installers-would-run" not in held.stdout
+    assert "ponytail off by hand until the fix lands" in held.stdout
+    assert "installs nothing while it is on hold" in held.stderr
+
+
+@pytest.mark.parametrize("reason", [None, ""])
+def test_no_hold_file_or_an_empty_one_lets_upkeep_run(tmp_path, reason):
+    free = upkeep_hold(tmp_path, reason, "guarded_upkeep")
+    assert free.returncode == 0 and free.stdout == "installers-would-run\n"
+
+
+def test_drift_does_not_start_the_weekly_run_while_on_hold():
+    drift = setup_function_body("cmd_drift")
+    # The hold is asked after the table and the issue line, and before the "due" verdict.
+    assert drift.index("upkeep_held") > drift.index("drift_report <<EOF")
+    assert drift.index("upkeep_held") < drift.index("drift: there is upkeep to do")
+    held = drift[drift.index("if upkeep_held; then") :].split("fi", 1)[0]
+    assert "return 1" in held
+
+
 def test_drift_is_quiet_when_every_runtime_is_at_its_pin():
     result = drift_report("claude-code 2.1.325 2.1.325 2.1.325\norca 1.4.257 1.4.257 -\n")
     assert result.returncode == 1, result.stdout + result.stderr
