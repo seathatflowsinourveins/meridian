@@ -34,7 +34,7 @@
 "deploy/wsl/dsh-lsp-root.py" = { upstream = "DeepSeek Harness LSP packages `@deepseek-ai/dsh-lsp`, `dsh-lsp-stdio`, `dsh-tool-lsp`", how = "build-on", feature = "dsh-lsp-stdio server launch", why = "the provider gives pyright the session directory as its root, so a subdirectory resolves no imports" }
 "deploy/landscape_*.py" = { upstream = "GitHub REST API", how = "build-on", feature = "repository, release, starred-repository, issue and label endpoints", why = "the harness needs its own revisit rules and a consolidated watch issue" }
 
-"deploy/wsl/meridian-omc.py" = { upstream = "oh-my-claudecode", how = "build-on", feature = "standalone lifecycle skills and hook events", why = "Meridian needs a bounded user install, reversible removal and owner/Orca stop precedence" }
+"deploy/wsl/meridian-omc.py" = { upstream = "oh-my-claudecode", how = "build-on", feature = "standalone lifecycle skills and hook events", why = "Meridian needs a bounded user install, reversible removal, owner/Orca stop precedence and notice-only filtering" }
 
 # Only differently named rows need aliases; package labels are normalized automatically.
 [dependencies]
