@@ -8,6 +8,14 @@ alpaca-py 0.45.0's StockDataStream supplies configuration and quote dispatch. It
 MsgPack decoder and typed Quote use floats, so the wire hooks below use Alpaca's
 documented JSON protocol with decimal text. Its blocking subscription helpers
 are used only to register handlers; sends are awaited on the engine loop.
+Quote sizes are validated then dropped: Alpaca documents round lots but its
+Asset model has no per-symbol shares per lot (official models.html#asset and
+real-time-stock-pricing-data, read 2026-11-13; URLs in UPSTREAM.md). Ticks carry
+zero sizes as UNKNOWN, never measured zero liquidity; no consumer may use sizes.
+This follows NautilusTrader v2.0.0rc9, crates/adapters/coinapi/src/websocket/
+messages.rs:239 and parse.rs:156-165, and interactive_brokers/src/data/parse.rs:
+98-105. crates/model/src/data/quote.rs:75-105 allows zero quantities with matching
+precision. These tagged sources were read 2026-11-13.
 There is no SDK reconnect loop: any loss or unreadable/unmapped frame latches a
 failure. A lane must check quote_age_ns before using the engine's cached quote.
 """
@@ -41,17 +49,12 @@ AUTH_TIMEOUT = 10
 
 
 class AlpacaQuoteConfig(DataClientConfig):
-    """Universe and explicit shares per round lot; no guessed size conversion.
+    """Prices only; sizes are not carried and no consumer may use tick sizes.
 
-    Alpaca's real-time-stock-pricing-data specifies quote sizes in round lots.
-    The attended lane must supply the universe's sourced round-lot sizes. These
-    are reference data, not the order quantity or an entitlement to trade.
     Instruments must already be loaded by the execution client's budgeted reads.
     """
 
-    def __init__(
-        self, *, universe: list[str], round_lot_sizes: dict[str, int], **kwargs: Any
-    ) -> None:
+    def __init__(self, *, universe: list[str], **kwargs: Any) -> None:
         if set(kwargs) - {"instrument_provider", "routing"}:
             raise TypeError("unexpected quote configuration field")
         ids = [InstrumentId.from_str(value) for value in universe]
@@ -61,12 +64,7 @@ class AlpacaQuoteConfig(DataClientConfig):
             i.venue != VENUE or not re.fullmatch(r"[A-Z][A-Z0-9.-]*", i.symbol.value) for i in ids
         ):
             raise ValueError("quote universe requires ALPACA equity symbols")
-        if set(round_lot_sizes) != set(universe) or any(
-            type(n) is not int or n <= 0 for n in round_lot_sizes.values()
-        ):
-            raise ValueError("explicit positive round-lot sizes required for the universe")
         self.universe = tuple(ids)
-        self.round_lot_sizes = dict(round_lot_sizes)
 
 
 def decode_frame(raw: Any) -> list[dict]:
@@ -304,13 +302,11 @@ class AlpacaQuoteClient(MarketDataClient):
         sizes = [decimal_text(row.get(key), key) for key in ("bs", "as")]
         if any(s < 0 or s != s.to_integral_value() for s in sizes):
             raise ValueError("invalid quote round-lot sizes")
-        shares = [s * Decimal(self._config.round_lot_sizes[str(iid)]) for s in sizes]
-        quantities = [Quantity.from_decimal_dp(s, instrument.size_precision) for s in shares]
-        if [q.as_decimal() for q in quantities] != shares:
-            raise ValueError("quote size loses precision")
+        # Upstream's unknown-size convention, not a conversion or liquidity estimate.
+        unknown = Quantity.from_decimal_dp(Decimal(0), instrument.size_precision)
         if event <= self._last.get(iid, 0):
             return  # replayed/out-of-order quotes do not refresh the last event
-        self._handle_data(QuoteTick(iid, bid, ask, quantities[0], quantities[1], event, now))
+        self._handle_data(QuoteTick(iid, bid, ask, unknown, unknown, event, now))
         self._last[iid] = event
 
 

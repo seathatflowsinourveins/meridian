@@ -344,7 +344,7 @@ class RunRecord:
         self.data["problems"] = problems
         self.data["run_ended_utc"] = _utc_now()
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        name = f"M1-ibkr-paper-{stamp}-{self.data['mode']}.json"
+        name = f"{self.data['milestone']}-{self.data['lane']}-{stamp}-{self.data['mode']}.json"
 
         local_path = root / "runs" / name
         local_path.parent.mkdir(parents=True, exist_ok=True)

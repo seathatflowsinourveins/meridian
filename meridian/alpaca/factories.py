@@ -44,11 +44,12 @@ def build_client(
     clock: Any,
     trader_id: Any,
     wiring: Wiring | None = None,
+    client_type: type[AlpacaPaperExecutionClient] = AlpacaPaperExecutionClient,
 ) -> AlpacaPaperExecutionClient:
     config = cast("AlpacaPaperExecClientConfig", config)
     if not isinstance(config, AlpacaPaperExecClientConfig):
         raise TypeError("expected AlpacaPaperExecClientConfig")
-    return AlpacaPaperExecutionClient(
+    return client_type(
         name=name,
         config=config,
         cache=cache,

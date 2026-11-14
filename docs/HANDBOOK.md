@@ -28,7 +28,7 @@ Milestones (plan 9.2); each ends in a committed, scrubbed run record:
 |---|---|---|
 | M1 | one engine-placed IBKR paper order, reconciled | reached (`evidence/M1-*`) |
 | M2 | the sandbox lane on IBKR data; the order budget with its soak; this handbook; the size budget | built; the sandbox's run on IBKR data is the owner's |
-| M3 | Alpaca paper: data client and execution adapter, reconciliation against recorded history | groundwork on a branch, not merged |
+| M3 | Alpaca paper: data client and execution adapter, reconciliation against recorded history | adapter merged; entry point built; owner run pending |
 | M4 | ranking, the mover strategy and its protection: sandbox, then paper | not started |
 | M5 | re-entry and rotation in paper; thresholds calibrated by replay | not started |
 | M6, M7 | TradingView display; unattended operation | not started |
@@ -104,12 +104,57 @@ shows no new order. Optional and not yet tried: with Read-Only API ticked the Ga
 orders from every API client; the IBKR lane needs it unticked, and whether market data still
 flows with it ticked has not been checked.
 
-### Alpaca paper lane (M3, not built)
+### Alpaca paper lane (M3, owner only)
 
-The adapter is the owner's own design from Sextant, ported in M3; it sends every REST request,
-queries included, through the order budget below. One writer per account: the lane starts only
-after the previous writer is confirmed stopped. Entries are plain DAY LIMIT orders, no
-brackets; fills arrive by websocket (plan 9.1).
+`meridian.alpaca_lane` wires the execution adapter, IEX quotes and the owner's order budget.
+Quotes carry prices only: Alpaca documents round-lot sizes but its Asset model has no
+per-symbol shares-per-lot field ([Asset](https://alpaca.markets/sdks/python/api_reference/trading/models.html#asset),
+[quotes](https://docs.alpaca.markets/us/docs/real-time-stock-pricing-data), read 2026-11-13).
+The client validates then drops sizes, publishing zero as unknown following rc9's CoinAPI and
+IB adapters (paths and lines in `UPSTREAM.md`); **no consumer may use this lane's quote sizes**.
+
+Before a run: stop the previous writer and confirm it is stopped;
+check that AAPL has no open order or position, across every entry route on the paper account.
+AAPL is the same equity as upstream's IBKR stock example. Reconciliation claims AAPL.ALPACA;
+working orders outside that universe or from another writer refuse. No agent starts either mode.
+Copy `deploy/alpaca-lane.template.json` to ignored `local/alpaca-lane.json` and fill its two
+null fields: `order_budget_rows_path` (relative to the settings file or absolute) and
+`quote_max_age_ns` (a positive integer, with no code default). Both files belong outside the
+tree or under `local/`; the rows must pass the production loader. Missing or invalid values
+refuse without printing paths or values. The settings path is selected with `--settings`.
+
+From the repository root, in a distro terminal the owner started outside Orca, use the system
+manager (the existing encrypted credentials target it, not the per-user manager):
+
+```bash
+sudo systemd-run --pty --wait --collect --service-type=exec \
+  --unit=meridian-alpaca-attended --uid="$(id -u)" --gid="$(id -g)" \
+  --working-directory="$PWD" --property=UMask=0077 \
+  --property=LoadCredentialEncrypted=alpaca-paper-key-id:/etc/credstore.encrypted/alpaca-paper-key-id \
+  --property=LoadCredentialEncrypted=alpaca-paper-secret-key:/etc/credstore.encrypted/alpaca-paper-secret-key \
+  "$PWD/.venv/bin/python" -m meridian.alpaca_lane restart
+```
+
+Replace the final `restart` with `order` for the one-order run; append `--settings /absolute/path`
+for another local settings file. `--pty` supplies the terminal for PAPER; `--wait` waits even
+if the PTY is detached. The fixed unit name prevents overlapping instances of this command,
+but cannot exclude another writer. `--uid` uses the owner's current checkout permissions.
+This command follows installed systemd 259's systemd-run(1) and systemd.exec(5), read 2026-11-13.
+It was **not run**: credential loading/decryption, TTY attachment, sudo policy and the actual
+paper connection remain untested; only the owner may perform that attended check.
+
+`restart` reconciles, sends no order or cancel, stops, and passes only with the instrument clean
+and execution coverage complete. `order` asks for PAPER, repeats all local checks, then buys
+one share with a DAY LIMIT 2% below a fresh bid, rounded down to the venue tick. It checks
+`quote_age_ns` before pricing and again at paced submission; missing/stale quotes place nothing.
+It requests cancellation once accepted. A pass is accepted, then cancelled, nothing filled,
+flat with no open or in-flight order at stop. Any fill fails and sends no second order; the
+owner inspects and closes any share by hand. An unresolved order also fails: inspect it before
+acting; there is no stop-time cancel or close. The M1 time limits apply (25 s restart, 60 s order).
+All local checks run again after the run. Engine output and failures stay in `runs/`; passing
+records go to `evidence/M3-alpaca-paper-<stamp>-<mode>.json`. Public records contain no broker
+text or identifiers, include commission citations and counts of paper-default/reviewed budget
+rows (also shown at the terminal), and record only the quote-age limit's presence. No real run has been performed.
 
 ## Rules
 
