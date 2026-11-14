@@ -1,0 +1,342 @@
+"""IEX quotes only, after rc9's examples/live/_template/data.py; no REST calls.
+
+Alpaca's market-data-faq (read 2026-11-13) assigns regular users, including paper
+credentials, stream.data.alpaca.markets; its sandbox is for broker partners.
+The Basic plan includes IEX only (about-market-data-api, same date).
+
+alpaca-py 0.45.0's StockDataStream supplies configuration and quote dispatch. Its
+MsgPack decoder and typed Quote use floats, so the wire hooks below use Alpaca's
+documented JSON protocol with decimal text. Its blocking subscription helpers
+are used only to register handlers; sends are awaited on the engine loop.
+There is no SDK reconnect loop: any loss or unreadable/unmapped frame latches a
+failure. A lane must check quote_age_ns before using the engine's cached quote.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import re
+from collections.abc import Callable
+from decimal import Decimal
+from typing import Any
+
+import websockets
+from alpaca.data.enums import DataFeed
+from alpaca.data.live.stock import StockDataStream
+from nautilus_trader.config import DataClientConfig
+from nautilus_trader.live.clients import DataClientFactory, MarketDataClient
+from nautilus_trader.model import Equity, InstrumentId, Price, Quantity, QuoteTick
+
+from .constants import VENUE
+from .credentials import PaperKeys, load_paper_keys
+from .reports import decimal_text, timestamp_ns
+
+DATA_HOST = "stream.data.alpaca.markets"
+DATA_URL = "wss://stream.data.alpaca.markets/v2/iex"
+# Basic equities websocket limit: about-market-data-api (read 2026-11-13).
+MAX_SYMBOLS = 30
+# Authentication must finish within 10 seconds: streaming-market-data, same date.
+AUTH_TIMEOUT = 10
+
+
+class AlpacaQuoteConfig(DataClientConfig):
+    """Universe and explicit shares per round lot; no guessed size conversion.
+
+    Alpaca's real-time-stock-pricing-data specifies quote sizes in round lots.
+    The attended lane must supply the universe's sourced round-lot sizes. These
+    are reference data, not the order quantity or an entitlement to trade.
+    Instruments must already be loaded by the execution client's budgeted reads.
+    """
+
+    def __init__(
+        self, *, universe: list[str], round_lot_sizes: dict[str, int], **kwargs: Any
+    ) -> None:
+        if set(kwargs) - {"instrument_provider", "routing"}:
+            raise TypeError("unexpected quote configuration field")
+        ids = [InstrumentId.from_str(value) for value in universe]
+        if not 0 < len(ids) <= MAX_SYMBOLS or len(set(ids)) != len(ids):
+            raise ValueError("quote universe must contain 1 to 30 distinct instruments")
+        if any(
+            i.venue != VENUE or not re.fullmatch(r"[A-Z][A-Z0-9.-]*", i.symbol.value) for i in ids
+        ):
+            raise ValueError("quote universe requires ALPACA equity symbols")
+        if set(round_lot_sizes) != set(universe) or any(
+            type(n) is not int or n <= 0 for n in round_lot_sizes.values()
+        ):
+            raise ValueError("explicit positive round-lot sizes required for the universe")
+        self.universe = tuple(ids)
+        self.round_lot_sizes = dict(round_lot_sizes)
+
+
+def decode_frame(raw: Any) -> list[dict]:
+    """Keep JSON numbers as text; refuse malformed envelopes and nonstandard numbers."""
+
+    def invalid(_: str) -> None:
+        raise ValueError("nonstandard JSON number")
+
+    rows = json.loads(raw, parse_float=str, parse_int=str, parse_constant=invalid)
+    if not isinstance(rows, list) or not rows or any(not isinstance(row, dict) for row in rows):
+        raise ValueError("invalid quote frame envelope")
+    return rows
+
+
+class IexQuoteStream(StockDataStream):
+    """The pinned SDK stream, JSON wire hooks, and no threaded or automatic runner."""
+
+    def __init__(self, keys: PaperKeys) -> None:
+        super().__init__(
+            keys.key_id,
+            keys.secret_key,
+            raw_data=True,
+            feed=DataFeed.IEX,
+            url_override=DATA_URL,
+        )
+        # Keep the pinned SDK's ping defaults. Explicit host/port prevent cross-origin
+        # redirects in locked websockets; disable environment proxy discovery.
+        self._pinned_params: dict[str, Any] = {
+            **self._websocket_params,
+            "host": DATA_HOST,
+            "port": 443,
+            "proxy": None,
+        }
+
+    async def _connect(self) -> None:
+        if self._endpoint != DATA_URL:
+            raise ConnectionError("quote endpoint changed")
+        self._ws = await websockets.connect(
+            DATA_URL,
+            additional_headers={"Content-Type": "application/json"},
+            **self._pinned_params,
+        )
+        uri = getattr(getattr(self._ws, "protocol", None), "uri", None)
+        if (
+            uri is None
+            or not uri.secure
+            or uri.host != DATA_HOST
+            or uri.port != 443
+            or uri.path != "/v2/iex"
+        ):
+            await self.close()
+            raise ConnectionError("quote stream host or feed mismatch")
+        if decode_frame(await self._ws.recv()) != [{"T": "success", "msg": "connected"}]:
+            raise ConnectionError("quote stream welcome refused")
+
+    async def _auth(self) -> None:
+        await self._ws.send(
+            json.dumps(
+                {
+                    "action": "auth",
+                    "key": self._api_key,
+                    "secret": self._secret_key,
+                }
+            )
+        )
+        if decode_frame(await self._ws.recv()) != [{"T": "success", "msg": "authenticated"}]:
+            raise ConnectionError("quote stream authentication refused")
+
+    async def subscribe(self, handler: Any, symbols: list[str]) -> None:
+        # _running remains False: the SDK only registers here, never blocks this loop.
+        self.subscribe_quotes(handler, *symbols)
+        await self._ws.send(json.dumps({"action": "subscribe", "quotes": symbols}))
+
+    async def unsubscribe(self, symbols: list[str]) -> None:
+        self.unsubscribe_quotes(*symbols)
+        await self._ws.send(json.dumps({"action": "unsubscribe", "quotes": symbols}))
+
+    async def receive(self) -> list[dict]:
+        return decode_frame(await self._ws.recv())
+
+
+class AlpacaQuoteClient(MarketDataClient):
+    """One stream; failed data stays unusable until a new client is constructed."""
+
+    def __init__(self, *, quote_config: AlpacaQuoteConfig, stream: IexQuoteStream, **kwargs: Any):
+        super().__init__(config=quote_config, venue=VENUE, **kwargs)
+        self._config = quote_config
+        self._stream = stream
+        self._universe = {i.symbol.value: i for i in quote_config.universe}
+        self._subscribed: set[str] = set()
+        self._acknowledged: set[str] = set()
+        self._pending: list[set[str]] = []
+        self._last: dict[InstrumentId, int] = {}
+        self._task: asyncio.Task | None = None
+        self.failure_reason: str | None = None
+        self.stream_live = False
+
+    def quote_age_ns(self, instrument_id: InstrumentId) -> int | None:
+        """Event age, or None if absent, unsubscribed, unacknowledged or failed.
+
+        No freshness threshold is invented here. The attended lane must compare
+        this age with its own sourced limit; engine cache presence is insufficient.
+        """
+        stamp = self._last.get(instrument_id)
+        if (
+            not self.stream_live
+            or self.failure_reason
+            or stamp is None
+            or instrument_id.symbol.value not in self._acknowledged
+            or instrument_id.symbol.value not in self._subscribed
+        ):
+            return None
+        age = self.clock.timestamp_ns() - stamp
+        return age if age >= 0 else None
+
+    def _fail(self, reason: str) -> None:
+        self.failure_reason = self.failure_reason or reason
+        self.stream_live = False
+        self._acknowledged.clear()
+
+    async def _connect(self) -> None:
+        if self.failure_reason:
+            raise RuntimeError("quote client failed; construct a new client")
+        try:
+            async with asyncio.timeout(AUTH_TIMEOUT):
+                await self._stream._start_ws()
+            self.stream_live = True
+            self._task = self.create_task(self._read(), "alpaca-quotes")
+        except asyncio.CancelledError:
+            self._fail("quote stream connection cancelled")
+            await self._stream.close()
+            raise
+        except Exception:
+            self._fail("quote stream connection failed")
+            await self._stream.close()
+            raise RuntimeError(self.failure_reason) from None
+
+    async def _disconnect(self) -> None:
+        self.stream_live = False
+        self._acknowledged.clear()
+        if self._task is not None:
+            self._task.cancel()
+            await asyncio.gather(self._task, return_exceptions=True)
+        await self._stream.close()
+        self._last.clear()
+        self._subscribed.clear()
+        self._pending.clear()
+
+    async def _subscribe_quotes(self, command: Any) -> None:
+        try:
+            if not self.stream_live or self.failure_reason:
+                raise ValueError("quote stream unavailable")
+            ids = command.instrument_ids
+            if any(i not in self._config.universe for i in ids):
+                raise ValueError("instrument outside quote universe")
+            for iid in ids:
+                instrument = self.cache.instrument(iid)
+                if (
+                    not isinstance(instrument, Equity)
+                    or instrument.raw_symbol.value != iid.symbol.value
+                ):
+                    raise ValueError("quote instrument not loaded")
+            symbols = sorted({i.symbol.value for i in ids} - self._subscribed)
+            if symbols:
+                self._subscribed.update(symbols)
+                self._pending.append(set(self._subscribed))
+                await self._stream.subscribe(self._on_quote, symbols)
+        except Exception:
+            self._fail("quote subscription failed")
+            raise RuntimeError(self.failure_reason) from None
+
+    async def _unsubscribe_quotes(self, command: Any) -> None:
+        symbols = sorted({i.symbol.value for i in command.instrument_ids} & self._subscribed)
+        for symbol in symbols:
+            self._last.pop(self._universe[symbol], None)
+        self._subscribed.difference_update(symbols)
+        self._acknowledged.difference_update(symbols)
+        if symbols:
+            try:
+                self._pending.append(set(self._subscribed))
+                await self._stream.unsubscribe(symbols)
+            except Exception:
+                self._fail("quote unsubscribe failed")
+                raise RuntimeError(self.failure_reason) from None
+
+    async def _read(self) -> None:
+        try:
+            while self.stream_live:
+                for row in await self._stream.receive():
+                    if row.get("T") == "subscription":
+                        symbols = row.get("quotes")
+                        if (
+                            not isinstance(symbols, list)
+                            or not all(isinstance(s, str) for s in symbols)
+                            or not self._pending
+                            or set(symbols) != self._pending.pop(0)
+                        ):
+                            raise ValueError("quote subscription acknowledgement mismatch")
+                        self._acknowledged = set(symbols) & self._subscribed
+                    elif row.get("T") == "q" and row.get("S") in self._universe:
+                        # A queued quote after unsubscribe is ignored, never freshened.
+                        if row["S"] in self._subscribed:
+                            if row["S"] not in self._acknowledged:
+                                raise ValueError("quote before subscription acknowledgement")
+                            await self._stream._dispatch(row)
+                    else:
+                        raise ValueError("unmapped quote stream message")
+        except asyncio.CancelledError:
+            if self.stream_live:
+                self._fail("quote stream reader cancelled")
+            raise
+        except Exception:
+            self._fail("quote stream lost or unreadable/unmapped frame")
+        finally:
+            self.stream_live = False
+            await self._stream.close()
+
+    async def _on_quote(self, row: Any) -> None:
+        if self.failure_reason or not self.stream_live:
+            return
+        iid = self._universe[row["S"]]
+        instrument = self.cache.instrument(iid)
+        if not isinstance(instrument, Equity):
+            raise ValueError("quote instrument unavailable")
+        now = self.clock.timestamp_ns()
+        event = timestamp_ns(row.get("t"), "quote timestamp")
+        if event <= 0 or event > now:
+            raise ValueError("invalid quote time")
+        prices = [decimal_text(row.get(key), key) for key in ("bp", "ap")]
+        if any(value <= 0 for value in prices) or prices[0] > prices[1]:
+            raise ValueError("invalid quote prices")
+        bid, ask = [Price.from_decimal_dp(p, instrument.price_precision) for p in prices]
+        if [bid.as_decimal(), ask.as_decimal()] != prices:
+            raise ValueError("quote price loses precision")
+        sizes = [decimal_text(row.get(key), key) for key in ("bs", "as")]
+        if any(s < 0 or s != s.to_integral_value() for s in sizes):
+            raise ValueError("invalid quote round-lot sizes")
+        shares = [s * Decimal(self._config.round_lot_sizes[str(iid)]) for s in sizes]
+        quantities = [Quantity.from_decimal_dp(s, instrument.size_precision) for s in shares]
+        if [q.as_decimal() for q in quantities] != shares:
+            raise ValueError("quote size loses precision")
+        if event <= self._last.get(iid, 0):
+            return  # replayed/out-of-order quotes do not refresh the last event
+        self._handle_data(QuoteTick(iid, bid, ask, quantities[0], quantities[1], event, now))
+        self._last[iid] = event
+
+
+class AlpacaQuoteFactory(DataClientFactory):
+    """Loads the same systemd credentials as execution; construction opens no socket."""
+
+    @staticmethod
+    def create(*, name, config, cache, clock) -> AlpacaQuoteClient:
+        return build_quote_client(name=name, config=config, cache=cache, clock=clock)
+
+
+def build_quote_client(
+    *,
+    name: str,
+    config: Any,
+    cache: Any,
+    clock: Any,
+    keys: Callable[[], PaperKeys] = load_paper_keys,
+    stream: Callable[[PaperKeys], IexQuoteStream] = IexQuoteStream,
+) -> AlpacaQuoteClient:
+    if not isinstance(config, AlpacaQuoteConfig):
+        raise TypeError("expected AlpacaQuoteConfig")
+    return AlpacaQuoteClient(
+        name=name,
+        quote_config=config,
+        cache=cache,
+        clock=clock,
+        stream=stream(keys()),
+    )

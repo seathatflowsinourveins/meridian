@@ -1,0 +1,18 @@
+[
+  {"name": "backoff_base_s", "value": null, "source": null, "unit": null, "last_change": null, "calibration": null, "scope": null},
+  {"name": "backoff_max_s", "value": null, "source": null, "unit": null, "last_change": null, "calibration": null, "scope": null},
+  {"name": "broker_limit", "value": null, "source": null, "unit": null, "last_change": null, "calibration": null, "scope": null},
+  {"name": "burst_fraction", "value": null, "source": null, "unit": null, "last_change": null, "calibration": null, "scope": null},
+  {"name": "cancel_retry_s", "value": null, "source": null, "unit": null, "last_change": null, "calibration": null, "scope": null},
+  {"name": "cancel_timeout_s", "value": null, "source": null, "unit": null, "last_change": null, "calibration": null, "scope": null},
+  {"name": "flatten_tick_s", "value": null, "source": null, "unit": null, "last_change": null, "calibration": null, "scope": null},
+  {"name": "max_cancel_retries", "value": null, "source": null, "unit": null, "last_change": null, "calibration": null, "scope": null},
+  {"name": "observation_leverage_step", "value": null, "source": null, "unit": null, "last_change": null, "calibration": null, "scope": null},
+  {"name": "observation_max_edges", "value": null, "source": null, "unit": null, "last_change": null, "calibration": null, "scope": null},
+  {"name": "observation_money_step_fraction", "value": null, "source": null, "unit": null, "last_change": null, "calibration": null, "scope": null},
+  {"name": "observation_reminder_s", "value": null, "source": null, "unit": null, "last_change": null, "calibration": null, "scope": null},
+  {"name": "request_budget", "value": null, "source": null, "unit": null, "last_change": null, "calibration": null, "scope": null},
+  {"name": "reserve_per_exiting_position", "value": null, "source": null, "unit": null, "last_change": null, "calibration": null, "scope": null},
+  {"name": "reserve_per_open_position", "value": null, "source": null, "unit": null, "last_change": null, "calibration": null, "scope": null},
+  {"name": "window_s", "value": null, "source": null, "unit": null, "last_change": null, "calibration": null, "scope": null}
+]

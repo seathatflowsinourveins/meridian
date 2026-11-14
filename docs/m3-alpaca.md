@@ -48,7 +48,7 @@ every earlier order as external and drops it unless a strategy claims the instru
 
 ## 3. What is carried and what is not
 
-Carried, each with offline tests (`tests/test_alpaca_{wire,trade_updates,reconcile,node,paper}.py`):
+Carried, each with offline tests (`tests/test_alpaca_{wire,trade_updates,reconcile,node,paper,data}.py`):
 - One gateway sends every REST call, reads and asset loads included, through one budget,
   CANCEL > REDUCE > MODIFY > QUERY > SUBMIT (a sell is REDUCE); SDK retries off; a 429 pauses.
 - Commands run as tasks, never awaited in the engine's command queue; an order outside the universe
@@ -66,16 +66,19 @@ Carried, each with offline tests (`tests/test_alpaca_{wire,trade_updates,reconci
   refuses), counts pre-history fills, and names the failing stage with fixed, value-free reasons. Engine
   settings: no missing-order generation, unbounded lookback, unresolved submissions retained,
   open-order checks, not in-flight (the old node had neither), none over a minute; checked on rc9.
+- IEX quotes only (`data.py`): JSON decimal text, pinned host before sign-in, no REST reads;
+  a lost, unreadable or unmapped stream latches failure. `quote_age_ns` is None when unusable;
+  the lane supplies its age limit and sourced round-lot sizes (sizes arrive in lots), with instruments loaded by execution.
 - No invented fee: connect refuses without a sourced per-fill commission. `AlpacaPaperExecClientConfig.for_paper_equities()`
   uses `meridian/alpaca/commission.py`: zero USD is what Alpaca's paper simulation charges a US-equity fill.
   This is only for this paper lane and models no cost of real trading. Two dated citations and exact quotes
   are stored there: paper excludes regulatory fees but does not mention commissions; the commission page supplies that statement.
 
 Left out: modify and successor lineage, trailing stops and the exit guard (protection, M4); owner
-custody and claim lists (one writer per account); the fee registry; the market-data client (it
-comes with the attended order); wire counters; handover leases; live-lane and IBKR parts.
+custody and claim lists (one writer per account); the fee registry; bars, trades and historical
+data; wire counters; handover leases; live-lane and IBKR parts.
 
-Changed on purpose: the stream runs on the node's loop (alpaca-py 0.45.0's is asynchronous) and is
+Changed on purpose: the trade stream runs on the node's loop (alpaca-py 0.45.0's is asynchronous) and is
 pinned to the paper host before the SDK signs in (websockets would follow a redirect); keys come
 from systemd credentials; every REST call has a timeout (open in sextant#463); the next order page
 asks one microsecond past the edge, so edge rows return whether `until` is inclusive or not (the old
@@ -103,10 +106,14 @@ M2 harvests the old pacer and keeps its interface (`meridian/order_budget/`, #3,
 `meridian/alpaca/budget.py` imports `ActionKind` and `PacerRefused` from
 `meridian.order_budget.pacer`, so the gateway's `except PacerRefused` catches M2's refusal, and
 states the part of the pacer used here as a `Protocol`; `tests/test_alpaca_budget.py` has
-pyright check that M2's `AccountPacer` still fits it. The lane should start its pacer empty: a new one
-starts with a full burst. Rows: 180 requests per 60 s of Alpaca's 200, burst 18, 429 backoff 1 s
-doubling to 30 s. Tests use a stand-in; connect refuses until a pacer is wired. A cancel costs two
-requests (read, DELETE); readers stop at the budget's page count (90,000 orders).
+pyright check that M2's `AccountPacer` still fits it. Production wiring loads the owner's 16 rows
+through M2's unchanged validation and starts each pacer empty, including after reconnect.
+Set `order_budget_rows_path` to an owner-held JSON file outside the tree or under git-ignored
+`local/` (backups there are ignored too); copy `deploy/alpaca-order-budget.template.json`, fill
+all fields and review each source and scope. Missing, invalid or fixture rows refuse without values.
+The documented budget is 180 requests per 60 s of Alpaca's 200, burst 18, with 429 backoff 1 s
+doubling to 30 s; this repo supplies no production values. Fake tests cover loading and pacing.
+A cancel costs two requests (read, DELETE); readers stop at the budget's page count (90,000 orders).
 
 ## 6. Keys
 
@@ -146,4 +153,4 @@ check a replay's counts (section 2); the replay is a reconcile-only start on the
 
 - The paper keys into the two credential files (section 6); the section 7 subset, if wanted.
 - The attended first order, on the account you assign, after the previous writer is confirmed
-  stopped; its PR adds the lane entry point, the data client and the sourced commission rows.
+  stopped; its PR wires the quote client and adds the lane entry point and sourced commission rows.

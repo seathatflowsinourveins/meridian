@@ -28,38 +28,71 @@ from meridian.alpaca.wire import PaperTradingClient
 
 PACKAGE = REPO_ROOT / "meridian" / "alpaca"
 UNIT = REPO_ROOT / "deploy" / "systemd" / "meridian-alpaca-paper.service"
-HOST = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)*\.alpaca\.markets")
+HOST = re.compile(r"(?:[a-z0-9-]+\.)*alpaca\.markets")
 # The shape Alpaca API key ids are commonly issued in: PK (paper) or AK (live) and 16 to 20
 # more capitals or digits. An observed convention, used here only as a tripwire.
 KEY_ID_SHAPE = re.compile(r"(?<![A-Za-z0-9])[PA]K[A-Z0-9]{16,20}(?![A-Za-z0-9])")
 SYNTHETIC = PaperKeys("synthetic-key-id", "synthetic-secret")
 
 
-def test_the_paper_host_is_the_only_alpaca_host_this_package_names():
+# Each module may name the paper trading host; only these may name extra hosts.
+# Documentation hosts, if needed by another module, get their own explicit row.
+MODULE_EXTRA_HOSTS = {
+    "data.py": {"stream.data.alpaca.markets"},
+    "commission.py": {"docs.alpaca.markets", "alpaca.markets"},
+}
+
+
+def assert_package_hosts(package: Path) -> None:
+    """Paper trading, quote data and commission citations have distinct host scopes."""
+    data_host = "stream.data.alpaca.markets"
+    for path in package.glob("*.py"):
+        text = path.read_text()
+        hosts = set(HOST.findall(text))
+        allowed = {constants.PAPER_HOST} | MODULE_EXTRA_HOSTS.get(path.name, set())
+        assert hosts <= allowed, f"unexpected Alpaca host in {path.name}"
+        if path.name == "commission.py":
+            for url in (
+                "https://docs.alpaca.markets/us/docs/paper-trading",
+                "https://alpaca.markets/support/commission-clearing-fees",
+            ):
+                citation = f'url="{url}"'
+                assert text.count(citation) == 1, "missing or repeated commission citation"
+                text = text.replace(citation, "")
+            # Only the cited URLs belong here, never an API, broker, data or stream host.
+            assert not HOST.findall(text), f"unexpected Alpaca host in {path.name}"
+    assert data_host in HOST.findall((package / "data.py").read_text())
+
+
+def test_the_paper_host_is_the_only_trading_host_this_package_names():
     assert constants.PAPER_TRADING_URL == "https://paper-api.alpaca.markets"
     assert constants.PAPER_TRADE_STREAM_URL == "wss://paper-api.alpaca.markets/stream"
-    citations = (
-        "https://docs.alpaca.markets/us/docs/paper-trading",
-        "https://alpaca.markets/support/commission-clearing-fees",
-    )
-    allowed_hosts = {
-        "*": {"paper-api.alpaca.markets"},
-        "commission.py": {"docs.alpaca.markets", "alpaca.markets"},
-    }
-    # Include the bare support-site host as well as subdomains in this check.
-    alpaca_host = re.compile(r"(?:[a-z0-9-]+\.)*alpaca\.markets")
-    for path in PACKAGE.glob("*.py"):
-        text = path.read_text()
-        assert set(alpaca_host.findall(text)) <= allowed_hosts.get(path.name, allowed_hosts["*"]), (
-            path.name
-        )
-        if path.name == "commission.py":
-            for url in citations:
-                citation = f'url="{url}"'
-                assert text.count(citation) == 1
-                text = text.replace(citation, "")
-            # Only those cited URLs belong here: no API, broker, data or stream host.
-            assert not alpaca_host.findall(text), path.name
+    assert_package_hosts(PACKAGE)
+
+
+@pytest.mark.parametrize(
+    ("module", "host"),
+    [
+        ("data.py", "stream.data.sandbox.alpaca.markets"),
+        ("data.py", "api." + "alpaca.markets"),
+        ("wire.py", "stream.data.alpaca.markets"),
+        ("wire.py", "https://docs.alpaca.markets/us/docs/paper-trading"),
+        ("wire.py", "https://alpaca.markets/support/commission-clearing-fees"),
+        ("commission.py", "wss://paper-api.alpaca.markets/stream"),
+        ("commission.py", "https://unlisted-docs.alpaca.markets/paper-trading"),
+        ("commission.py", "api." + "alpaca.markets"),
+        ("commission.py", "https://docs.alpaca.markets/uncited-page"),
+    ],
+)
+def test_package_host_check_rejects_planted_hosts(tmp_path, module, host):
+    (tmp_path / "data.py").write_text('HOST = "stream.data.alpaca.markets"')
+    (tmp_path / "wire.py").write_text('HOST = "paper-api.alpaca.markets"')
+    (tmp_path / "commission.py").write_text((PACKAGE / "commission.py").read_text())
+    assert_package_hosts(tmp_path)
+    with (tmp_path / module).open("a") as output:
+        output.write(f'\nPLANTED = "{host}"')
+    with pytest.raises(AssertionError, match="unexpected Alpaca host"):
+        assert_package_hosts(tmp_path)
 
 
 def test_both_sdk_clients_are_built_on_the_paper_host():

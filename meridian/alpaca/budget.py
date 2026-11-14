@@ -5,9 +5,8 @@ The order budget as this adapter calls it.
 `wire.py`'s `except PacerRefused` catches the refusal M2's pacer raises. The `Protocol` below
 states the members of M2's `AccountPacer` this adapter uses (`request/drain/on_rate_limited/
 on_success`, `.bucket.interval_ns`, `.controls[...]`) and implements none of them;
-`tests/test_alpaca_budget.py` has pyright check that M2's pacer still fits it. No pacer is wired
-yet. A new M2 pacer starts with a full burst and the client builds one at every connect, so the
-lane should start its pacer empty.
+`tests/test_alpaca_budget.py` has pyright check that M2's pacer still fits it. Production wiring
+loads the owner's rows through M2's validation and starts each new pacer empty (`pacing.py`).
 
 How the adapter uses it (`wire.py`): every REST request, reads included, is one `request()`
 of one kind; the pacer calls `send(before_wire)`, and `before_wire()` runs once, on the event
