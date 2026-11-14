@@ -14,8 +14,11 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from node_lifetime import live_nodes as live_nodes
 
 from meridian import boundary, ibkr_paper
+
+pytestmark = pytest.mark.usefixtures("live_nodes")
 
 FAKE = "DUFAKE0001"
 

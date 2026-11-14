@@ -54,8 +54,8 @@ GITLEAKS_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS
 #
 # Claude Code: 2.1.321 is the first release that runs the lead model. The checksum is the
 # linux-x64 entry of Anthropic's signed manifest.
-CLAUDE_VERSION=2.1.322
-CLAUDE_SHA256=bfb3703ad5380242328459bc62ada4bde8ae7ba57c6e1eeadb9c00e08874c478
+CLAUDE_VERSION=2.1.325
+CLAUDE_SHA256=0dc4f4a9a165fc60746d7ae8489712e5fc352f1e7ad4eb22e7141bd0812eb0cf
 CLAUDE_RELEASE_SIGNER=31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE
 CLAUDE_RELEASES=https://downloads.claude.ai/claude-code-releases
 CLAUDE_MODEL=claude-fable-5-2
@@ -285,6 +285,11 @@ claude_settings() {
   # Merged into the file, never written over it: Claude Code and Orca keep their own keys there.
   # Bypass mode is the owner's choice for this distro. The deny rules stop Claude Code's file
   # tools at the owner's files; a shell command can still reach them.
+  # Display: thinking summaries in the conversation and the Ctrl+O transcript, a time on each
+  # message, the fullscreen renderer. Compaction is left at Claude Code's defaults (the "auto"
+  # window, idle compaction, precompute); check_claude refuses a file that switches one off.
+  # autoCompactEnabled is written out because Claude Code still reads an old value of it from
+  # ~/.claude.json when this file has none.
   local file="${HOME}/.claude/settings.json" tmp
   tmp="$(mktemp)"
   jq --arg model "${CLAUDE_MODEL}" --arg floor "${CLAUDE_VERSION}" '
@@ -296,6 +301,10 @@ claude_settings() {
       disableClaudeAiConnectors: true,
       syncClaudeAiSkills: false,
       syncClaudeAiPlugins: false,
+      showThinkingSummaries: true,
+      showMessageTimestamps: true,
+      tui: "fullscreen",
+      autoCompactEnabled: true,
       enabledPlugins: {
         "codex@openai-codex": true,
         "cc-plugin-you-should-know@builtin": true
@@ -373,6 +382,11 @@ check_claude() {
     and .model == $model and .modelSettings[$model].effortLevel == "high"
     and .permissions.defaultMode == "bypassPermissions"
     and .skipDangerousModePermissionPrompt == true
+    and .showThinkingSummaries == true and .showMessageTimestamps == true
+    and .tui == "fullscreen"
+    and .autoCompactEnabled == true
+    and ([.idleCompaction, .precomputeCompactionEnabled, .autoContinueAtUsageLimit]
+      | all(. != false))
     and (["Edit(//**/risk/**)", "Edit(//**/*.contract.json)", "Read(//**/.env)", "Read(//**/.env.*)"]
       - (.permissions.deny // []) == [])
     and ([.enabledPlugins // {} | to_entries[] | select(.value == true) | .key]
@@ -380,7 +394,7 @@ check_claude() {
   ' "${HOME}/.claude/settings.json" >/dev/null \
     || fail "~/.claude/settings.json is not what deploy/wsl/setup.sh claude writes"
   check_claude_managed
-  ok "Claude Code $(claude_version): ${CLAUDE_MODEL} at high effort, no claude.ai connectors, sync or MCP server"
+  ok "Claude Code $(claude_version): ${CLAUDE_MODEL} at high effort, no claude.ai connectors, sync or MCP server; thinking shown, fullscreen, compaction at its defaults"
 }
 
 codex_version() {

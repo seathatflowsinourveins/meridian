@@ -130,6 +130,34 @@ def test_claude_settings_enable_the_two_plugins_and_preserve_unrelated_settings(
     assert claude_settings_filter("check_claude", settings).returncode == 1
 
 
+@pytest.mark.parametrize(
+    "switch", ["idleCompaction", "precomputeCompactionEnabled", "autoContinueAtUsageLimit"]
+)
+def test_claude_settings_show_thinking_and_keep_compaction_at_its_defaults(switch):
+    settings = json.loads(claude_settings_filter("claude_settings", {}).stdout)
+    assert settings["showThinkingSummaries"] is True
+    assert settings["showMessageTimestamps"] is True
+    assert settings["tui"] == "fullscreen"
+    # These three are on when absent: setup writes none of them, the check refuses "off".
+    assert switch not in settings
+    assert claude_settings_filter("check_claude", settings).returncode == 0
+    assert claude_settings_filter("check_claude", settings | {switch: True}).returncode == 0
+    assert claude_settings_filter("check_claude", settings | {switch: False}).returncode == 1
+    for key in ("showThinkingSummaries", "showMessageTimestamps", "tui", "autoCompactEnabled"):
+        without = {name: value for name, value in settings.items() if name != key}
+        assert claude_settings_filter("check_claude", without).returncode == 1
+
+
+def test_claude_settings_override_an_old_auto_compact_switch():
+    # Claude Code falls back to ~/.claude.json for autoCompactEnabled when settings.json has
+    # none, so an absent key could hide an old "off". Setup writes it; the check requires it.
+    for before in ({}, {"autoCompactEnabled": False}):
+        settings = json.loads(claude_settings_filter("claude_settings", before).stdout)
+        assert settings["autoCompactEnabled"] is True
+    settings["autoCompactEnabled"] = False
+    assert claude_settings_filter("check_claude", settings).returncode == 1
+
+
 def test_claude_check_allows_only_the_two_plugin_names():
     settings = json.loads(claude_settings_filter("claude_settings", {}).stdout)
     settings["enabledPlugins"] = {
