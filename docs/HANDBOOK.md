@@ -213,8 +213,11 @@ verbatim Lightweight Charts file in `upstream/` embedded in the page. It opens o
 5. Tests: it builds offline against the pinned engine, and it runs in the sandbox lane on the
    fake feed, as `tests/test_sandbox_lane.py` does with upstream's strategy. A strategy never
    adds an execution client.
-6. Sandbox first, then paper (plan 9.2). Every paper run is the owner's, attended, and ends in
-   a run record.
+6. Simulate first: `uv run python -m meridian.sim` replays it offline through the engine's own
+   `BacktestNode`, catalog, fill, fee and latency models, session statuses, risk throttle and
+   reports, one node per parameter set, results under `runs/` (manifest and Alpaca gaps:
+   `docs/adr/data/m5-native-sim.md`). Then sandbox, then paper (plan 9.2). Every paper run is
+   the owner's, attended, and ends in a run record.
 
 Claude lead/workers use `/autopilot --workflow meridian-full <task>` ([ADR 0019](adr/0019-claude-omc-stack.md)): cite upstream first; the upstream gate and owner boundaries apply inside every stage. QA runs `uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest`; Orca keeps the fleet and cross-family merge review.
 At a required owner decision use `[MERIDIAN_WAIT]`; a worker uses Orca `ask` and ends its turn.
