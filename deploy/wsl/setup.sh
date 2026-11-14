@@ -5,6 +5,7 @@
 #   deploy/wsl/setup.sh check         verify what deploy/wsl/meridian.user-data was meant to do
 #   deploy/wsl/setup.sh uv            install uv (pinned; installer checksum verified first)
 #   deploy/wsl/setup.sh gh            install the GitHub CLI from GitHub's release, in place of Ubuntu's
+#   deploy/wsl/setup.sh gitleaks      install the pinned gitleaks CI uses, for the lead's merge gate
 #   deploy/wsl/setup.sh repo          clone the repo to ~/src/meridian and run `uv sync --locked`
 #   deploy/wsl/setup.sh gateway       install IB Gateway (pinned build; never starts it or logs in)
 #   deploy/wsl/setup.sh agents        all of the following, in this order:
@@ -23,7 +24,7 @@
 #   deploy/wsl/setup.sh signins       list the sign-ins left for the owner, with their commands
 #   deploy/wsl/setup.sh orca-pair     owner, once, in Windows Terminal: pair the Windows Orca app
 #
-# Order: check, uv, gh, repo, gateway, then agents. Sign-ins are the owner's: see UPSTREAM.md.
+# Order: check, uv, gh, gitleaks, repo, gateway, then agents. Sign-ins are the owner's: see UPSTREAM.md.
 # Versions, checksums and the pages they were read from: UPSTREAM.md.
 set -euo pipefail
 # The tools below go to ~/.local/bin. Ubuntu's ~/.profile puts that on PATH only when it existed
@@ -43,6 +44,10 @@ NODE_VERSION=v24.22.3
 GH_VERSION=2.104.0
 GH_SHA256=98cb101ad87dbbd3f6b2f2bfcbd43197ccd07643140121d8a9cfaa91eadbc24e
 GH_URL="https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz"
+# The same build and checksum as .github/workflows/ci.yml (tests/test_agent_config.py compares them).
+GITLEAKS_VERSION=8.30.1
+GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+GITLEAKS_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
 
 # Agent runtimes. By the owner's decision of 2026-11-12 they update themselves where the tool
 # can, in sessions the owner starts (Orca's own launches switch the updaters off). What is
@@ -286,6 +291,31 @@ check_gh() {
   [ "$(gh_cli config get telemetry 2>/dev/null)" = disabled ] \
     || fail "gh's telemetry is not disabled (run: deploy/wsl/setup.sh gh)"
   ok "GitHub CLI $(gh_version), GitHub's own build in ~/.local/bin, telemetry off; no Ubuntu gh package"
+}
+
+# The release build prints its bare version (`gitleaks version`; goreleaser's {{.Version}}).
+gitleaks_version() { "${HOME}/.local/bin/gitleaks" version 2>/dev/null </dev/null | head -n 1 | sed 's/^v//'; }
+
+cmd_gitleaks() {
+  # The lead's merge gate runs it as the fifth check on the trial-merged tree, as CI does.
+  if [ "$(gitleaks_version)" != "${GITLEAKS_VERSION}" ]; then
+    local tmp
+    tmp="$(mktemp -d)"
+    curl -fsSLo "${tmp}/gitleaks.tar.gz" "${GITLEAKS_URL}"
+    echo "${GITLEAKS_SHA256}  ${tmp}/gitleaks.tar.gz" | sha256sum -c -
+    tar -xzf "${tmp}/gitleaks.tar.gz" -C "${tmp}" gitleaks
+    install -D -m 0755 "${tmp}/gitleaks" "${HOME}/.local/bin/gitleaks"
+    rm -rf "${tmp}"
+  fi
+  check_gitleaks
+}
+
+check_gitleaks() {
+  [ "$(gitleaks_version)" = "${GITLEAKS_VERSION}" ] \
+    || fail "gitleaks is not ${GITLEAKS_VERSION} in ~/.local/bin (run: deploy/wsl/setup.sh gitleaks)"
+  [ "$(command -v gitleaks)" = "${HOME}/.local/bin/gitleaks" ] \
+    || fail "gitleaks resolves to $(command -v gitleaks || echo nothing), not ~/.local/bin/gitleaks"
+  ok "gitleaks ${GITLEAKS_VERSION} in ~/.local/bin, the build CI uses"
 }
 
 claude_settings() {
@@ -1420,6 +1450,7 @@ case "${1:-}" in
   check) cmd_check ;;
   uv) cmd_uv ;;
   gh) cmd_gh ;;
+  gitleaks) cmd_gitleaks ;;
   claude) cmd_claude ;;
   codex) cmd_codex ;;
   agy) cmd_agy ;;
@@ -1444,6 +1475,7 @@ case "${1:-}" in
   orca-pair) cmd_orca_pair ;;
   agents-check)
     check_gh
+    check_gitleaks
     check_claude
     check_codex
     check_agy

@@ -6,7 +6,8 @@ and Codex allows only the servers ADR 0018 names (``deploy/wsl/meridian.user-dat
 Antigravity has no such setting. So the only
 agent files git may list are the skills in ``.agents/skills/`` and their links in
 ``.claude/skills/``. This catches an accidental commit. It cannot stop a branch from outside the
-owner's own sessions, which carries its own tests: AGENTS.md keeps such branches out of worktrees.
+owner's own sessions, which carries its own tests: docs/HANDBOOK.md (Rules) keeps such branches
+out of worktrees.
 """
 
 import json
@@ -731,3 +732,70 @@ def test_dsh_check_requires_completed_guide_at_current_revision(state):
         check=False,
     )
     assert (result.returncode == 0) == (state == {"completed": True, "version": 1})
+
+
+def setup_value(name):
+    pin = re.search(rf"^{name}=(\S+)$", (DEPLOY / "setup.sh").read_text(), re.M)
+    assert pin, f"setup.sh has no {name}"
+    return pin[1]
+
+
+def test_gitleaks_is_the_build_and_checksum_ci_uses():
+    ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    version, sha = setup_value("GITLEAKS_VERSION"), setup_value("GITLEAKS_SHA256")
+    assert f"/download/v{version}/gitleaks_{version}_linux_x64.tar.gz" in ci
+    assert f'echo "{sha}  gitleaks.tar.gz"' in ci
+
+
+def run_gitleaks_step(tmp_path, step, version="8.30.1"):
+    # cmd_gitleaks and check_gitleaks on a fake home with a fake curl that copies a local
+    # tarball holding a fake gitleaks; nothing is downloaded and the real home is untouched.
+    pack = tmp_path / "pack"
+    pack.mkdir(exist_ok=True)
+    fake = pack / "gitleaks"
+    fake.write_text(f'#!/bin/sh\n[ "$1" = version ] && echo {version}\n')
+    fake.chmod(0o755)
+    tarball = tmp_path / "gitleaks.tar.gz"
+    subprocess.run(["tar", "-czf", str(tarball), "-C", str(pack), "gitleaks"], check=True)
+    sha = subprocess.run(
+        ["sha256sum", str(tarball)], check=True, capture_output=True, text=True
+    ).stdout.split()[0]
+    home = tmp_path / "home"
+    script = (DEPLOY / "setup.sh").read_text()
+    one_liner = re.search(r"^gitleaks_version\(\) \{.*\}$", script, re.M)
+    assert one_liner, "setup.sh has no gitleaks_version"
+    functions = "\n".join(
+        [one_liner[0]]
+        + [f"{f}() {{\n{setup_function_body(f)}\n}}" for f in ("cmd_gitleaks", "check_gitleaks")]
+    )
+    program = (
+        'HOME=$1; PATH="$HOME/.local/bin:$PATH"; TARBALL=$2; CALLS=$3\n'
+        f"GITLEAKS_VERSION=8.30.1\nGITLEAKS_SHA256={sha}\nGITLEAKS_URL=https://example.invalid/g\n"
+        'fail() { echo "FAIL: $*" >&2; exit 1; }\nok() { echo "ok:   $*"; }\n'
+        'curl() { echo "$@" >> "$CALLS"; cp "$TARBALL" "$2"; }\n' + functions + f"\n{step}"
+    )
+    calls = tmp_path / "curl-calls"
+    result = subprocess.run(
+        ["bash", "-eu", "-o", "pipefail", "-c", program, "t", str(home), str(tarball), str(calls)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    count = len(calls.read_text().splitlines()) if calls.exists() else 0
+    return result, count
+
+
+def test_the_gitleaks_step_installs_once_and_its_check_passes(tmp_path):
+    first, downloads = run_gitleaks_step(tmp_path, "cmd_gitleaks")
+    assert first.returncode == 0, first.stderr
+    assert downloads == 1 and (tmp_path / "home/.local/bin/gitleaks").is_file()
+    assert "ok:   gitleaks 8.30.1 in ~/.local/bin" in first.stdout
+    again, downloads = run_gitleaks_step(tmp_path, "cmd_gitleaks")
+    assert again.returncode == 0 and downloads == 1  # already there: no second download
+
+
+def test_the_gitleaks_check_fails_when_missing_or_another_version(tmp_path):
+    missing, _ = run_gitleaks_step(tmp_path, "check_gitleaks")
+    assert missing.returncode == 1 and "is not 8.30.1" in missing.stderr
+    installed, _ = run_gitleaks_step(tmp_path, "cmd_gitleaks", version="8.29.0")
+    assert installed.returncode == 1 and "is not 8.30.1" in installed.stderr
