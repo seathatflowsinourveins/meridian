@@ -39,6 +39,10 @@ case "$1" in
     mkdir -p "$MERIDIAN_FAKE_ROOT/etc/systemd/system/$2.wants"
     ln -s "../$3" "$MERIDIAN_FAKE_ROOT/etc/systemd/system/$2.wants/$3" ;;
   start) echo "$2" >> "$active" ;;
+  stop) grep -vx "$2" "$active" > "$active.new" 2>/dev/null; mv "$active.new" "$active" ;;
+  disable)
+    rm -f "$MERIDIAN_FAKE_ROOT/etc/systemd/system/timers.target.wants/$3"
+    grep -vx "$3" "$active" > "$active.new" 2>/dev/null; mv "$active.new" "$active" ;;
   is-active) grep -qx "$2" "$active" 2>/dev/null && echo active || { echo inactive; exit 3; } ;;
   show) echo fake ;;
 esac
@@ -128,6 +132,52 @@ def test_install_enables_the_timers_and_a_second_run_changes_nothing(fake):
     out, calls = run("unattended")
     assert not [c for c in calls if any(m in c for m in MUTATING)], calls
     assert snapshot(root) == before
+
+
+def test_an_update_leaves_a_timer_the_owner_disabled_or_stopped(fake):
+    """Review fix (landing session): an update re-enabled a timer the owner had stopped with
+    `systemctl disable --now`, the first "Stop" method in docs/LANES.md."""
+    repo, root, run = fake
+    restart, order = TIMERS
+    run("unattended")
+    wants = root / "etc/systemd/system/timers.target.wants"
+    subprocess.run(["systemctl", "disable", "--now", order], env=_env(root), check=True)
+    subprocess.run(["systemctl", "stop", restart], env=_env(root), check=True)
+    assert not (wants / order).exists() and (wants / restart).is_symlink()
+    # An update: a new commit, so a new release and changed units.
+    unit = repo / "deploy/systemd/meridian-alpaca-paper@.service"
+    unit.write_text(unit.read_text() + "# changed\n")
+    git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+    subprocess.run([*git, "commit", "-qam", "update"], check=True)
+    out, calls = run("unattended")
+    assert "systemctl daemon-reload" in calls
+    assert not [c for c in calls if "add-wants" in c or c.startswith("systemctl start")], calls
+    assert not (wants / order).exists() and (wants / restart).is_symlink()
+    assert f"{order}: update, left as it is (disabled, inactive)" in out
+    assert f"{restart}: update, left as it is (enabled, inactive)" in out
+    assert f"{order}: not enabled" in out
+
+
+def test_a_first_install_that_failed_before_enabling_enables_on_the_rerun(fake):
+    _, root, run = fake
+    (root / ".fail-sync").write_text("")
+    with pytest.raises(subprocess.CalledProcessError):
+        run("unattended")
+    out, calls = run("unattended")
+    for timer in TIMERS:
+        assert f"systemctl add-wants timers.target {timer}" in calls
+        assert f"systemctl start {timer}" in calls
+        assert f"{timer}: first install, enabled and started" in out
+
+
+def _env(root: Path) -> dict[str, str]:
+    bin_dir = root.parent / "bin"
+    return {
+        **os.environ,
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "MERIDIAN_FAKE_ROOT": str(root),
+        "FAKE_LOG": str(root.parent / "log"),
+    }
 
 
 def test_the_step_never_overwrites_settings_the_owner_filled(fake):

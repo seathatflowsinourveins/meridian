@@ -27,7 +27,7 @@
 #   deploy/wsl/setup.sh codex-requirements  write /etc/codex/requirements.toml from meridian.user-data (sudo)
 #   deploy/wsl/setup.sh signins       list the sign-ins left for the owner, with their commands
 #   deploy/wsl/setup.sh orca-pair     owner, once, in Windows Terminal: pair the Windows Orca app
-#   deploy/wsl/setup.sh unattended    (sudo) install or update the unattended Alpaca lane, enable its timers
+#   deploy/wsl/setup.sh unattended    (sudo) install or update the unattended Alpaca lane; timers enabled once
 #   deploy/wsl/setup.sh unattended-check  its units, timers, last results and hold file (read only)
 #
 # Order: check, uv, gh, gitleaks, ocr, repo, gateway, then agents. Sign-ins are the owner's: see UPSTREAM.md.
@@ -305,9 +305,10 @@ check_unattended() {
 cmd_unattended() {
   # Non-interactive and idempotent: a second run at the same commit changes nothing. Installs
   # the checked-out commit, the settings and rows files from the templates if absent (values
-  # null; it never sets one, consent included), the state directory and the units, then enables
-  # and starts the timers. It reads no credential and starts no lane run itself.
-  local src commit release cache name timer changed=0
+  # null; it never sets one, consent included), the state directory and the units. It enables
+  # and starts a timer only on its first install: an update leaves a timer the owner disabled or
+  # stopped as it is. It reads no credential and starts no lane run itself.
+  local src commit release cache name timer link state changed=0
   src="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
   [ -z "$(git -C "${src}" status --porcelain)" ] || fail "the checkout has uncommitted changes"
   id paper >/dev/null 2>&1 || fail "service user 'paper' is missing"
@@ -341,14 +342,23 @@ cmd_unattended() {
     changed=1
   done
   [ "${changed}" = 0 ] || sudo systemctl daemon-reload
-  # No [Install] section in the units: the wants link is added here, once (systemctl(1)).
+  # No [Install] section in the units: the wants link is added here, on the first install only
+  # (systemctl(1)), and a marker under /opt records it once both steps succeeded. On an update a
+  # timer the owner stopped with `systemctl disable --now` stays disabled and stopped.
   for timer in ${UNATTENDED_TIMERS}; do
-    [ -L "${UNATTENDED_UNIT_DIR}/timers.target.wants/${timer}" ] \
-      || sudo systemctl add-wants timers.target "${timer}"
-    [ "$(systemctl is-active "${timer}" 2>/dev/null || true)" = active ] \
-      || sudo systemctl start "${timer}"
+    if [ ! -e "${UNATTENDED_ROOT}/timers-enabled/${timer}" ]; then
+      [ -L "${UNATTENDED_UNIT_DIR}/timers.target.wants/${timer}" ] \
+        || sudo systemctl add-wants timers.target "${timer}"
+      sudo systemctl start "${timer}"
+      sudo install -D -m 0644 /dev/null "${UNATTENDED_ROOT}/timers-enabled/${timer}"
+      ok "${timer}: first install, enabled and started (stop: sudo systemctl disable --now ${timer})"
+    else
+      link=disabled
+      [ -L "${UNATTENDED_UNIT_DIR}/timers.target.wants/${timer}" ] && link=enabled
+      state="$(systemctl is-active "${timer}" 2>/dev/null || true)"
+      ok "${timer}: update, left as it is (${link}, ${state:-unknown})"
+    fi
   done
-  ok "units installed; timers enabled (stop with: sudo systemctl disable --now <timer>)"
   cmd_unattended_check
 }
 
