@@ -22,6 +22,7 @@ class LoadedControls:
     controls: Controls = field(repr=False)
     paper_default_rows: int
     reviewed_rows: int
+    unavailable_rows: int
 
 
 def load_controls(path: str | None) -> LoadedControls:
@@ -36,10 +37,11 @@ def load_controls(path: str | None) -> LoadedControls:
     try:
         rows = json.loads(text)
         if isinstance(rows, list) and all(
-            isinstance(row, dict) and row.get("scope") in {"PAPER_DEFAULT", "REVIEWED"}
+            isinstance(row, dict)
+            and row.get("scope") in {"PAPER_DEFAULT", "REVIEWED", "UNAVAILABLE"}
             for row in rows
         ):
-            # Check original scopes first: a fixture must never be promoted here.
+            # Fixtures never pass; M2 checks UNAVAILABLE without a scope mapping.
             controls = Controls.from_rows(
                 [
                     row | {"scope": "REVIEWED"} if row["scope"] == "PAPER_DEFAULT" else row
@@ -51,6 +53,7 @@ def load_controls(path: str | None) -> LoadedControls:
                     controls,
                     sum(row["scope"] == "PAPER_DEFAULT" for row in rows),
                     sum(row["scope"] == "REVIEWED" for row in rows),
+                    sum(row["scope"] == "UNAVAILABLE" for row in rows),
                 )
     except ValueError, TypeError, KeyError, ArithmeticError:
         pass
