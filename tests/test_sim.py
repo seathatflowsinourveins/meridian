@@ -72,14 +72,16 @@ def test_every_set_runs_the_template_and_the_bracket(store):
 
 def test_the_template_enters_only_symbols_on_the_mover_list(store, base):
     # BREACH is left off the synthetic screener lists: it never enters, while every
-    # scenario on the list behaves as with the full list.
+    # scenario on the list enters as often as with the full list. Not the same events:
+    # the M2 pacer is one budget for the account, so BREACH's orders change which other
+    # orders it defers (with BREACH, a RATCHET entry ends unfilled and is sent again).
     on_list = [i for i in catalog.instrument_ids(SCENARIOS) if i.symbol.value != "BREACH"]
     data = runner.run_set(BASE, store, universe=synthetic_universe(on_list, catalog.START_NS))
     assert data["symbols"]["BREACH.SIM"]["entries"] == 0
     assert data["symbols"]["BREACH.SIM"]["phase"] == "flat"
     for symbol, report in base[0]["symbols"].items():
         if symbol != "BREACH.SIM":
-            assert data["symbols"][symbol]["events"] == report["events"], symbol
+            assert data["symbols"][symbol]["entries"] == report["entries"], symbol
     assert base[0]["symbols"]["BREACH.SIM"]["entries"] == 1  # on the full list, it enters
 
 
