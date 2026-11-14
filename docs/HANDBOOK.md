@@ -288,4 +288,6 @@ in that turn. `codex features list` shows `goals` stable and on.
   of a kind the file names. It is a tripwire: see the file's header for why GitHub cannot lock
   it while every push comes from the owner's account. The open-issue count is not checked:
   without a token CI can read only issues and pull requests together.
-- ADRs: `docs/adr/README.md` (format and index).
+- ADRs: `docs/adr/README.md` lists last checks and revisit dates; read the Decision first.
+  Recheck sources; append a dated kept/replaced/re-measured line in `docs/adr/data/NNNN-revisits.md`,
+  then update the index; the weekly watch reports in the GitHub issue labelled `landscape`.

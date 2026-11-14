@@ -25,6 +25,9 @@ NOT_SCANNED: set[str] = set()
 ACCOUNT_ID = re.compile(r"(?<![A-Za-z0-9])[DUFI][A-Z]{0,2}[0-9]{5,9}(?![A-Za-z0-9])")
 
 WORKFLOW_HAZARDS = {
+    "CI context token": re.compile(
+        r"github\s*[.\[]\s*[\'\"]?token|tojson\(\s*github", re.IGNORECASE
+    ),
     "pull_request_target trigger (runs fork code with this repo's token)": re.compile(
         r"pull_request_target"
     ),
@@ -129,12 +132,7 @@ def test_nothing_under_github_is_a_link():
 def test_ci_has_no_fork_reachable_token_secret_or_runner():
     workflows = [n for n in tracked_files() if n.startswith(".github/workflows/")]
     assert workflows, "no workflow files found; the check would pass without looking"
-    hits = [
-        f"{name}: {label}"
-        for name in workflows
-        for label, pattern in WORKFLOW_HAZARDS.items()
-        if pattern.search(read_text(name))
-    ]
+    hits = [hit for name in workflows for hit in workflow_hits(name, read_text(name))]
     assert hits == []
 
 
@@ -194,3 +192,87 @@ def test_the_workflow_check_leaves_this_ci_alone():
     text = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert not any(pattern.search(text) for pattern in WORKFLOW_HAZARDS.values())
     assert Path(".github/workflows/ci.yml").as_posix() in tracked_files()
+
+
+# A token is allowed only for this exact default-branch, non-PR recipe. Requiring the
+# whole shape rejects extra triggers/jobs/permissions and YAML aliases or duplicate keys.
+LANDSCAPE_RECIPE = r"""name: Landscape watch
+on:
+  schedule:
+    - cron: '23 9 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: landscape-watch
+  cancel-in-progress: false
+jobs:
+  watch:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+          enable-cache: true
+      - name: Read landscape and publish findings
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          uv run --no-project --python 3.14 python -m deploy.landscape_watch \
+            > "$RUNNER_TEMP/landscape.md"
+          uv run --no-project --python 3.14 python -m deploy.landscape_issue \
+            "$RUNNER_TEMP/landscape.md"
+"""
+
+
+def workflow_hits(name: str, text: str) -> list[str]:
+    hits = []
+    if name == ".github/workflows/landscape.yml":
+        if text != LANDSCAPE_RECIPE:
+            hits.append(f"{name}: landscape workflow differs from its approved safe recipe")
+        else:
+            text = text.replace("GITHUB_TOKEN: ${{ github.token }}", "GITHUB_TOKEN: permitted")
+    hits.extend(
+        f"{name}: {label}" for label, pattern in WORKFLOW_HAZARDS.items() if pattern.search(text)
+    )
+    return hits
+
+
+def test_landscape_recipe_is_pinned_and_restricted():
+    assert (
+        workflow_hits(
+            ".github/workflows/landscape.yml", read_text(".github/workflows/landscape.yml")
+        )
+        == []
+    )
+    assert workflow_hits(".github/workflows/ci.yml", LANDSCAPE_RECIPE)
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("  workflow_dispatch:", "  pull_request:"),
+        ("  workflow_dispatch:", "  workflow_dispatch:\n  push:"),
+        ("  contents: read", "  contents: write"),
+        ("  issues: write", "  issues: write\n  actions: write"),
+        ("github.event.repository.default_branch }}", "github.head_ref }}"),
+        (
+            "if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)",
+            "if: true",
+        ),
+        ("persist-credentials: false", "persist-credentials: true"),
+        ("3d3c42e5aac5ba805825da76410c181273ba90b1", "main"),
+        ("cancel-in-progress: false", "cancel-in-progress: true"),
+        ("uv run --no-project --python 3.14 python", "python3"),
+    ],
+)
+def test_landscape_rejects_mutations_of_the_safe_recipe(old, new):
+    assert old in LANDSCAPE_RECIPE
+    assert workflow_hits(".github/workflows/landscape.yml", LANDSCAPE_RECIPE.replace(old, new))
