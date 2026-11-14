@@ -48,7 +48,13 @@ def load_paper_keys(environ: Mapping[str, str] = os.environ) -> PaperKeys:
             "deploy/systemd/meridian-alpaca-paper.service (see docs/m3-alpaca.md)"
         )
     base = Path(directory)
-    return PaperKeys(_read(base, KEY_ID), _read(base, SECRET_KEY))
+    key_id = _read(base, KEY_ID)
+    # Alpaca documents AK as a live-shaped hint, not proof of account type (2026-11-13;
+    # API Key Security Best Practices for Alpaca Builders, source URL in UPSTREAM.md).
+    # Refuse that shape before either client can send it, without revealing any part of it.
+    if key_id.startswith("AK"):
+        raise PaperKeysUnavailable("credential alpaca-paper-key-id has a refused key-id shape")
+    return PaperKeys(key_id, _read(base, SECRET_KEY))
 
 
 def _read(base: Path, name: str) -> str:

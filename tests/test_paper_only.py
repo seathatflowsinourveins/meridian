@@ -1,16 +1,21 @@
 """
-Paper only: the build fails if a live endpoint, a live port, a live trading mode or a
-live key name appears in any file git can see.
+Paper only: tripwires for recognizable live endpoints, ports, modes and key names
+in files git can see. Computed values and indirect calls can escape a source scan.
 
 "Live" here means real-money trading. NautilusTrader's own names such as ``LiveNode`` and
 ``Environment.LIVE`` mean "connected to a venue, not a backtest" and are not matched.
 
-This scan is a tripwire, not the boundary. The boundary is ``meridian/boundary.py``.
+This scan is a tripwire, not the boundary. The boundaries are ``meridian/boundary.py`` and
+the runtime host guards in ``meridian/alpaca/wire.py``. Literal folding never executes code.
 """
 
+import ast
+import io
 import os
 import re
 import subprocess
+import tokenize
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -18,6 +23,18 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 # This file states the patterns. The lock file holds only package names and hashes.
 NOT_SCANNED = {"tests/test_paper_only.py", "uv.lock"}
+
+# Only folded expressions get this allowance; the original text is always scanned.
+# Existing negative fixtures, explicitly approved by the lead. No filename-wide exemption.
+FOLDED_FIXTURES = {
+    "tests/test_alpaca_paper.py": {
+        "api.alpaca.markets",
+        "TradingClient(key, secret, paper=False)",
+        "url_override='https://api.alpaca.markets'",
+        "BaseURL.TRADING_LIVE",
+        "BaseURL.TRADING_STREAM_LIVE",
+    },
+}
 
 LIVE_PATTERNS = {
     "live port (IB Gateway live or TWS live)": re.compile(r"(?<![\w.])(?:4001|7496)(?!\w|\.\d)"),
@@ -43,6 +60,11 @@ LIVE_PATTERNS = {
 _NAME = re.compile(r"[A-Za-z0-9_\-]+(?:\.[A-Za-z0-9_\-]+)*")
 _NAME_PART = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+")
 _SECRET_WORDS = {"key", "secret", "token", "password"}
+_SECRET_PART = re.compile(r"(?:api)?(?:key|secret|token|password)s?")
+_COMPOUND_SECRET = re.compile(
+    r"(?:live(?:api)?(?:key|secret|token|password)s?|"
+    r"(?:api)?(?:key|secret|token|password)s?live)"
+)
 
 
 def live_key_name(text: str) -> bool:
@@ -51,13 +73,114 @@ def live_key_name(text: str) -> bool:
         parts = {part.lower() for part in _NAME_PART.findall(name)}
         if "live" in parts and parts & _SECRET_WORDS:
             return True
+        if "live" in parts and any(_SECRET_PART.fullmatch(part) for part in parts):
+            return True
+        if any(_COMPOUND_SECRET.fullmatch(part) for part in parts):
+            return True
     return False
 
 
-def findings(text: str) -> list[str]:
+def text_findings(text: str) -> list[str]:
     found = [label for label, pattern in LIVE_PATTERNS.items() if pattern.search(text)]
     if live_key_name(text):
         found.append("live key name")
+    return found
+
+
+def python_tree(text: str) -> ast.Module | None:
+    try:
+        return ast.parse(text)
+    except SyntaxError, ValueError:
+        return None  # Non-Python files still receive every original text rule.
+
+
+def literal_text(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left, right = literal_text(node.left), literal_text(node.right)
+        if left is not None and right is not None:
+            return left + right
+    return None
+
+
+def folded_strings(text: str) -> Iterator[str]:
+    """Maximal literal additions and adjacent Python string literals, without eval.
+
+    Variables, formatting and function calls are not resolved. Non-Python text is not
+    folded. Keep maximal expressions so the allowance matches the entire fixture value.
+    """
+
+    def visit(node: ast.AST) -> Iterator[str]:
+        if isinstance(node, ast.JoinedStr):
+            return  # Formatting is outside literal folding, including its partial constants.
+        value = literal_text(node)
+        if value is not None:
+            segment = ast.get_source_segment(text, node) or ""
+            tokens = tokenize.generate_tokens(io.StringIO("(" + segment + ")").readline)
+            if sum(token.type == tokenize.STRING for token in tokens) > 1:
+                yield value
+            return
+        for child in ast.iter_child_nodes(node):
+            yield from visit(child)
+
+    tree = python_tree(text)
+    if tree is not None:
+        yield from visit(tree)
+
+
+def python_findings(text: str) -> list[str]:
+    tree = python_tree(text)
+    if tree is None:
+        return []
+    # Installed alpaca-py 0.45.0: TradingClient has oauth_token before paper;
+    # TradingStream has paper immediately after the two credentials.
+    positions = {"TradingClient": 4, "TradingStream": 3}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module in {
+            "alpaca.trading.client",
+            "alpaca.trading.stream",
+        }:
+            for alias in node.names:
+                if alias.name in positions:
+                    positions[alias.asname or alias.name] = positions[alias.name]
+    found = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "paper" for target in node.targets
+            )
+            and not (isinstance(node.value, ast.Constant) and node.value.value is True)
+        ):
+            found.append("paper assignment is not literal True")
+        if not isinstance(node, ast.Call):
+            continue
+        for keyword in node.keywords:
+            if keyword.arg == "paper" and not (
+                isinstance(keyword.value, ast.Constant) and keyword.value.value is True
+            ):
+                found.append("paper switch is not literal True")
+        func = node.func
+        name = (
+            func.id
+            if isinstance(func, ast.Name)
+            else (func.attr if isinstance(func, ast.Attribute) else "")
+        )
+        if name in positions and (
+            len(node.args) >= positions[name]
+            or any(isinstance(arg, ast.Starred) for arg in node.args)
+            or any(keyword.arg is None for keyword in node.keywords)
+        ):
+            found.append("positional or unpacked SDK options outside paper wrappers")
+    return found
+
+
+def findings(text: str, name: str = "") -> list[str]:
+    found = text_findings(text) + python_findings(text)
+    for value in folded_strings(text):
+        if value not in FOLDED_FIXTURES.get(name, set()):
+            found.extend(text_findings(value) + python_findings(value))
     return found
 
 
@@ -124,7 +247,9 @@ def test_no_live_endpoint_port_mode_or_key_name_in_the_repo():
     for name in files:
         data = scan_bytes(name)
         assert b"\0" not in data, f"{name} is not plain text (UTF-16 or binary); cannot scan it"
-        hits += [f"{name}: {label}" for label in findings(data.decode("utf-8", errors="replace"))]
+        hits += [
+            f"{name}: {label}" for label in findings(data.decode("utf-8", errors="replace"), name)
+        ]
     assert hits == []
 
 
@@ -246,3 +371,126 @@ def test_any_other_link_fails_the_scan(tree, target, reason):
     (tree / "b" / "link").symlink_to(tree / "a" / "skill" if target == "IN-TREE" else target)
     with pytest.raises(AssertionError, match=reason):
         is_link_to_listed_files("b/link", LISTED, tree)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "0",
+        "0.0",
+        "-0.0",
+        "+0",
+        "0e0",
+        "0j",
+        "0x0",
+        "0o0",
+        "0b0",
+        "None",
+        "''",
+        '""',
+        "b''",
+        "[]",
+        "{}",
+        "()",
+        "set()",
+        "(False)",
+        "not True",
+        "bool()",
+        "bool(0)",
+        "settings.paper",
+    ],
+)
+def test_nonliteral_true_paper_switches_are_refused(value):
+    assert findings(f"TradingClient(key, secret, paper={value})")
+    assert findings(f"paper={value}")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "TradingClient(key, secret, None, False)",
+        "TradingClient(key, secret, None, True)",
+        "TradingStream(key, secret, False)",
+        "TradingStream(key, secret, True)",
+        "alpaca.trading.stream.TradingStream(key, secret, 0)",
+        "from alpaca.trading.client import TradingClient as Client\nClient(k, s, None, False)",
+        "TradingClient(*args)",
+        "TradingStream(**options)",
+    ],
+)
+def test_sdk_positional_switches_and_unpacked_options_are_refused(text):
+    assert findings(text)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "LIVE_KEYS",
+        "ALPACA_LIVE_APIKEY",
+        "livekey",
+        "livekeys",
+        "liveapikey",
+        "liveSecrets",
+        "LIVE_TOKENS",
+        "LIVE_PASSWORDS",
+        "KEYSLIVE",
+    ],
+)
+def test_plural_and_compound_secret_names_are_refused(name):
+    assert live_key_name(name)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'HOST = "api." + "alpaca.markets"',
+        'HOST = "api." "alpaca.markets"',
+        'HOST = ("api."\n "alpaca.markets")',
+        'HOST = ("api." + ("alpaca." + "markets"))',
+        'HOST = "api\\x2e" + "alpaca.markets"',
+        'HOST = "https://api." + "alpaca.markets/v2/orders"',
+    ],
+)
+def test_literal_concatenated_hosts_are_refused(source):
+    assert findings(source)
+
+
+@pytest.mark.parametrize("name", ["tests/test_alpaca_paper.py", "meridian/alpaca/planted.py"])
+def test_unlisted_folded_host_fails_even_in_the_fixture_file(monkeypatch, name):
+    source = 'HOST = "https://api." + "alpaca.markets/planted"'
+    # Exercise the repository scanner, including its filename-aware fixture allowance.
+    monkeypatch.setattr(__import__(__name__), "files_to_scan", lambda: [name])
+    monkeypatch.setattr(__import__(__name__), "scan_bytes", lambda _: source.encode())
+    with pytest.raises(AssertionError):
+        test_no_live_endpoint_port_mode_or_key_name_in_the_repo()
+    # The approved value is allowed only as a fold in the named fixture file.
+    source = 'HOST = "api." + "alpaca.markets"'
+    if name == "tests/test_alpaca_paper.py":
+        test_no_live_endpoint_port_mode_or_key_name_in_the_repo()
+    else:
+        with pytest.raises(AssertionError):
+            test_no_live_endpoint_port_mode_or_key_name_in_the_repo()
+    source = 'HOST = "api.alpaca.markets"'
+    with pytest.raises(AssertionError):
+        test_no_live_endpoint_port_mode_or_key_name_in_the_repo()
+
+
+@pytest.mark.parametrize(
+    ("module", "parts"),
+    [
+        ("wire.py", ("api.alpaca.", "markets")),
+        ("data.py", ("api.alpaca.", "markets")),
+        ("commission.py", ("api.alpaca.", "markets")),
+        ("commission.py", ("docs.alpaca.", "markets/uncited")),
+    ],
+)
+@pytest.mark.parametrize("join", [" + ", " "])
+def test_package_scope_refuses_split_hosts(tmp_path, module, parts, join):
+    from test_alpaca_paper import PACKAGE, assert_package_hosts
+
+    (tmp_path / "data.py").write_text('HOST = "stream.data.alpaca.markets"')
+    (tmp_path / "commission.py").write_text((PACKAGE / "commission.py").read_text())
+    with (tmp_path / module).open("a") as output:
+        output.write("\nPLANTED = " + repr(parts[0]) + join + repr(parts[1]))
+    with pytest.raises(AssertionError, match="unexpected Alpaca host"):
+        assert_package_hosts(tmp_path)
