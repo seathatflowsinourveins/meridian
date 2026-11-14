@@ -233,6 +233,7 @@ def test_template_nulls_and_tracked_settings_refused(lane):
     assert json.loads(path.read_text()) == {
         "order_budget_rows_path": None,
         "quote_max_age_ns": None,
+        "unattended_orders_enabled": None,
     }
     with pytest.raises(lane.Refused, match="local settings unavailable or invalid"):
         lane.load_settings(path)

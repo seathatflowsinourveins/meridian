@@ -1041,7 +1041,13 @@ def test_the_stack_is_pinned_to_exact_commits_versions_and_checksums():
         assert setup_pin(name) in upstream, f"{name} has no UPSTREAM.md row"
     for name in ("AST_GREP_VERSION", "AGENTSVIEW_VERSION"):
         assert re.fullmatch(r"\d+\.\d+\.\d+", setup_pin(name)), f"{name} is not an exact version"
-    for name in ("DSH_LSP_INTEGRITY", "DSH_LSP_STDIO_INTEGRITY", "DSH_TOOL_LSP_INTEGRITY"):
+    for name in (
+        "DSH_LSP_INTEGRITY",
+        "DSH_LSP_STDIO_INTEGRITY",
+        "DSH_TOOL_LSP_INTEGRITY",
+        "DSH_HOOKS_INTEGRITY",
+        "DSH_HOOK_PROTOCOL_INTEGRITY",
+    ):
         assert re.fullmatch(r"sha512-[A-Za-z0-9+/]{86}==", setup_pin(name)), f"{name} is not sha512"
         assert setup_pin(name) in upstream, f"{name} has no UPSTREAM.md row"
 
@@ -1052,6 +1058,219 @@ def test_code_navigation_is_the_read_only_lsp_tool_on_the_worktrees_own_pyright(
     for package in ("dsh-lsp", "dsh-lsp-stdio", "dsh-tool-lsp"):
         assert f"      name: '@deepseek-ai/{package}'\n" in block
     assert "dsh-mcp-client" not in block, "the stack adds no MCP server"
+
+
+def setup_array(name):
+    block = re.search(rf"^{name}=\((.*?)\)$", SETUP, re.M | re.S)
+    assert block, f"setup.sh has no {name} list"
+    return block[1].split()
+
+
+FAKE_DSH = """#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+
+args = sys.argv[1:]
+calls = Path(os.environ["DSH_CALLS"])
+with calls.open("a") as log:
+    log.write(" ".join(args) + "\\n")
+home = Path(os.environ["HOME"])
+
+
+def manifest(profile):
+    path = home / ".dsh" / "profiles" / profile / "package.json"
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"name": "dsh-profile-" + profile, "dependencies": {},
+                                    "dsh": {"profile": {"bundles": []}}}) + "\\n")
+    return path
+
+
+if args[:1] == ["--profile"]:
+    if "--dump-config" in args:
+        manifest(args[1])
+elif args[:1] == ["plugin"]:
+    assert args[1] == "--profile" and args[3] == "add", args
+    path = manifest(args[2])
+    data = json.loads(path.read_text())
+    for spec in args[4:]:
+        name, _, version = spec.rpartition("@")
+        data.setdefault("dependencies", {})[name] = version
+    path.write_text(json.dumps(data) + "\\n")
+else:
+    sys.exit("unexpected fake dsh arguments: " + " ".join(args))
+"""
+
+
+def run_dsh_package_install(fixture):
+    home = fixture / "home"
+    calls = fixture / "calls"
+    fake = home / ".local/bin/dsh"
+    fake.parent.mkdir(parents=True, exist_ok=True)
+    fake.write_text(FAKE_DSH)
+    fake.chmod(0o755)
+    lsp, hook = setup_array("DSH_LSP_PACKAGES"), setup_array("DSH_HOOK_PACKAGES")
+    functions = "\n".join(
+        f"{name}() {{\n{setup_function_body(name)}\n}}"
+        for name in (
+            "dsh_profile_init",
+            "dsh_profile_package",
+            "dsh_lsp_packages",
+            "dsh_hook_packages",
+        )
+    )
+    program = (
+        "set -euo pipefail\n"
+        'HOME=$1; DSH_CALLS=$2; PATH="$HOME/.local/bin:$PATH"; export DSH_CALLS\n'
+        f"DSH_VERSION={setup_pin('DSH_VERSION')}\n"
+        f"DSH_LSP_PACKAGES=({' '.join(lsp)})\n"
+        f"DSH_HOOK_PACKAGES=({' '.join(hook)})\n"
+        f"DSH_LSP_INTEGRITY={setup_pin('DSH_LSP_INTEGRITY')}\n"
+        f"DSH_LSP_STDIO_INTEGRITY={setup_pin('DSH_LSP_STDIO_INTEGRITY')}\n"
+        f"DSH_TOOL_LSP_INTEGRITY={setup_pin('DSH_TOOL_LSP_INTEGRITY')}\n"
+        f"DSH_HOOKS_INTEGRITY={setup_pin('DSH_HOOKS_INTEGRITY')}\n"
+        f"DSH_HOOK_PROTOCOL_INTEGRITY={setup_pin('DSH_HOOK_PROTOCOL_INTEGRITY')}\n"
+        'version_ge() { [ -n "${1:-}" ] && [ "$1" = "$2" ]; }\n'
+        'npm_pinned() { printf "pinned %s %s\\n" "$1" "$2" >> "$DSH_CALLS"; }\n'
+        'fail() { echo "FAIL: $*" >&2; exit 1; }\n'
+        + functions
+        + "\ndsh_lsp_packages dsh-tui\ndsh_lsp_packages headless\n"
+        "dsh_hook_packages dsh-tui\ndsh_hook_packages headless\n"
+    )
+    subprocess.run(
+        ["bash", "-c", program, "test-dsh-install", str(home), str(calls)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return home, calls, lsp, hook
+
+
+def test_the_lsp_and_hook_packages_are_installed_in_both_profiles(tmp_path):
+    home, calls, lsp, hook = run_dsh_package_install(tmp_path)
+    version = setup_pin("DSH_VERSION")
+    for profile in ("dsh-tui", "headless"):
+        manifest = json.loads((home / f".dsh/profiles/{profile}/package.json").read_text())
+        for package in (*lsp, *hook):
+            assert manifest["dependencies"][f"@deepseek-ai/{package}"] == version
+    logged = calls.read_text().splitlines()
+    assert "--profile headless --dump-config" in logged, (
+        "headless was not created from its template"
+    )
+    expected = {
+        "dsh-lsp": setup_pin("DSH_LSP_INTEGRITY"),
+        "dsh-lsp-stdio": setup_pin("DSH_LSP_STDIO_INTEGRITY"),
+        "dsh-tool-lsp": setup_pin("DSH_TOOL_LSP_INTEGRITY"),
+        "dsh-hooks-claude-code": setup_pin("DSH_HOOKS_INTEGRITY"),
+        "dsh-hook-protocol": setup_pin("DSH_HOOK_PROTOCOL_INTEGRITY"),
+    }
+    for profile in ("dsh-tui", "headless"):
+        for package in (*lsp, *hook):
+            assert any(
+                line.startswith(f"plugin --profile {profile} add")
+                and f"@deepseek-ai/{package}@{version}" in line
+                for line in logged
+            ), (profile, package)
+    for package, integrity in expected.items():
+        assert f"pinned @deepseek-ai/{package}@{version} {integrity}" in logged, package
+    before = calls.read_text()
+    run_dsh_package_install(tmp_path)
+    assert calls.read_text() == before, "a second install changed an up-to-date profile"
+
+
+def dsh_stack_config(home):
+    args = (
+        "        args: ['-c', 'top=\"$(git rev-parse --show-toplevel)\" && "
+        f"exec python3 -I {home}/.dsh/lsp/dsh-lsp-root.py "
+        '"$top" "$top/.venv/bin/pyright-langserver" --stdio\']\n'
+    )
+    return (
+        "- id: meridian-lsp\n"
+        "  name: '@deepseek-ai/dsh-lsp'\n"
+        "- id: meridian-lsp-pyright\n"
+        "  name: '@deepseek-ai/dsh-lsp-stdio'\n"
+        "  config:\n"
+        "    servers:\n"
+        "      pyright:\n"
+        "        command: sh\n" + args + "        extensionToLanguage:\n"
+        "          '.py': python\n"
+        "- id: meridian-tool-lsp\n"
+        "  name: '@deepseek-ai/dsh-tool-lsp'\n"
+        "- id: meridian-check-gate\n"
+        "  name: '@deepseek-ai/dsh-hooks-claude-code'\n"
+    )
+
+
+def run_dsh_profile_check(tmp_path, name, profile, packages, missing_row=None):
+    root = tmp_path / name
+    home = root / "home"
+    profile_dir = home / ".dsh/profiles" / profile
+    profile_dir.mkdir(parents=True)
+    version = setup_pin("DSH_VERSION")
+    (profile_dir / "package.json").write_text(
+        json.dumps({"dependencies": {f"@deepseek-ai/{p}": version for p in packages}})
+    )
+    shim = home / ".dsh/lsp/dsh-lsp-root.py"
+    shim.parent.mkdir(parents=True)
+    shim.write_bytes((DEPLOY / "dsh-lsp-root.py").read_bytes())
+    driver_dir = root / "deploy/wsl"
+    driver_dir.mkdir(parents=True)
+    (driver_dir / "dsh-lsp-root.py").write_bytes((DEPLOY / "dsh-lsp-root.py").read_bytes())
+    config = dsh_stack_config(home)
+    if missing_row is not None:
+        config = config.replace(f"- id: {missing_row}\n", "")
+    config_path = root / "config.yml"
+    config_path.write_text(config)
+    one_liner = re.search(r"^dsh_row\(\) \{.*\}$", SETUP, re.M)
+    assert one_liner, "setup.sh has no dsh_row"
+    functions = "\n".join(
+        [one_liner[0]]
+        + [
+            f"{name}() {{\n{setup_function_body(name)}\n}}"
+            for name in ("dsh_profile_package", "dsh_rows_named", "check_dsh_profile")
+        ]
+    )
+    driver = driver_dir / "driver.sh"
+    driver.write_text(
+        "set -euo pipefail\n"
+        f"DSH_VERSION={version}\n"
+        f"DSH_LSP_PACKAGES=({' '.join(setup_array('DSH_LSP_PACKAGES'))})\n"
+        f"DSH_HOOK_PACKAGES=({' '.join(setup_array('DSH_HOOK_PACKAGES'))})\n"
+        'version_ge() { [ -n "${1:-}" ] && [ "$1" = "$2" ]; }\n'
+        'fail() { echo "FAIL: $*" >&2; exit 1; }\n'
+        'ok() { echo "ok: $*"; }\n' + functions + '\ncheck_dsh_profile "$1" "$(cat "$2")"\n'
+    )
+    return subprocess.run(
+        ["bash", str(driver), profile, str(config_path)],
+        env=dict(os.environ, HOME=str(home)),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_agents_check_verifies_the_five_packages_and_four_rows_in_both_profiles(tmp_path):
+    packages = [*setup_array("DSH_LSP_PACKAGES"), *setup_array("DSH_HOOK_PACKAGES")]
+    for profile in ("dsh-tui", "headless"):
+        result = run_dsh_profile_check(tmp_path, f"ok-{profile}", profile, packages)
+        assert result.returncode == 0, result.stderr
+    missing = run_dsh_profile_check(tmp_path, "missing-package-headless", "headless", packages[:-1])
+    assert missing.returncode == 1
+    assert "@deepseek-ai/dsh-hook-protocol" in missing.stderr and "headless" in missing.stderr
+    row = run_dsh_profile_check(
+        tmp_path, "missing-gate-tui", "dsh-tui", packages, missing_row="meridian-check-gate"
+    )
+    assert row.returncode == 1
+    assert "meridian-check-gate" in row.stderr and "dsh-tui" in row.stderr
+
+
+def test_check_dsh_dumps_both_profiles_and_checks_each():
+    check = setup_function_body("check_dsh")
+    assert "--profile headless --dump-config" in check
+    assert 'check_dsh_stack "${config}" "${headless_config}"' in check
+    stack = setup_function_body("check_dsh_stack")
+    assert 'check_dsh_profile dsh-tui "${config_tui}"' in stack
+    assert 'check_dsh_profile headless "${config_headless}"' in stack
 
 
 FAKE_SERVER = """#!/usr/bin/env python3

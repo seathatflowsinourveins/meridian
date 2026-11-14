@@ -5,9 +5,8 @@ agents. State is in files, not in a conversation: the roadmap (what is next), UP
 
 ## Boundaries (the owner's; not yours to change)
 - Paper only: never create, enable or test a route to a real-money account.
-- Only the engine places orders, in a run the owner starts and attends in a terminal Orca did
-  not start. No agent, script or tool call submits, changes or cancels an order, and no agent
-  starts the lane in any mode or works around its typed-word check.
+- Only the engine places orders, in a run the owner starts or in the unattended service the
+  owner had enabled. No agent places, changes or cancels an order or types the confirmation.
 - Never read, print, copy or move a key or credential value.
 - `risk/` and `*.contract.json` are the owner's; `upstream/` is verbatim. Read, never edit.
 - Public repository: no account id, order history or tuned value (those go to

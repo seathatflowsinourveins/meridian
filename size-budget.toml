@@ -20,7 +20,7 @@
 "AGENTS.md" = 30 # the few lines every context loads (plan of 2026-11-13, section 1); 27 now
 "CLAUDE.md" = 1 # only the @AGENTS.md import
 "docs/HANDBOOK.md" = 400 # plan 9.5
-"docs/LANES.md" = 180 # the lanes, runbooks and Orca notes moved from the handbook and AGENTS.md
+"docs/LANES.md" = 191 # the lanes, runbooks and Orca notes moved from the handbook and AGENTS.md; +11 for the M7 unattended runbook (lead, 2026-11-14)
 "docs/adr/README.md" = 80 # the ADR format and the index
 
 [adr]
