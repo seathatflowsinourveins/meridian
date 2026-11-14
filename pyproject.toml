@@ -10,12 +10,27 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.170.15",
     "pyright[nodejs]>=1.1.414",
     "pytest>=9.2.0",
     "ruff>=0.17.3",
+    "time-machine>=2.19.0",
+]
+research = [
+    "edgartools>=5.62.1",
+    "exchange-calendars>=4.13.2",
+    "financedatabase>=2.5.1",
+    "ml4t-diagnostic>=0.2.0",
+    "openbb>=5.0.0",
+    "pandera[pandas]>=0.35.0",
+    "polars>=2.1.0",
+    "skfolio>=1.12.7",
+    "vectorbt>=1.2.0",
 ]
 
 [tool.uv]
+# Research smoke tests run in the normal CI command.
+default-groups = ["dev", "research"]
 # uv itself is pinned where it is installed: deploy/wsl/setup.sh and the CI workflow.
 # Release cooldown: nothing uploaded in the last 7 days is resolved...
 exclude-newer = "7 days"
