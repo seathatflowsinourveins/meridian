@@ -33,7 +33,7 @@ select = ["E", "F", "UP", "B", "SIM", "I"]
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
-include = ["meridian", "tests"]
+include = ["meridian", "tests", ".agents/skills/lead/scripts"]
 extraPaths = ["tests", "upstream/nautilus_trader/v2.0.0rc9/examples/live/interactive_brokers"]
 
 [tool.pytest.ini_options]

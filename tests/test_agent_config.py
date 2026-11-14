@@ -5,7 +5,8 @@ start in: MCP servers, hooks, plugins and feature switches. Claude Code and Code
 machine-wide (``deploy/wsl/meridian.user-data``); Antigravity has no such setting. So the only
 agent files git may list are the skills in ``.agents/skills/`` and their links in
 ``.claude/skills/``. This catches an accidental commit. It cannot stop a branch from outside the
-owner's own sessions, which carries its own tests: AGENTS.md keeps such branches out of worktrees.
+owner's own sessions, which carries its own tests: docs/HANDBOOK.md (Rules) keeps such branches
+out of worktrees.
 """
 
 import json
