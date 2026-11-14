@@ -616,6 +616,13 @@ cmd_claude_hud() {
   local claude="${HOME}/.local/bin/claude" mp="${HOME}/.claude/plugins/marketplaces/claude-hud"
   local hud="${HOME}/.claude/plugins/claude-hud" path
   export CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1
+  # A checkout at another commit is an older pin: the plugin and its marketplace are removed and
+  # added again at the new one, so that the cache holds the pinned version only.
+  if [ -d "${mp}/.git" ] && [ "$(git -C "${mp}" rev-parse HEAD)" != "${CLAUDE_HUD_COMMIT}" ]; then
+    "${claude}" plugin uninstall claude-hud@claude-hud --scope user --keep-data </dev/null >/dev/null 2>&1 || true
+    "${claude}" plugin marketplace remove claude-hud </dev/null >/dev/null
+    rm -rf "${HOME}/.claude/plugins/cache/claude-hud"
+  fi
   # The marketplace at the pinned tag; the plugin is installed only once its commit is checked.
   [ -d "${mp}/.git" ] \
     || "${claude}" plugin marketplace add "jarrodwatts/claude-hud#${CLAUDE_HUD_REF}" --scope user </dev/null
