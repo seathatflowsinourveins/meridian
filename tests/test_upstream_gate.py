@@ -76,8 +76,15 @@ def dependency_problems(
         f"{name}: alias has no declared dependency"
         for name in sorted(aliases.keys() - dependencies)
     ]
+    named_rows = {}
+    for label, row in rows.items():
+        # Normalize whole package labels, never the first word of a prose label.
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", label):
+            name = package_name(label)
+            assert name not in named_rows, f"ambiguous normalized upstream row: {name}"
+            named_rows[name] = row
     for name in sorted(dependencies):
-        row = rows.get(aliases.get(name, ""))
+        row = named_rows.get(name, rows.get(aliases.get(name, "")))
         if row is None:
             found.append(f"{name}: no upstream dependency row")
             continue
@@ -166,7 +173,8 @@ def test_dependency_without_row_fails(location):
 
 
 @pytest.mark.parametrize("version", ["1.0", "1.0.1", None])
-def test_dependency_version_must_match_lock(version):
+@pytest.mark.parametrize("use_alias", [False, True])
+def test_dependency_version_must_match_lock(version, use_alias):
     project = {
         "project": {"dependencies": ["Example_Package[extra]>=1; python_version >= '3.14'"]},
         "dependency-groups": {"dev": [{"include-group": "checks"}], "checks": []},
@@ -175,10 +183,50 @@ def test_dependency_version_must_match_lock(version):
     found = dependency_problems(
         project,
         {"package": packages},
-        {"example-package": "Example"},
-        {"Example": ("1.0 from PyPI", "upstream")},
+        {"example-package": "Example"} if use_alias else {},
+        {"Example" if use_alias else "Example.Package": ("1.0 from PyPI", "upstream")},
     )
     assert bool(found) == (version != "1.0")
+
+
+def test_new_dependency_group_needs_no_aliases():
+    names = [f"example-{index}" for index in range(11)]
+    assert (
+        dependency_problems(
+            {"project": {}, "dependency-groups": {"research": [f"{name}>=1" for name in names]}},
+            {"package": [{"name": name, "version": "1.0"} for name in names]},
+            {},
+            {name: ("1.0", "upstream") for name in names},
+        )
+        == []
+    )
+
+
+def test_exact_package_row_takes_priority_over_alias():
+    assert (
+        dependency_problems(
+            {"project": {"dependencies": ["example==1.0"]}},
+            {"package": [{"name": "example", "version": "1.0"}]},
+            {"example": "Old label"},
+            {"example": ("1.0", "upstream"), "Old label": ("0.9", "upstream")},
+        )
+        == []
+    )
+
+
+def test_undeclared_alias_still_fails():
+    assert dependency_problems({"project": {}}, {"package": []}, {"unused": "Example"}, {}) == [
+        "unused: alias has no declared dependency"
+    ]
+
+
+def test_prose_row_needs_an_explicit_alias():
+    assert dependency_problems(
+        {"project": {"dependencies": ["example>=1"]}},
+        {"package": [{"name": "example", "version": "1.0"}]},
+        {},
+        {"example (with extra)": ("1.0", "upstream")},
+    ) == ["example: no upstream dependency row"]
 
 
 def test_register_uses_only_upstream_rows_and_exact_labels():
