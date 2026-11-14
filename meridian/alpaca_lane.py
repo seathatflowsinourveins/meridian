@@ -1,6 +1,6 @@
 """Owner-attended Alpaca paper lane: restart (read only) or one resting order.
 
-Own design after meridian.ibkr_paper. IEX prices only: quote sizes are not carried.
+Own design after meridian.ibkr_paper. Session-selected prices only: quote sizes are not carried.
 """
 
 from __future__ import annotations
@@ -116,6 +116,9 @@ class RunRecord(ibkr_paper.RunRecord):
             checks_unchanged_after_run=False,
             quote_age_limit_present=True,
             quote_sizes_carried=False,
+            session="closed",
+            feed=None,
+            venue_working_seen=False,
             budget_rows={
                 "paper_defaults": state.budget.paper_defaults,
                 "reviewed": state.budget.reviewed,
@@ -167,8 +170,8 @@ class RunRecord(ibkr_paper.RunRecord):
                 "quantity": "1",
             }:
                 found.append("the run did not submit its one DAY LIMIT BUY of one share")
-            if "OrderAccepted" not in kinds:
-                found.append("the venue did not accept the order")
+            if "OrderAccepted" not in kinds or not d["venue_working_seen"]:
+                found.append("the venue did not show the order working in this session")
             if not stop or stop.get("order_status") != "CANCELED":
                 found.append("the order did not end cancelled")
             if "OrderFilled" in kinds or (stop and stop.get("filled") is not False):

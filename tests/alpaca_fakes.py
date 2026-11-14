@@ -206,7 +206,24 @@ class FakeVenue:
             symbol = path.removeprefix("/assets/")
             if symbol not in self.assets:
                 raise api_error(404)
-            return {"id": uuid(), "class": "us_equity", "symbol": symbol, "tradable": True}
+            return {
+                "id": uuid(),
+                "class": "us_equity",
+                "symbol": symbol,
+                "tradable": True,
+                "overnight_tradable": True,
+                "overnight_halted": False,
+            }
+        if path == "/calendar":
+            return [
+                {
+                    "date": data["start"],
+                    "open": "09:30",
+                    "close": "16:00",
+                    "session_open": "0400",
+                    "session_close": "2000",
+                }
+            ]
         if path == "/positions":
             return [dict(row) for row in self.positions]
         if path == "/orders":
