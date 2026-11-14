@@ -156,6 +156,13 @@ records go to `evidence/M3-alpaca-paper-<stamp>-<mode>.json`. Public records con
 text or identifiers, include commission citations and counts of paper-default/reviewed budget
 rows (also shown at the terminal), and record only the quote-age limit's presence. No real run has been performed.
 
+`uv run python -m meridian.alpaca_sim` is a simulation, not a lane; no typed word.
+It exercises the lane's unchanged one-order strategy and the native engine's order flow.
+It does not exercise the Alpaca adapter, order budget, credentials, streams or venue.
+All quotes are synthetic, generated in process: no market or recorded data, no real price.
+PASS means accepted, then cancelled, nothing filled and flat at stop; any fill means FAIL.
+Records go only to `runs/*-simulation.json`, never `evidence/`; it is offline and keyless.
+
 ## Rules
 
 | Rule | Where it is held | How |
