@@ -209,10 +209,15 @@ def write_report(node: BacktestNode, run_id: str, result: Any, folder: Path, dat
     return str(folder.relative_to(boundary.REPO_ROOT))
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """The command line; the reports are always written, so there is no option for them."""
     parser = argparse.ArgumentParser(description="End-to-end simulation on the engine's own API.")
     parser.add_argument("--copies", type=int, default=1, help="copies of each scenario")
-    copies = max(parser.parse_args(argv).copies, 1)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    copies = max(build_parser().parse_args(argv).copies, 1)
     print("SIMULATION; not a lane; synthetic data and placeholder values only.", flush=True)
     folder = boundary.REPO_ROOT / "runs" / f"M5-sim-{uuid4().hex}"
     folder.mkdir(parents=True)

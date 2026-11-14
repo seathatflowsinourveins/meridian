@@ -5,6 +5,7 @@ blocked (the filter from `test_alpaca_sim.py`). Every value here is a placeholde
 """
 
 import json
+import re
 import subprocess
 import sys
 from dataclasses import replace
@@ -261,3 +262,34 @@ def test_command_without_sockets_writes_engine_reports(tmp_path):
         assert f"report: {data['report']}/" in result.stdout
     assert "pnls: " in result.stdout and "returns: " in result.stdout
     assert all(p.relative_to(tmp_path).parts[0] == "runs" for p in tmp_path.rglob("*"))
+
+
+DOCUMENTED = re.compile(r"python -m meridian\.sim((?: [^`\n]*)?)`")
+
+
+def test_every_documented_command_line_parses():
+    """Each `python -m meridian.sim ...` in the docs is accepted by the runner's parser.
+
+    An optional group `[--flag N]` is parsed as `--flag 1`; a bare command as no arguments.
+    """
+    files = [
+        ROOT / "meridian" / "sim" / "__init__.py",
+        ROOT / "meridian" / "sim" / "runner.py",
+        ROOT / "docs" / "adr" / "data" / "m5-native-sim.md",
+        ROOT / "docs" / "HANDBOOK.md",
+        ROOT / "docs" / "LANES.md",
+        ROOT / "UPSTREAM.md",
+    ]
+    found = [
+        (path.name, args)
+        for path in files
+        for args in DOCUMENTED.findall(path.read_text(encoding="utf-8"))
+    ]
+    assert len(found) >= 4, found
+    parser = runner.build_parser()
+    for name, args in found:
+        argv = re.sub(r"\[(--[\w-]+) [A-Z]+\]", r"\1 1", args).replace("[", "").replace("]", "")
+        try:
+            parser.parse_args(argv.split())
+        except SystemExit as exc:
+            pytest.fail(f"{name}: `python -m meridian.sim{args}` is not accepted ({exc})")
