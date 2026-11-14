@@ -495,7 +495,7 @@ def test_a_day_limit_order_is_paced_posted_accepted_and_filled_by_the_stream():
         "time_in_force": "day",
         "limit_price": "100.00",
         "order_class": "simple",
-        "extended_hours": False,
+        "extended_hours": True,
     }
     assert rig.pacer is not None and ActionKind.SUBMIT in rig.pacer.kinds
     assert box["holding"] == [("AAPL.ALPACA", "1")]

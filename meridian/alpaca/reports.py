@@ -41,12 +41,19 @@ from nautilus_trader.model import (
 # Alpaca statuses after which the order can no longer change.
 TERMINAL = frozenset({"filled", "canceled", "expired", "rejected", "replaced"})
 
+# ACCEPTED is the engine's broker-acknowledged/open state, NOT proof of routing.
+# `new` alone establishes working-now evidence in the attended lane. Pending,
+# held, suspended, done-for-day and unfilled calculated remain unresolved/open;
+# canceled/expired/rejected/filled are terminal. Replaced has no lineage in this
+# no-modify adapter: explicitly unmappable (gap), as is any unknown status.
+# Source: Alpaca postorder / orders-at-alpaca, read 2026-11-13 (UPSTREAM.md).
 _STATUS = {
     "new": OrderStatus.ACCEPTED,
     "accepted": OrderStatus.ACCEPTED,
     "pending_new": OrderStatus.ACCEPTED,
     "accepted_for_bidding": OrderStatus.ACCEPTED,
     "held": OrderStatus.ACCEPTED,
+    "pending_review": OrderStatus.ACCEPTED,
     "done_for_day": OrderStatus.ACCEPTED,
     "stopped": OrderStatus.ACCEPTED,
     "suspended": OrderStatus.ACCEPTED,

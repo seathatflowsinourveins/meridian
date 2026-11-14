@@ -69,11 +69,14 @@ Carried, each with offline tests (`tests/test_alpaca_{wire,trade_updates,reconci
   refuses), counts pre-history fills, and names the failing stage with fixed, value-free reasons. Engine
   settings: no missing-order generation, unbounded lookback, unresolved submissions retained,
   open-order checks, not in-flight (the old node had neither), none over a minute; checked on rc9.
-- IEX quotes only (`data.py`): JSON decimal text, pinned host before sign-in, no REST reads;
+- Session quotes (`data.py`): JSON decimal text, pinned host before sign-in, no quote REST reads;
   a lost, unreadable or unmapped stream latches failure. `quote_age_ns` is None when unusable;
   the lane supplies its age limit; execution loads instruments. Sizes arrive in round lots with no
   sourced shares-per-lot field: validate then drop them, publishing zero as unknown (rc9's convention,
   cited in `UPSTREAM.md`). No consumer may use this lane's quote sizes; only prices are carried.
+  `alpaca_sessions.session_at` shares New York windows; order admission also needs calendar rows.
+  Overnight is free indicative; pre/after SIP is 15-minute delayed; owner age limits stay unchanged.
+  DAY LIMIT is extended-hours eligible; halted/ineligible overnight assets refuse unsent; queued is not routed.
 - No invented fee: connect refuses without a sourced per-fill commission. `AlpacaPaperExecClientConfig.for_paper_equities()`
   uses `meridian/alpaca/commission.py`: zero USD is what Alpaca's paper simulation charges a US-equity fill.
   This is only for this paper lane and models no cost of real trading. Two dated citations and exact quotes

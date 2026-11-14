@@ -70,7 +70,7 @@ def test_a_day_limit_order_becomes_an_exact_decimal_text_payload():
         "time_in_force": "day",
         "limit_price": "187.25",
         "order_class": "simple",
-        "extended_hours": False,
+        "extended_hours": True,
     }
     sell = submit_payload(order(side=OrderSide.SELL, price=Price.from_str("0.5123")), "M3-")
     assert sell["side"] == "sell" and sell["limit_price"] == "0.5123"

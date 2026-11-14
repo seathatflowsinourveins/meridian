@@ -106,7 +106,7 @@ flows with it ticked has not been checked.
 
 ### Alpaca paper lane (M3, owner only)
 
-`meridian.alpaca_lane` wires the execution adapter, IEX quotes and the owner's order budget.
+`meridian.alpaca_lane` wires the execution adapter, session quotes and the owner's order budget.
 Quotes carry prices only: Alpaca documents round-lot sizes but its Asset model has no
 per-symbol shares-per-lot field ([Asset](https://alpaca.markets/sdks/python/api_reference/trading/models.html#asset),
 [quotes](https://docs.alpaca.markets/us/docs/real-time-stock-pricing-data), read 2026-11-13).
@@ -147,7 +147,13 @@ paper connection remain untested; only the owner may perform that attended check
 and execution coverage complete. `order` asks for PAPER, repeats all local checks, then buys
 one share with a DAY LIMIT 2% below a fresh bid, rounded down to the venue tick. It checks
 `quote_age_ns` before pricing and again at paced submission; missing/stale quotes place nothing.
-It requests cancellation once accepted. A pass is accepted, then cancelled, nothing filled,
+[24/5](https://docs.alpaca.markets/us/docs/245-trading-for-trading-api) (read 2026-11-13):
+Sunday 20:00–Friday 20:00 New York, with holiday/early-close checks from the paper calendar.
+Regular uses IEX, overnight uses free real-time indicative `overnight`, pre/after uses delayed SIP.
+SIP age includes its 15-minute delay: a limit of 15 minutes or less refuses those quotes.
+DAY LIMIT sends `extended_hours=true`; overnight needs eligible, unhalted asset flags.
+Records name session/feed; boundaries discard cached quotes (sources in `UPSTREAM.md`).
+It cancels after venue `new` proves routing; queued `accepted` alone cannot pass. A pass is routed, cancelled, nothing filled,
 flat with no open or in-flight order at stop. Any fill fails and sends no second order; the
 owner inspects and closes any share by hand. An unresolved order also fails: inspect it before
 acting; there is no stop-time cancel or close. The M1 time limits apply (25 s restart, 60 s order).
