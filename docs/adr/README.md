@@ -6,6 +6,8 @@ or for not adding it. A decision that is not an addition goes in `docs/HANDBOOK.
 
 ## Format
 
+An ADR decided by the earlier with-and-without method keeps its status, candidate and decision in its own file and its full text in `data/NNNN-record.md`.
+
 - File `docs/adr/NNNN-short-title.md`: the next free four-digit number, then a title in
   lowercase words joined by hyphens. Data and scripts the ADR measures with go in
   `docs/adr/data/`, named with the same number. A method sheet shared by several ADRs goes
