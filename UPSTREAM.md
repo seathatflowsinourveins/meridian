@@ -283,6 +283,14 @@ Notes on the order budget, measured by the soak (`evidence/M2-order-budget-*-soa
 | `meridian/strategy_template/` (template, simulation) and `tests/test_strategy_template.py` | this repo | n/a | 2026-11-13 | one state machine per symbol, fast-exit re-pricing, the handbook's re-entry rules, action counts | own design |
 | Broker API rate limits (read for the M4 rate targets) | n/a | https://alpaca.markets/support/usage-limit-api-calls ; https://docs.alpaca.markets/docs/rate-limits ; https://interactivebrokers.github.io/tws-api/order_limitations.html ; https://www.interactivebrokers.com/campus/ibkr-api-page/web-api-trading/ | 2026-11-13 | Alpaca: 200 requests a minute per account; IBKR TWS API: 50 messages a second, so at most 50 orders a second; IBKR Web API: 10 requests a second per session. No budget changed | upstream |
 
+## Engine reports (milestone M5 groundwork)
+
+| Component | Version or commit | Source URL (read) | Date read | Used for | Origin |
+|---|---|---|---|---|---|
+| NautilusTrader analyzer, ReportProvider and Plotly tearsheet | 2.0.0rc9, da6b57aefdd62b44f675e434ffcfefca7f4025dd | https://github.com/nautechsystems/nautilus_trader/blob/da6b57aefdd62b44f675e434ffcfefca7f4025dd/examples/backtest/synthetic_data_pnl_test.py ; https://github.com/nautechsystems/nautilus_trader/blob/da6b57aefdd62b44f675e434ffcfefca7f4025dd/crates/analysis/src/analyzer.rs ; https://github.com/nautechsystems/nautilus_trader/blob/da6b57aefdd62b44f675e434ffcfefca7f4025dd/python/nautilus_trader/analysis/tearsheet.py ; further tagged sources in docs/adr/data/m5-engine-stats.md | 2026-11-13 | existing engine's statistics and reports after synthetic template backtests; no custom metric implementation | upstream |
+| plotly | 7.1.0 in uv.lock, released 2026-09-15; lower bound in the default research group | https://pypi.org/pypi/plotly/7.1.0/json ; https://github.com/plotly/plotly.py/blob/v7.1.0/plotly/io/_html.py | 2026-11-13 | engine's HTML tearsheet; embedded JS, no CDN; uv's 7-day cooldown retained | upstream |
+| meridian/strategy_template/report.py, sim.py --report, tests/test_strategy_report.py | this repo | n/a; pinned API study in docs/adr/data/m5-engine-stats.md | 2026-11-13 | export engine statistics and CSVs/HTML under runs only; synthetic fill checks, no-trade and missing-group cases, socket-blocked generation and standalone HTML checks | own design |
+
 ## Evidence ADRs (plans 8.6 and 8.7)
 
 One row per component that an evidence ADR in `docs/adr/` assessed, whatever it decided: the
