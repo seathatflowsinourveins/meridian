@@ -392,27 +392,22 @@ def test_review_records_final_message_and_opposite_family(
     g, fake = make(repo, ["pass"], builder=builder)
     g.register("feature", builder, "task-1")
     assert g.trial("feature")
-    calls = fake_reviewer(
-        monkeypatch, "- [P1] Candidate — file.py:1" if reviewer == "codex" else review_output()
-    )
-    if reviewer == "codex":
-        with pytest.raises(gate.ReviewPending):
-            g.review("feature", builder)
-        g.close("feature", [(1, "not reachable under the documented precondition")])
-        assert g.trial("feature", builder)
-        path = g.review_file("feature")
-    else:
-        path = g.review("feature", builder)
+    calls = fake_reviewer(monkeypatch)
+    path = g.review("feature", builder)
     record = json.loads(path.read_text())
     assert record["reviewer"] == reviewer and record["model"] == model
     assert record["tested"] == sh(wt(repo, "feature"), "rev-parse", "HEAD")
-    assert len(record["findings"]) == (1 if reviewer == "codex" else 0)
+    assert record["findings"] == []
     cmd, options = calls[0]
     assert cmd[0] == reviewer and options["cwd"] == wt(repo, "feature")
     if reviewer == "codex":
-        assert cmd[:5] == ["codex", "exec", "review", "--base", "origin/main"]
+        assert cmd[:2] == ["codex", "exec"] and "review" not in cmd
         assert "--ignore-user-config" in cmd and "model_reasoning_effort=high" in cmd
-        assert "--output-schema" not in cmd
+        assert "--ephemeral" in cmd and cmd[cmd.index("--sandbox") + 1] == "read-only"
+        schema = Path(cmd[cmd.index("--output-schema") + 1])
+        assert json.loads(schema.read_text()) == gate.REVIEW_SCHEMA
+        assert options["input"] == sh(wt(repo, "feature"), "diff", "origin/main...HEAD")
+        assert "actionable defects the author would fix" in cmd[-1]
     else:
         assert cmd[:2] == ["claude", "-p"]
         assert cmd[2].startswith("Perform a medium-depth code review of branch feature")
@@ -474,7 +469,7 @@ def test_manual_review_dispositions_are_accepted(repo: Path, tmp_path: Path, sta
     "builder,final",
     [
         ("codex", review_output("A bug")),
-        ("claude", "- [P1] A bug — file.py:1\n  explanation"),
+        ("claude", review_output("A bug")),
     ],
 )
 def test_review_never_silently_closes_findings(
@@ -679,12 +674,6 @@ def test_trigger_detector_missing_package_fails(tmp_path: Path):
         capture_output=True,
     )
     assert run.returncode == 1 and "oh-my-codex is absent" in run.stderr
-
-
-def test_codex_fenced_json_is_never_a_review_record():
-    for final in ('```json\n[{"summary":"one"}]\n```', "```json\n[]\n```", "No findings."):
-        with pytest.raises(gate.Refused, match="unclassified"):
-            gate.Gate.findings(final)
 
 
 def test_trigger_script_uses_package_detector(tmp_path: Path):
@@ -1789,18 +1778,6 @@ def test_new_head_invalidates_closed_review(
     assert json.loads(g.review_file("feature").read_text())["findings"][0]["status"] == "open"
 
 
-@pytest.mark.parametrize("fixture", ["[]", '[{"name":"ci","bucket":"pass"}]'])
-def test_codex_bullets_win_over_quoted_fixture(fixture: str):
-    final = (
-        f"Fixture:\n```json\n{fixture}\n```\n"
-        "- [P1] Data loss — src/store.py:12\nDetails\n- [P2] Race — src/job.py:8\nMore"
-    )
-    findings = gate.Gate.findings(final)
-    assert len(findings) == 2
-    assert "Data loss" in findings[0]["text"] and "Race" in findings[1]["text"]
-    assert all(fixture not in finding["text"] for finding in findings)
-
-
 @pytest.mark.parametrize("level", ["medium", "high"])
 def test_claude_schema_and_read_only_tools(repo: Path, monkeypatch: pytest.MonkeyPatch, level: str):
     g, _ = make(repo, ["pass"])
@@ -2021,3 +1998,74 @@ def test_ci_query_uses_remaining_deadline(repo: Path, monkeypatch: pytest.Monkey
 def test_cli_refuses_unbounded_or_invalid_deadlines(flag: str, value: str):
     with pytest.raises(SystemExit):
         gate.main(["auto", "branch", "--builder", "codex", "title", "body", flag, value])
+
+
+def test_clean_structured_codex_review_lands_claude_built_branch(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    g, fake = make(repo, ["pass"], builder="claude")
+    calls = fake_reviewer(monkeypatch)
+    body = tmp_path / "body"
+    body.write_text("body")
+    assert g.auto("feature", "claude", "title", body)
+    assert len(calls) == 1 and calls[0][0][:2] == ["codex", "exec"]
+    record = json.loads(g.review_file("feature").read_text())
+    assert record["findings"] == [] and record["reviewer"] == "codex"
+    assert record["tested"] == g.state("feature")["tested"]
+    assert any(call[:2] == ["pr", "merge"] for call in fake.calls)
+    assert flock_available(g)
+
+
+@pytest.mark.parametrize(
+    "final",
+    [
+        "",
+        "No actionable regressions were identified.",
+        "- [P1] A bug — src/file.py:1\nDetails",
+        '```json\n{"findings": []}\n```',
+        "[]",
+        "null",
+        "{}",
+        '{"findings": null}',
+        '{"findings": [], "unexpected": "data"}',
+        '{"findings": [{"file":"file.py","line":1,"summary":"bug"}]}',
+        '{"findings": [{"file":"file.py","line":true,"summary":"bug","failure_scenario":"case"}]}',
+        '{"findings": [{"file":"file.py","line":0,"summary":"bug","failure_scenario":"case"}]}',
+        '{"findings": [{"file":"file.py","line":1,"summary":" ","failure_scenario":"case"}]}',
+        '{"findings": [{"file":"file.py","line":1,"summary":"bug",'
+        '"failure_scenario":"case","extra":1}]}',
+    ],
+)
+def test_unclassified_codex_result_never_records_clean_or_publishes(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, final: str
+):
+    g, fake = make(repo, ["pass"], builder="claude")
+    fake_reviewer(monkeypatch, final)
+    body = tmp_path / "body"
+    body.write_text("body")
+    output = []
+    g.say = output.append
+    assert not g.auto("feature", "claude", "title", body)
+    assert output[-1].startswith("LEAD ACTION:") and "unclassified" in output[-1]
+    assert not g.review_file("feature").exists() and not fake.calls
+    assert g._state_file("feature").with_suffix(".final.txt").read_text() == final
+    assert g.holder() is None and flock_available(g)
+
+
+def test_malformed_codex_retry_bound_still_applies(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    g, _ = make(repo, ["pass"], builder="claude")
+    calls = fake_reviewer(monkeypatch, "No actionable regressions were found in the changes.")
+    completed_listing(monkeypatch)
+    body = tmp_path / "body"
+    body.write_text("body")
+    for number in range(1, 4):
+        assert g.pending()
+        assert not g.auto("feature", "claude", "title", body)
+        assert g.attempt("feature")["failures"] == number
+    output = []
+    g.say = output.append
+    assert not g.pending()
+    assert "retry limit reached" in output[-1]
+    assert len(calls) == 3 and not g.review_file("feature").exists()

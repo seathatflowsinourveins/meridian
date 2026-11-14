@@ -285,3 +285,36 @@ The supplied diff was origin/main...HEAD at b122b494845e2f6f3292da21fdfe9517c6c0
 This confirms the transport/format, not a review certificate of the later implementation.
 Exact command, full envelopes, stderr and a sanitized metadata excerpt are retained in
 `/tmp/meridian-clean-landing-review4/`; no subagent or helper worker was spawned.
+
+## Codex schema correction (supersedes the fourth-round bullet-only rule)
+
+The lead supplied evidence that clean native Codex reviews use variable prose. The previous
+bullet-only parser therefore made clean reviews of Claude-built branches impossible to land.
+Codex now uses `exec`, not `exec review`, with the same REVIEW_SCHEMA as Claude, an explicit
+review prompt, and the exact `git diff origin/main...HEAD` on stdin. The prompt asks only for
+actionable defects the author would fix, with file, line, summary and failure_scenario;
+no defects means the explicit object `{"findings": []}`. It may read repository files to
+check a candidate, but must not edit, delegate, publish, read credentials or run lanes.
+
+Flags are `--sandbox read-only --output-schema FILE --ignore-user-config -m gpt-6-astra
+-c model_reasoning_effort=high --json --ephemeral -o FILE`. Installed `codex --version`
+reported 0.169.0; `codex exec --help` confirms stdin appending, schema-file output, read-only
+sandbox, ephemeral execution and the final-message file. The real run on this branch at
+0dc5c8d5e8f7f5f6a90d6631754e275fb4ed0e30 exited 0 and its final file was a JSON object with
+a findings array of two objects, accepted by the shared schema validator. The two candidates
+concern stale approval in trial state after rereview and the upkeep automation's outer flock;
+they are retained for the lead's triage, not treated as verified defects or silently closed.
+
+The schema path is stored beside gate state. The final file is parsed as JSON and validated
+identically for both families, including required fields, positive integer line numbers,
+nonblank strings and rejection of extra fields. Empty text, prose, native bullets, fenced
+JSON, missing fields and malformed objects are unclassified lead actions; the gate writes
+no clean record for them. Raw CLI events and the final file remain local. Existing deadlines,
+reservation release, lead dispositions and bounded retries apply unchanged.
+
+Regression tests cover clean structured Codex output landing a Claude-built branch, both
+families preserving open candidates, fourteen malformed/prose/empty result cases that never
+publish, and the third transient failure suppressing further automatic paid retries. Real
+command, exact input diff, schema, events, stderr and final object are retained under
+`/tmp/meridian-clean-landing-review5/`; this run proves the output contract, not approval of
+the final implementation. No machine setup or live gate landing was performed.

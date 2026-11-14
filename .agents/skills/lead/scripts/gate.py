@@ -80,6 +80,16 @@ REVIEW_SCHEMA = {
     "additionalProperties": False,
 }
 
+CODEX_REVIEW_PROMPT = (
+    "Review the supplied git diff origin/main...HEAD for actionable defects the author would fix. "
+    "Report only defects introduced by these changes, not stylistic preferences or a quota. "
+    "For each finding give the repository-relative file, line number, summary of what is wrong, "
+    "and a concrete failure_scenario. Return the schema object with findings: [] if none. "
+    "The exact diff is supplied on stdin; do not substitute another base or HEAD~1. "
+    "You may read repository files to check findings. This is read-only review: do not edit, "
+    "delegate, publish comments, read credential values or run trading lanes."
+)
+
 Gh = Callable[[Sequence[str]], str]
 
 
@@ -616,35 +626,18 @@ class Gate:
             raise Refused(f"{branch} moved or became dirty since its trial; run trial again")
 
     @staticmethod
-    def findings(final: str) -> list[dict]:
-        """Codex native priority bullets only; code fences are examples, never records."""
-        bullets: list[str] = []
-        fence = None
-        for line in final.splitlines():
-            marker = re.match(r"\s*(`{3,}|~{3,})", line)
-            if marker:
-                fence = None if fence and marker[1].startswith(fence) else marker[1]
-                continue
-            if fence:
-                continue
-            if re.match(r"\s*[-*] \[P[0-3]\]", line):
-                if not re.match(r"\s*[-*] \[P[0-3]\] .+ — .+:\d+", line):
-                    raise Refused("unclassified Codex priority bullet; see review log")
-                bullets.append(line)
-            elif bullets:
-                bullets[-1] += "\n" + line
-        if not bullets:
-            raise Refused("unclassified Codex reviewer output; lead must inspect the review log")
-        return [{"text": text.strip(), "status": "open"} for text in bullets]
-
-    @staticmethod
     def structured_findings(value) -> list[dict]:
-        if not isinstance(value, dict) or not isinstance(value.get("findings"), list):
-            raise Refused("unclassified Claude output: missing structured findings; see review log")
+        if (
+            not isinstance(value, dict)
+            or set(value) != {"findings"}
+            or not isinstance(value["findings"], list)
+        ):
+            raise Refused("unclassified reviewer output: expected findings schema; see review log")
         findings = []
         for item in value["findings"]:
             if (
                 not isinstance(item, dict)
+                or set(item) != {"file", "line", "summary", "failure_scenario"}
                 or any(
                     not isinstance(item.get(key), str) or not item[key].strip()
                     for key in ("file", "summary", "failure_scenario")
@@ -652,7 +645,7 @@ class Gate:
                 or type(item.get("line")) is not int
                 or item["line"] < 1
             ):
-                raise Refused("unclassified Claude finding: schema mismatch; see review log")
+                raise Refused("unclassified reviewer finding: schema mismatch; see review log")
             findings.append({"text": json.dumps(item), "status": "open"})
         return findings
 
@@ -739,12 +732,15 @@ class Gate:
         # Remove any previous successful review before starting a new attempt.
         self.review_file(branch).unlink(missing_ok=True)
         if reviewer == "codex":
+            schema_file = self._state_file(branch).with_suffix(".schema.json")
+            schema_file.write_text(json.dumps(REVIEW_SCHEMA) + "\n")
             cmd = [
                 "codex",
                 "exec",
-                "review",
-                "--base",
-                "origin/main",
+                "--sandbox",
+                "read-only",
+                "--output-schema",
+                str(schema_file),
                 "--ignore-user-config",
                 "-m",
                 model,
@@ -754,6 +750,7 @@ class Gate:
                 "--ephemeral",
                 "-o",
                 str(final_file),
+                CODEX_REVIEW_PROMPT,
             ]
         else:
             cmd = [
@@ -793,7 +790,7 @@ class Gate:
                 capture_output=True,
                 text=True,
                 timeout=self.review_timeout,
-                input=git(wt, "diff", "origin/main...HEAD") if reviewer == "claude" else None,
+                input=git(wt, "diff", "origin/main...HEAD"),
             )
         except subprocess.TimeoutExpired as exc:
             self._finish = True
@@ -811,6 +808,7 @@ class Gate:
         try:
             if reviewer == "codex":
                 final = final_file.read_text().strip()
+                structured = json.loads(final)
             else:
                 envelope = json.loads(run.stdout)
                 if envelope.get("is_error") or envelope.get("subtype") != "success":
@@ -824,9 +822,7 @@ class Gate:
                 "unclassified review: no successful structured/final message; see review log"
             ) from exc
         self._unchanged(branch, wt, st["tested"])  # keep the post-model integrity check
-        findings = (
-            self.findings(final) if reviewer == "codex" else self.structured_findings(structured)
-        )
+        findings = self.structured_findings(structured)
         final = self.public_text(final, wt)
         record = {
             "version": 1,
