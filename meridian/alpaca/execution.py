@@ -99,6 +99,7 @@ SNAPSHOT_MARGIN_NS = 1_000_000_000
 # A decoded stream frame that is neither the subscription acknowledgement nor a trade update.
 NOT_A_TRADE_UPDATE = "Alpaca trade stream frame is not a trade update"
 COVERAGE_NOT_APPLIED = "Alpaca recovery read did not converge in the engine cache"
+COVERAGE_CHECK_FAILED = "Alpaca recovery cache observation failed"
 
 
 @dataclass(frozen=True)
@@ -292,26 +293,29 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         assert self.gateway is not None
         interval = self.gateway.pacer.bucket.interval_ns / 1e9
 
-        def check() -> None:
+        def check(expired: bool = False) -> None:
             nonlocal poll
             if done.done():
                 return
-            if self._closing or read.generation != self._gap or not self.stream_live:
-                done.set_result(False)
-            elif self.coverage_complete:
-                done.set_result(True)
-            else:
-                poll = loop.call_later(interval, check)
-
-        def expired() -> None:
-            if not done.done():
-                converged = read.generation == self._gap and self.coverage_complete
-                if read.generation == self._gap and not converged:
+            try:
+                if self._closing or read.generation != self._gap or not self.stream_live:
+                    done.set_result(False)
+                elif self.coverage_complete:
+                    done.set_result(True)
+                elif expired:
+                    done.set_result(False)
                     self._incomplete(ValueError(COVERAGE_NOT_APPLIED))
-                done.set_result(converged)
+                else:
+                    poll = loop.call_later(interval, check)
+            except Exception:
+                if not done.done():
+                    # Resolve before reporting: a callback exception must never strand the
+                    # recovery task and thereby suppress every later scheduled recovery.
+                    done.set_result(False)
+                    self._incomplete(ValueError(COVERAGE_CHECK_FAILED))
 
         config = cast(AlpacaPaperExecClientConfig, self.config)
-        deadline = loop.call_later(config.request_timeout_secs, expired)
+        deadline = loop.call_later(config.request_timeout_secs, check, True)
         try:
             check()
             return await done
@@ -602,6 +606,15 @@ class AlpacaPaperExecutionClient(ExecutionClient):
     # ---------------------------------------------------------------- lifecycle
 
     async def _connect(self) -> None:
+        # A connection cannot inherit coverage from an earlier subscription, even when
+        # the same client is reused outside rc9's single-use Python runtime lifecycle.
+        self.stream_live = False
+        self._gap += 1
+        self._covered = self._read_generation = -1
+        self._started = False
+        self._startup_gens.clear()
+        self._startup_reports.clear()
+        self._coverage_pending = None
         if self.wiring.pacer is None:
             raise ValueError("order budget unavailable: the lane needs the M2 account pacer")
         if self.commission is None:
@@ -612,6 +625,7 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         pacer = self.wiring.pacer(self.clock.timestamp_ns)
         self.gateway = AccountGateway(self.wiring.sdk(keys), pacer, self._position_counts)
         self._closing = False
+        self._listening = asyncio.get_running_loop().create_future()
         ts_init = self.clock.timestamp_ns()
         for iid in self.universe:
             row = await self._call(ActionKind.QUERY, "get", f"/assets/{iid.symbol.value}")
@@ -620,9 +634,6 @@ class AlpacaPaperExecutionClient(ExecutionClient):
                 raise ValueError("Alpaca asset row does not match the universe")
             self._handle_instrument(equity)
         await self._do_query_account(None)
-        loop = asyncio.get_running_loop()
-        self._listening = loop.create_future()
-        self.stream_live = False
         self._stream = self.wiring.stream(keys)
         self._observe(self._stream)
         self._stream.subscribe_trade_updates(self._on_trade_update)

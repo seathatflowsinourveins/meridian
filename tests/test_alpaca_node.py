@@ -24,6 +24,7 @@ import requests
 from alpaca_fakes import (
     AAPL,
     PREFIX,
+    FakeStream,
     FakeVenue,
     Frame,
     Rig,
@@ -2688,6 +2689,120 @@ def test_a_stream_fill_between_handover_and_convergence_requires_a_fresh_read():
     assert box["counts"] == (1, 1, 1)
     assert "Alpaca recovery read did not converge in the engine cache" in box["failures"]
     assert box["holding"] == [("AAPL.ALPACA", "2")]
+
+
+def test_connect_again_requires_new_coverage_after_disconnect():
+    """Exercise the hooks on the same bound client, even though rc9's node is single-use.
+    A new subscription must not make the previous connection's full read current again.
+    """
+    rig = Rig()
+
+    def on_start(running, box):
+        box["order"] = limit_order(running)
+        running.submit_order(box["order"])
+        box["second"], box["third"] = limit_order(running, 2), limit_order(running, 3)
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, row = rig.clients[0], rig.venue.orders[-1]
+        previous_generation = client._gap
+        assert client.coverage_complete
+        await client._disconnect()
+        one_more_share(rig, row)  # the venue fills while this client is disconnected
+        rig.stream = FakeStream()
+        await client._connect()
+        await until(lambda: client.stream_live)
+        box["reconnected"] = (
+            client._gap > previous_generation,
+            client._started,
+            dict(client._startup_gens),
+            client.coverage_complete,
+        )
+        box["strategy"].submit_order(box["second"])
+        await until(lambda: status(2) in (OrderStatus.DENIED, OrderStatus.ACCEPTED))
+        box["second_status"] = status(2)
+        # Reproduce the engine's new full startup read and then its hand-over explicitly.
+        scope = SimpleNamespace(open_only=False, instrument_id=None, start=None, end=None)
+        mass = ExecutionMassStatus(
+            client.client_id, client.account_id, client.venue, client.clock.timestamp_ns()
+        )
+        mass.add_order_reports(await client._generate_order_status_reports(scope))
+        mass.add_position_reports(await client._generate_position_status_reports(scope))
+        box["before_hand"] = (client.coverage_complete, status())
+        client._handle_report(mass)
+        await until(lambda: client.coverage_complete)
+        box["after_hand"] = (status(), engine_holds(client))
+        box["strategy"].submit_order(box["third"])
+        await until(lambda: status(3) == OrderStatus.ACCEPTED)
+
+    box = drive(rig, script, on_start=on_start)
+    assert box["error"] is None
+    assert box["reconnected"] == (True, False, {}, False)
+    assert box["second_status"] == OrderStatus.DENIED
+    assert box["before_hand"] == (False, OrderStatus.ACCEPTED)
+    assert box["after_hand"] == (OrderStatus.FILLED, ["1"])
+
+
+@pytest.mark.parametrize("callback_kind", ["poll", "deadline"])
+def test_recovery_cache_observation_failure_resolves_the_wait_and_re_reads(
+    monkeypatch, callback_kind
+):
+    """Force each scheduled observation to raise, without a timing assumption. The wait
+    must resolve, log only a fixed reason once, and allow the next full read to recover.
+    """
+    rig = Rig()
+
+    class RaisingView(PositionView):
+        broken = False
+
+        def positions_open(self, **kwargs):
+            if self.broken:
+                raise RuntimeError("synthetic detail that must not be logged")
+            return super().positions_open(**kwargs)
+
+    async def script(box, status):
+        client, loop = rig.clients[0], asyncio.get_running_loop()
+        cache, schedule, callbacks, errors = client.cache, loop.call_later, {}, []
+        view = RaisingView(cache, "1")  # venue and engine are flat; hold the observation back
+
+        def capture(delay, callback, *args, **kwargs):
+            if "_await_coverage.<locals>." in getattr(callback, "__qualname__", ""):
+                kind = "deadline" if callback.__name__ == "expired" or args == (True,) else "poll"
+                callbacks[kind] = (callback, args)
+                return SimpleNamespace(cancel=lambda: None)
+            return schedule(delay, callback, *args, **kwargs)
+
+        reason = "Alpaca recovery cache observation failed"
+        try:
+            with monkeypatch.context() as patch:
+                patch.setattr(loop, "call_later", capture)
+                patch.setattr(client, "cache", view)
+                patch.setattr(client, "_log", lambda: SimpleNamespace(error=errors.append))
+                rig.stream.push(Frame("[]"))
+                await until(lambda: len(callbacks) == 2)
+                generation = client._gap
+                errors.clear()
+                view.broken = True
+                callback, args = callbacks[callback_kind]
+                callback(*args)
+                box["gap"] = client._gap > generation
+                box["failure"] = (str(client.failures[-1][1]), client.failures[-1][1].__context__)
+                box["logs"] = list(errors)
+                box["covered"] = client._covered == client._gap
+        finally:
+            client.cache = cache
+        await until(lambda: client.coverage_complete)
+        box["recovered"] = client.recoveries
+        assert sum(str(exc) == reason for _, exc in client.failures) == 1
+
+    box = drive(rig, script, on_start=lambda running, box: None)
+    assert box["error"] is None
+    assert box["gap"] and not box["covered"]
+    assert box["failure"] == ("Alpaca recovery cache observation failed", None)
+    assert box["logs"] == [
+        "Alpaca account view incomplete: ValueError: Alpaca recovery cache observation failed"
+    ]
+    assert box["recovered"] == 1
 
 
 def fills_of(client, number: int = 1) -> tuple[str, int]:
