@@ -10,6 +10,7 @@ owner's own sessions, which carries its own tests: docs/HANDBOOK.md (Rules) keep
 out of worktrees.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -437,10 +438,65 @@ def hook_label(event):
     return re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower()
 
 
+def codex_trust_hash(event, handler, matcher=None):
+    # Codex's hook trust identity, written out again for the fixtures (hooks crate, discovery.rs
+    # `hook_hash`, and config/src/fingerprint.rs at rust-v0.167.2 and rust-v0.169.0).
+    timeout = handler.get("timeout")
+    if event in ("SessionEnd", "Interrupt"):
+        timeout = min(max(timeout or 1, 1), 3)
+    else:
+        timeout = max(600 if timeout is None else timeout, 1)
+    normalized = {"type": "command", "command": handler["command"], "timeout": timeout}
+    normalized["async"] = bool(handler.get("async"))
+    if "statusMessage" in handler:
+        normalized["statusMessage"] = handler["statusMessage"]
+    identity = {"event_name": hook_label(event), "hooks": [normalized]}
+    if matcher is not None and event not in ("UserPromptSubmit", "Stop", "Interrupt"):
+        identity["matcher"] = matcher
+    text = json.dumps(identity, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(text.encode()).hexdigest()
+
+
+def bundle_hash(root):
+    # codex-rs/hooks/src/engine/plugin_fingerprint.rs: names and contents, depth first, sorted.
+    digest = hashlib.sha256(b"codex-plugin-bundle-v1")
+    pending = [root]
+    while pending:
+        path = pending.pop()
+        name = str(path.relative_to(root)).encode() if path != root else b""
+        digest.update(len(name).to_bytes(8, "little") + name)
+        if path.is_dir():
+            digest.update(b"directory")
+            pending.extend(sorted(path.iterdir(), key=lambda p: p.name.encode(), reverse=True))
+        else:
+            data = path.read_bytes()
+            digest.update(b"file" + len(data).to_bytes(8, "little") + data)
+    return "sha256:" + digest.hexdigest()
+
+
+PONYTAIL_HOOKS = {
+    "SessionStart": [
+        {
+            "matcher": "startup|resume",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "node a.js",
+                    "timeout": 15,
+                    "statusMessage": "Loading",
+                }
+            ],
+        }
+    ],
+    "SubagentStart": [{"hooks": [{"type": "command", "command": "node b.js", "timeout": 15}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "node c.js", "timeout": 15}]}],
+}
+
+
 def codex_home(tmp_path, ponytail_trusted=0, orca=True):
     # What setup leaves in ~/.codex: Orca's 9 hooks (on a fresh distro, not yet: Orca is set up
-    # after Codex), then oh-my-codex's 8 in the group after them, each with its trust entry, the
-    # ponytail plugin, and oh-my-codex's user file.
+    # after Codex), then oh-my-codex's 8 in the group after them, each with its trust entry at
+    # its current hash, the ponytail plugin's installed copy, and oh-my-codex's user file.
     write_codex_config(tmp_path)
     run_config_writer("omx_config", tmp_path)
     home = tmp_path / ".codex"
@@ -452,15 +508,23 @@ def codex_home(tmp_path, ponytail_trusted=0, orca=True):
         hooks.setdefault(event, []).append({"hooks": [{"command": command}]})
     (home / "hooks.json").write_text(json.dumps({"hooks": hooks}))
     state = [
-        f'[hooks.state."{home}/hooks.json:{hook_label(event)}:{g}:0"]\ntrusted_hash = "sha256:x"\n'
+        f'[hooks.state."{home}/hooks.json:{hook_label(event)}:{g}:0"]\n'
+        f'trusted_hash = "{codex_trust_hash(event, group["hooks"][0])}"\n'
         for event, groups in hooks.items()
-        for g in range(len(groups))
+        for g, group in enumerate(groups)
     ]
-    state += [
-        f'[hooks.state."{PONYTAIL}:hooks/claude-codex-hooks.json:{label}:0:0"]\n'
-        'trusted_hash = "sha256:x"\n'
-        for label in ("session_start", "subagent_start", "user_prompt_submit")[:ponytail_trusted]
-    ]
+    plugin = home / "plugins/cache" / PONYTAIL.split("@")[1] / "ponytail" / "5.3.3"
+    (plugin / "hooks").mkdir(parents=True)
+    (plugin / "hooks/claude-codex-hooks.json").write_text(json.dumps({"hooks": PONYTAIL_HOOKS}))
+    (plugin / "README.md").write_text("ponytail\n")
+    content = bundle_hash(plugin)
+    for event in list(PONYTAIL_HOOKS)[:ponytail_trusted]:
+        group = PONYTAIL_HOOKS[event][0]
+        state.append(
+            f'[hooks.state."{PONYTAIL}:hooks/claude-codex-hooks.json:{hook_label(event)}:0:0"]\n'
+            f'trusted_hash = "{codex_trust_hash(event, group["hooks"][0], group.get("matcher"))}"\n'
+            f'trusted_content_hash = "{content}"\n'
+        )
     with (home / "config.toml").open("a") as f:
         f.write(f'\n[plugins."{PONYTAIL}"]\nenabled = true\n\n' + "\n".join(state))
     return home / "config.toml"
@@ -605,7 +669,7 @@ ADD = "[analytics]"
         ),
         (ADD, '[plugins."broker@example"]\nenabled = true\n\n' + ADD, "plugins ["),
         (ADD, '[profiles.x.mcp_servers.y]\nurl = "https://example.com"\n\n' + ADD, "a profile"),
-        ('trusted_hash = "sha256:x"\n', "", "hooks without trust"),
+        ('trusted_hash = "sha256:', 'trusted_hash = "sha256:0', "hooks without trust"),
     ],
 )
 def test_codex_check_rejects_what_the_stack_does_not_name(tmp_path, old, new, named):
@@ -863,7 +927,9 @@ def test_the_install_check_still_rejects_what_setup_did_not_write(tmp_path, brea
     hooks_file = path.parent / "hooks.json"
     hooks = json.loads(hooks_file.read_text())
     if break_ == "untrusted omx hook":
-        path.write_text(path.read_text().replace('trusted_hash = "sha256:x"\n', "", 1))
+        path.write_text(
+            path.read_text().replace('trusted_hash = "sha256:', 'trusted_hash = "sha256:0', 1)
+        )
     elif break_ == "unknown hook":
         hooks["hooks"]["Stop"].append({"hooks": [{"command": "curl https://example.com"}]})
     elif break_ == "orca partly":
@@ -1012,3 +1078,87 @@ def test_ocr_comes_from_the_release_binary_not_the_self_updating_npm_package():
         .endswith("/releases/download/v${OCR_VERSION}/opencodereview-linux-amd64")
     )
     assert "@alibaba-group/open-code-review" not in (DEPLOY / "setup.sh").read_text()
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["command", "timeout", "matcher", "statusMessage", "async", "entry removed", "disabled"],
+)
+@pytest.mark.parametrize("owner", ["orca", "omx"])
+def test_codex_check_rejects_a_hook_changed_after_its_trust_entry_was_written(
+    tmp_path, owner, change
+):
+    # Codex compares the stored hash with the hook's current identity: a hook edited after
+    # approval keeps its entry but no longer runs, and the check must say so.
+    path = codex_home(tmp_path)
+    assert codex_config_check(path).returncode == 0
+    hooks_file = path.parent / "hooks.json"
+    hooks = json.loads(hooks_file.read_text())
+    group = hooks["hooks"]["PreToolUse"][0 if owner == "orca" else 1]
+    handler = group["hooks"][0]
+    if change == "command":
+        handler["command"] += " --changed"
+    elif change == "timeout":
+        handler["timeout"] = 30
+    elif change == "matcher":
+        group["matcher"] = "Bash"
+    elif change == "statusMessage":
+        handler["statusMessage"] = "new"
+    elif change == "async":
+        handler["async"] = True
+    hooks_file.write_text(json.dumps(hooks))
+    key = f'[hooks.state."{hooks_file}:pre_tool_use:{0 if owner == "orca" else 1}:0"]\n'
+    text = path.read_text()
+    assert key in text
+    if change == "entry removed":
+        text = re.sub(re.escape(key) + r'trusted_hash = "[^"]*"\n', "", text)
+    elif change == "disabled":
+        text = text.replace(key, key + "enabled = false\n")
+    path.write_text(text)
+    result = codex_config_check(path)
+    assert result.returncode != 0
+    assert "hooks without trust: ['PreToolUse" in result.stderr
+
+
+def test_a_hook_without_a_timeout_hashes_with_codexs_default_per_event(tmp_path):
+    # Interrupt (and SessionEnd) default to 1 second and are capped at 3; other events default
+    # to 600. An explicit value equal to the default keeps the same hash.
+    path = codex_home(tmp_path)
+    hooks_file = path.parent / "hooks.json"
+    hooks = json.loads(hooks_file.read_text())
+    hooks["hooks"]["Interrupt"][0]["hooks"][0]["timeout"] = 1
+    hooks["hooks"]["Stop"][0]["hooks"][0]["timeout"] = 600
+    hooks_file.write_text(json.dumps(hooks))
+    assert codex_config_check(path).returncode == 0
+    hooks["hooks"]["Interrupt"][0]["hooks"][0]["timeout"] = 9  # clamped to 3: another hash
+    hooks_file.write_text(json.dumps(hooks))
+    assert "Interrupt" in codex_config_check(path).stderr
+
+
+@pytest.mark.parametrize(
+    "stale", ["declaration", "stored hash", "content", "content entry missing"]
+)
+def test_a_stale_ponytail_trust_entry_still_shows_the_owners_reminder(tmp_path, stale):
+    path = codex_home(tmp_path, ponytail_trusted=3)
+    assert codex_config_check(path).stdout == ""
+    plugin = path.parent / "plugins/cache" / PONYTAIL.split("@")[1] / "ponytail" / "5.3.3"
+    if stale == "declaration":
+        hooks = json.loads((plugin / "hooks/claude-codex-hooks.json").read_text())
+        hooks["hooks"]["SubagentStart"][0]["hooks"][0]["command"] = "node other.js"
+        (plugin / "hooks/claude-codex-hooks.json").write_text(json.dumps(hooks))
+    elif stale == "content":
+        (plugin / "README.md").write_text("changed\n")
+    elif stale == "stored hash":
+        key = f'[hooks.state."{PONYTAIL}:hooks/claude-codex-hooks.json:subagent_start:0:0"]\n'
+        path.write_text(
+            path.read_text().replace(
+                key + 'trusted_hash = "sha256:', key + 'trusted_hash = "sha256:0'
+            )
+        )
+    else:
+        path.write_text(re.sub(r'trusted_content_hash = "[^"]*"\n', "", path.read_text(), count=1))
+    result = codex_config_check(path)
+    assert result.returncode == 0, result.stderr
+    # Any change to the installed copy changes its content hash, which all three entries hold.
+    waiting = 1 if stale in ("stored hash", "content entry missing") else 3
+    assert f"{waiting} of ponytail's 3 hooks wait for the owner's /hooks" in result.stdout

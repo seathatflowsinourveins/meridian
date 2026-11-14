@@ -809,7 +809,10 @@ check_codex() {
   python3 -I - "${HOME}/.codex/config.toml" "${CODEX_MODEL}" "${HOME}/.codex/hooks.json" \
     "${HOME}/.codex/.omx-config.json" "${CODEX_DOCS_MCP}" "ponytail@${PONYTAIL_MARKET}" "${SERENA_MCP_ARGS}" "${1:-full}" <<'PY' \
     || fail "~/.codex is not what deploy/wsl/setup.sh codex writes"
+import glob
+import hashlib
 import json
+import os
 import re
 import sys
 import tomllib
@@ -830,8 +833,64 @@ plugins = {name for name, p in cfg.get("plugins", {}).items() if p.get("enabled"
 state = cfg.get("hooks", {}).get("state", {})
 
 
-def trusted(key):
-    return "trusted_hash" in state.get(key, {}) and state[key].get("enabled") is not False
+# Codex's hook trust identity (codex-rs/hooks/src/engine/discovery.rs `hook_hash` and
+# config/src/fingerprint.rs at rust-v0.167.2 and rust-v0.169.0): SHA-256 of the sorted, compact
+# JSON of the normalized hook. A trust entry counts only when its hash is the current one, so a
+# hook whose command, matcher or timeout changed after approval is untrusted, as Codex sees it.
+MATCHER_EVENTS = {"PreToolUse", "PermissionRequest", "PostToolUse", "SessionStart", "SessionEnd",
+                  "SubagentStart", "SubagentStop", "PreCompact", "PostCompact"}
+CONTEXT_EVENTS = {"PreToolUse", "PostToolUse", "SessionStart", "UserPromptSubmit", "SubagentStart"}
+
+
+def event_label(event):
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower()
+
+
+def hook_hash(event, group, handler):
+    if handler.get("type", "command") != "command" or not str(handler.get("command", "")).strip():
+        return None
+    timeout = handler.get("timeout")
+    if event in ("SessionEnd", "Interrupt"):
+        timeout = min(max(1 if timeout is None else timeout, 1), 3)
+    else:
+        timeout = max(600 if timeout is None else timeout, 1)
+    normalized = dict(type="command", command=handler["command"], timeout=timeout, **{"async": bool(handler.get("async", False))})
+    if handler.get("statusMessage") is not None:
+        normalized["statusMessage"] = handler["statusMessage"]
+    limit = handler.get("additionalContextLimit")
+    if event in CONTEXT_EVENTS and limit is not None and limit != 2500:
+        normalized["additionalContextLimit"] = limit
+    identity = {"event_name": event_label(event), "hooks": [normalized]}
+    if event in MATCHER_EVENTS and group.get("matcher") is not None:
+        identity["matcher"] = group["matcher"]
+    text = json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return "sha256:" + hashlib.sha256(text.encode()).hexdigest()
+
+
+def plugin_content_hash(root):
+    # codex-rs/hooks/src/engine/plugin_fingerprint.rs at the same tags.
+    digest, pending = hashlib.sha256(b"codex-plugin-bundle-v1"), [root]
+    while pending:
+        path = pending.pop()
+        relative = os.path.relpath(path, root) if path != root else ""
+        base = os.path.basename(relative)
+        if base in ("__pycache__", ".venv") or base.endswith((".pyc", ".egg-info")):
+            continue
+        name = os.fsencode(relative)
+        digest.update(len(name).to_bytes(8, "little") + name)
+        if os.path.isdir(path) and not os.path.islink(path):
+            digest.update(b"directory")
+            pending.extend(sorted((os.path.join(path, e) for e in os.listdir(path)), key=lambda p: os.fsencode(os.path.basename(p)), reverse=True))
+        else:
+            with open(path, "rb") as f:
+                data = f.read()
+            digest.update(b"file" + len(data).to_bytes(8, "little") + data)
+    return "sha256:" + digest.hexdigest()
+
+
+def trusted(key, current):
+    entry = state.get(key, {})
+    return current is not None and entry.get("trusted_hash") == current and entry.get("enabled") is not False
 
 
 # Every hook entry in hooks.json is Orca's or oh-my-codex's, and each has its trust entry.
@@ -848,7 +907,7 @@ for event, groups in hooks.items():
             command = handler.get("command", "")
             owner = "orca" if "orca-agent-hook-form" in command else "omx" if "/oh-my-codex/" in command else "unknown"
             count[owner] += 1
-            if not trusted(f"{hooks_file}:{label}:{g}:{h}"):
+            if not trusted(f"{hooks_file}:{label}:{g}:{h}", hook_hash(event, group, handler)):
                 untrusted.append(f"{event} {g}:{h}")
 try:
     with open(omx_file, encoding="utf-8") as f:
@@ -894,7 +953,25 @@ if problems:
     sys.exit(f"Codex config: {', '.join(problems)}")
 if count["orca"] == 0:
     print("note: Orca's 9 Codex hooks are not there yet; Orca adds them, and agents-check requires them")
-waiting = 3 - sum(1 for key in state if key.startswith(f"{plugin}:") and trusted(key))
+# Ponytail's hooks: each trust entry (`<plugin>:<file>:<event>:<group>:<handler>`) must hold the
+# current hash of its declaration in the installed copy, and of that copy's files.
+market, name = plugin.split("@")[1], plugin.split("@")[0]
+roots = glob.glob(os.path.join(os.path.dirname(hooks_file), "plugins", "cache", market, name, "*", ""))
+root = roots[0].rstrip("/") if len(roots) == 1 else None
+content = plugin_content_hash(root) if root else None
+current_plugin = 0
+for key, entry in state.items():
+    if not key.startswith(f"{plugin}:") or root is None or entry.get("trusted_content_hash") != content:
+        continue
+    file, label, g, h = key[len(plugin) + 1 :].rsplit(":", 3)
+    event = "".join(part.capitalize() for part in label.split("_"))
+    try:
+        with open(os.path.join(root, file), encoding="utf-8") as f:
+            group = json.load(f)["hooks"][event][int(g)]
+        current_plugin += trusted(key, hook_hash(event, group, group["hooks"][int(h)]))
+    except (OSError, ValueError, KeyError, IndexError):
+        continue
+waiting = 3 - current_plugin
 if waiting > 0:
     print(f"note: {waiting} of ponytail's 3 hooks wait for the owner's /hooks in codex; its skills work meanwhile")
 PY
