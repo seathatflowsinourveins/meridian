@@ -35,11 +35,42 @@ KEY_ID_SHAPE = re.compile(r"(?<![A-Za-z0-9])[PA]K[A-Z0-9]{16,20}(?![A-Za-z0-9])"
 SYNTHETIC = PaperKeys("synthetic-key-id", "synthetic-secret")
 
 
-def test_the_paper_host_is_the_only_alpaca_host_this_package_names():
+# Each module may name the paper trading host; only these may name extra hosts.
+# Documentation hosts, if needed by another module, get their own explicit row.
+MODULE_EXTRA_HOSTS = {"data.py": {"stream.data.alpaca.markets"}}
+
+
+def assert_package_hosts(package: Path) -> None:
+    """Trading is paper-only; the sole data host belongs only to the quote module."""
+    data_host = "stream.data.alpaca.markets"
+    for path in package.glob("*.py"):
+        hosts = set(HOST.findall(path.read_text()))
+        allowed = {constants.PAPER_HOST} | MODULE_EXTRA_HOSTS.get(path.name, set())
+        assert hosts <= allowed, f"unexpected Alpaca host in {path.name}"
+    assert data_host in HOST.findall((package / "data.py").read_text())
+
+
+def test_the_paper_host_is_the_only_trading_host_this_package_names():
     assert constants.PAPER_TRADING_URL == "https://paper-api.alpaca.markets"
     assert constants.PAPER_TRADE_STREAM_URL == "wss://paper-api.alpaca.markets/stream"
-    hosts = {host for path in PACKAGE.glob("*.py") for host in HOST.findall(path.read_text())}
-    assert hosts == {"paper-api.alpaca.markets"}
+    assert_package_hosts(PACKAGE)
+
+
+@pytest.mark.parametrize(
+    ("module", "host"),
+    [
+        ("data.py", "stream.data.sandbox.alpaca.markets"),
+        ("data.py", "api." + "alpaca.markets"),
+        ("wire.py", "stream.data.alpaca.markets"),
+    ],
+)
+def test_package_host_check_rejects_planted_hosts(tmp_path, module, host):
+    (tmp_path / "data.py").write_text('HOST = "stream.data.alpaca.markets"')
+    (tmp_path / "wire.py").write_text('HOST = "paper-api.alpaca.markets"')
+    with (tmp_path / module).open("a") as output:
+        output.write(f'\nPLANTED = "{host}"')
+    with pytest.raises(AssertionError, match="unexpected Alpaca host"):
+        assert_package_hosts(tmp_path)
 
 
 def test_both_sdk_clients_are_built_on_the_paper_host():

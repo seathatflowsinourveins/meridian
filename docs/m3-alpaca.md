@@ -48,7 +48,7 @@ every earlier order as external and drops it unless a strategy claims the instru
 
 ## 3. What is carried and what is not
 
-Carried, each with offline tests (`tests/test_alpaca_{wire,trade_updates,reconcile,node,paper}.py`):
+Carried, each with offline tests (`tests/test_alpaca_{wire,trade_updates,reconcile,node,paper,data}.py`):
 - One gateway sends every REST call, reads and asset loads included, through one budget,
   CANCEL > REDUCE > MODIFY > QUERY > SUBMIT (a sell is REDUCE); SDK retries off; a 429 pauses.
 - Commands run as tasks, never awaited in the engine's command queue; an order outside the universe
@@ -66,14 +66,17 @@ Carried, each with offline tests (`tests/test_alpaca_{wire,trade_updates,reconci
   refuses), counts pre-history fills, and names the failing stage with fixed, value-free reasons. Engine
   settings: no missing-order generation, unbounded lookback, unresolved submissions retained,
   open-order checks, not in-flight (the old node had neither), none over a minute; checked on rc9.
+- IEX quotes only (`data.py`): JSON decimal text, pinned host before sign-in, no REST reads;
+  a lost, unreadable or unmapped stream latches failure. `quote_age_ns` is None when unusable;
+  the lane supplies its age limit and sourced round-lot sizes (sizes arrive in lots), with instruments loaded by execution.
 - No invented fee: connect refuses without a sourced per-fill commission (the old line's was a
   sourced zero, sextant@33cdee7:lanes/paper/shared-node.params.json:L26-47).
 
 Left out: modify and successor lineage, trailing stops and the exit guard (protection, M4); owner
-custody and claim lists (one writer per account); the fee registry; the market-data client (it
-comes with the attended order); wire counters; handover leases; live-lane and IBKR parts.
+custody and claim lists (one writer per account); the fee registry; bars, trades and historical
+data; wire counters; handover leases; live-lane and IBKR parts.
 
-Changed on purpose: the stream runs on the node's loop (alpaca-py 0.45.0's is asynchronous) and is
+Changed on purpose: the trade stream runs on the node's loop (alpaca-py 0.45.0's is asynchronous) and is
 pinned to the paper host before the SDK signs in (websockets would follow a redirect); keys come
 from systemd credentials; every REST call has a timeout (open in sextant#463); the next order page
 asks one microsecond past the edge, so edge rows return whether `until` is inclusive or not (the old
@@ -144,4 +147,4 @@ check a replay's counts (section 2); the replay is a reconcile-only start on the
 
 - The paper keys into the two credential files (section 6); the section 7 subset, if wanted.
 - The attended first order, on the account you assign, after the previous writer is confirmed
-  stopped; its PR adds the lane entry point, the data client and the sourced commission rows.
+  stopped; its PR wires the quote client and adds the lane entry point and sourced commission rows.
