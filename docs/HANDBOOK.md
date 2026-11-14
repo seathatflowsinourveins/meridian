@@ -205,7 +205,8 @@ edit the tests too. The owner's GitHub settings are the lock, where GitHub offer
 
 The owner's own design, carried from Sextant's ADR-0006 (`seathatflowsinourveins/sextant` at
 `33cdee7b`, `docs/adr/0006-reentry-and-rotation.md`), itself from the owner's earlier repos.
-No upstream ships these rules. Nothing of them is built here yet (M5). **Every threshold is
+No upstream ships these rules. The strategy template holds R1, R2's band, R3a, R5 and the
+confidence rule; the rest waits for M5. **Every threshold is
 uncalibrated**: Sextant's replay registry gives each one as a named parameter with no value,
 and its Paper B registry has one value, marked `UNCALIBRATED`. M5 calibrates them by replay;
 tuned values go to `meridian-evidence`, never into this repository.
@@ -306,13 +307,27 @@ which git ignores and which may hold account ids.
 
 ## How to add a strategy
 
-1. Start from an upstream template: a NautilusTrader example or built-in strategy at the pinned
-   version, or a cited published method. Name it in the strategy file's docstring (repository,
+Every strategy here is built on `meridian/strategy_template/` (M4, on upstream's
+`EMACrossTrailingStop` example): one state machine per symbol (flat, entering, holding,
+exiting) and at most one unresolved order per symbol. After an entry fills, the engine's
+`OrderEmulator` holds a DAY `TRAILING_STOP_LIMIT` trailing by that symbol's ATR of quote-to-quote
+mid changes times a multiple (with a floor); it only ratchets up. On the first quote whose bid
+reaches it, it is released as a DAY LIMIT an exit buffer under the trigger; if the bid gapped
+below that, the template cancels and re-prices at the bid less the buffer. Re-entry follows R1,
+R2's band, R3a, R5 and the confidence rule (where: `strategy.py`'s docstring). Venue actions
+are counted by kind for the lane's pacer; ratchets are local. Subclass `TrailingTemplate`,
+implement `entry_signal` (and `rank`, `confidence`, `reclaim_qualified` for re-entry; missing
+means wait), and supply every `TemplateParams` value from configuration: there are no defaults.
+The package holds the template (`strategy.py`, `params.py`, `actions.py`) and its offline
+simulation, `uv run python -m meridian.strategy_template.sim [--copies N]`. Not yet in a lane.
+
+1. Start from an upstream template: the strategy template above, a NautilusTrader example or
+   built-in strategy at the pinned version, or a cited published method. Name it in the strategy file's docstring (repository,
    path, version or commit). If no upstream fits, write "own design" and why.
 2. Never edit an upstream file. Vendor it verbatim under `upstream/` with its licence and
    subclass it, as `meridian/ibkr_node.py` does with upstream's `IbV2OrderStrategy`.
 3. Add its `UPSTREAM.md` row in the same commit.
-4. Parameters: the template's defaults. Tuned values go to `meridian-evidence`, not here.
+4. Parameters: named, with no value in this repository; tuned values go to `meridian-evidence`.
 5. Tests: it builds offline against the pinned engine, and it runs in the sandbox lane on the
    fake feed, as `tests/test_sandbox_lane.py` does with upstream's strategy. A strategy never
    adds an execution client.
