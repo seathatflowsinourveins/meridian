@@ -17,9 +17,10 @@
 # under a limit of 60 an hour per address.
 
 [lines]
-"AGENTS.md" = 120 # plan 9.5. Main at 9c5daaa has 126 lines; with this trim, 117
+"AGENTS.md" = 30 # the few lines every context loads (plan of 2026-11-13, section 1); 27 now
 "CLAUDE.md" = 1 # only the @AGENTS.md import
 "docs/HANDBOOK.md" = 400 # plan 9.5
+"docs/LANES.md" = 180 # the lanes, runbooks and Orca notes moved from the handbook and AGENTS.md
 "docs/adr/README.md" = 80 # the ADR format and the index
 
 [adr]
@@ -27,7 +28,7 @@ max_lines_each = 60 # plan 8.6
 max_count = 20 # plan 8.6
 
 [totals]
-agent_instruction_lines = 121 # every AGENTS.md and CLAUDE.md, at any depth
+agent_instruction_lines = 31 # every AGENTS.md and CLAUDE.md, at any depth
 prose_lines = 2000 # owner-delegated M3 allowance: attended commands, quote-size convention and run criteria
 config_lines = 520 # 450 before the owner's harness plan of 2026-11-13: its upstream map, dependency groups, weekly watch and unattended units come to 507
 workflows = 2 # lead delegation: weekly landscape issue automation alongside fork-safe CI
