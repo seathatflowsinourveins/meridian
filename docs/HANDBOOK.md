@@ -195,6 +195,10 @@ simulation, `uv run python -m meridian.strategy_template.sim [--copies N]`. Not 
 Add `--report` for the engine's statistics, order/fill/position CSVs and standalone HTML under
 `runs/`; first `uv sync --locked`. Inputs remain synthetic and uncalibrated; undefined statistics are null.
 [Pinned analysis evidence](adr/data/m5-engine-stats.md) explains the engine's cash-PnL semantics.
+The simulation uses the [screener universe](adr/data/m4-universe.md): movers intersected with
+most-actives, lane permission and owner-local price/volume floors and count cap.
+Lists apply only after receipt and expire; unknown outside-hours freshness refuses entries.
+Deployment parameters are null placeholders; data reads share a separate 200/minute budget.
 
 1. Start from an upstream template: the strategy template above, a NautilusTrader example or
    built-in strategy at the pinned version, or a cited published method. Name it in the strategy file's docstring (repository,
