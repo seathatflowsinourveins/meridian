@@ -218,3 +218,23 @@ def test_open_and_land_need_their_own_lock(repo: Path, tmp_path: Path):
         opened(g, tmp_path)
     assert g.holder() == "second"  # the other landing's lock is untouched
     assert not any(c[:2] == ["pr", "merge"] for c in fake.calls)
+
+
+def test_a_rewritten_branch_after_open_is_refused_not_merged_back(repo: Path, tmp_path: Path):
+    g, fake = make(repo, ["pass"])
+    sh(repo, "checkout", "-q", "feature")
+    commit(repo, "x.txt", "x\n", "feature adds a second file")
+    sh(repo, "checkout", "-q", "main")
+    move_main(repo)
+    assert g.trial("feature")
+    opened(g, tmp_path)  # the pushed trial holds b.txt and x.txt
+    sh(repo, "checkout", "-q", "feature")
+    sh(repo, "rm", "-q", "x.txt")
+    sh(
+        repo, "commit", "-q", "--amend", "--allow-empty", "-m", "feature keeps one file"
+    )  # rewritten
+    sh(repo, "checkout", "-q", "main")
+    pushes = len(fake.calls)
+    with pytest.raises(gate.Refused, match="was rewritten"):
+        g.trial("feature")
+    assert len(fake.calls) == pushes

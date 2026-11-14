@@ -13,7 +13,8 @@ few lines. State and check logs live under the repository's common git directory
 its own lock, and `release` is the explicit override that says whose lock it dropped.
 
 A retried trial keeps the earlier pushed trial merge in its ancestry (it merges the branch as
-pushed to origin before main), so its push is a fast-forward.
+pushed to origin before main), so its push is a fast-forward; it refuses instead when the
+worker's head recorded at that trial is no longer in the branch (an amend or a rebase).
 
 Remaining window: `land` fetches main and compares the trial-merged tree as the last step before
 `gh pr merge`, but GitHub's merge is not conditioned on main's revision, so a push to main in the
@@ -137,7 +138,16 @@ class Gate:
                 tested = head
                 pushed = self._remote_branch(branch)
                 if pushed and pushed != head and not self._is_ancestor(pushed, head):
-                    # The earlier trial's merge is on origin; keep it so the push fast-forwards.
+                    # The earlier trial's merge is on origin; keep it so the push fast-forwards,
+                    # but only if the worker's head of that trial is still in the branch: after
+                    # an amend or rebase, merging it back would restore what the worker removed.
+                    f = self._state_file(branch)
+                    earlier = json.loads(f.read_text()).get("head") if f.is_file() else None
+                    if not earlier or not self._is_ancestor(earlier, head):
+                        raise Refused(
+                            f"{branch} was rewritten since its pushed trial ({pushed[:12]}); "
+                            "reconcile the local and pushed branch by hand, then run trial"
+                        )
                     if self._merge(wt, pushed):
                         raise Refused(f"{branch} does not merge cleanly with its pushed trial")
                     tested = git(wt, "rev-parse", "HEAD")
