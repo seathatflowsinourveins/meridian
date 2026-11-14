@@ -195,6 +195,9 @@ simulation, `uv run python -m meridian.strategy_template.sim [--copies N]`. Not 
 Add `--report` for the engine's statistics, order/fill/position CSVs and standalone HTML under
 `runs/`; first `uv sync --locked`. Inputs remain synthetic and uncalibrated; undefined statistics are null.
 [Pinned analysis evidence](adr/data/m5-engine-stats.md) explains the engine's cash-PnL semantics.
+`--chart` (implies `--report`) adds `chart.html` in the same folder: per symbol one-second bid
+candles, a marker at each fill, the trail while held, and the statistics table, drawn by the
+verbatim Lightweight Charts file in `upstream/` embedded in the page. It opens offline.
 
 1. Start from an upstream template: the strategy template above, a NautilusTrader example or
    built-in strategy at the pinned version, or a cited published method. Name it in the strategy file's docstring (repository,

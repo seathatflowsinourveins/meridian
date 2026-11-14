@@ -56,7 +56,7 @@ run per item (`docs/adr/README.md`).
 ### Layer 4, display
 | Job | Rests on | State |
 |---|---|---|
-| Owner-built page: candles, trail lines, fill markers | `tradingview/lightweight-charts` | add, M6 |
+| Owner-built page: candles, trail lines, fill markers | `tradingview/lightweight-charts` | in use, pinned 5.2.1 (`upstream/`): `sim --chart`, a static page of a synthetic run; live data is M6 |
 | Results views | the engine's Plotly tearsheets | add, M5 |
 | Live order and fill blotter | `perspective-dev/perspective` | add, M6, if a static page is not enough |
 | TradingView Desktop, attended | `tradesdontlie/tradingview-mcp` (inside the kit) | in use on the Windows side |
