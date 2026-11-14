@@ -627,8 +627,8 @@ def test_omc_project_profile_is_only_the_admitted_stage_schedule():
 
 def fake_omc_home(tmp_path):
     api = omc_api()
-    home = tmp_path / "claude"
-    user = tmp_path / "config.jsonc"
+    home = tmp_path / ".claude"
+    user = tmp_path / ".config/claude-omc/config.jsonc"
     settings = {"statusLine": {"type": "command", "command": WRAPPER}, "model": "keep", "hooks": {}}
     for event in api["HOOKS"]:
         settings["hooks"][event] = [
@@ -642,40 +642,42 @@ def fake_omc_home(tmp_path):
             }
         ]
     api["write"](home / "settings.json", settings)
-    api["prepare"](home, user)
+    staging = tmp_path / "staging"
+    api["stage"](home, staging)
+    staged_settings = api["read"](staging / "settings.json")
     for event, names in api["HOOKS"].items():
         for name in names:
-            path = home / "hooks" / name
+            path = staging / "hooks" / name
             path.parent.mkdir(exist_ok=True)
             path.write_text('console.log(JSON.stringify({decision:"block",reason:"upstream"}));\n')
-            settings["hooks"][event].append(
-                {
-                    "hooks": [
-                        {
-                            "type": "command",
-                            "command": f'node "{path}"',
-                        }
-                    ]
-                }
+            staged_settings["hooks"][event].append(
+                {"hooks": [{"type": "command", "command": f'node "{path}"'}]}
             )
-    api["write"](home / "settings.json", settings)
-    api["write"](home / ".omc-version.json", {"version": api["VERSION"]})
-    (home / "CLAUDE.md").write_text("upstream instructions\n")
-    for name in ("autopilot", "ralph", "ralplan", "team", "verify", "cancel"):
-        path = home / "skills" / name / "SKILL.md"
+    api["write"](staging / "settings.json", staged_settings)
+    api["write"](staging / ".omc-version.json", {"version": api["VERSION"]})
+    (staging / "CLAUDE.md").write_text("<!-- OMC:START -->\nupstream\n<!-- OMC:END -->\n")
+    for name in api["SKILLS"] | {"code-review", "tdd"}:
+        path = staging / "skills" / name / "SKILL.md"
         path.parent.mkdir(parents=True)
-        path.touch()
-    api["configure"](home, OMC_ADAPTER)
+        path.write_text("synthetic " + name)
+        (path.parent / ".omc-managed").write_text("omc-managed\n")
+    for name in api["AGENTS"] | {"scientist"}:
+        path = staging / "agents" / f"{name}.md"
+        path.parent.mkdir(exist_ok=True)
+        path.write_text("synthetic " + name)
+    adapter = tmp_path / "adapter"
+    adapter.write_bytes(OMC_ADAPTER.read_bytes())
+    api["install"](home, user, adapter, staging)
     return api, home, user
 
 
 def test_omc_configuration_is_idempotent_and_preserves_orca_and_hud(tmp_path):
     api, home, user = fake_omc_home(tmp_path)
-    api["check"](home, user, OMC_ADAPTER)
+    api["check"](home, user, tmp_path / "adapter")
     once = (home / "settings.json").read_bytes(), (home / "CLAUDE.md").read_bytes()
     api["prepare"](home, user)
-    api["configure"](home, OMC_ADAPTER)
-    api["check"](home, user, OMC_ADAPTER)
+    api["configure"](home, tmp_path / "adapter")
+    api["check"](home, user, tmp_path / "adapter")
     assert once == ((home / "settings.json").read_bytes(), (home / "CLAUDE.md").read_bytes())
     assert api["read"](home / "settings.json")["model"] == "keep"
 
@@ -697,7 +699,7 @@ def test_omc_check_rejects_drift(tmp_path, damage):
         api["write"](user, {"keywordDetector": {"disabled": []}})
     api["write"](path, settings)
     with pytest.raises(AssertionError):
-        api["check"](home, user, OMC_ADAPTER)
+        api["check"](home, user, tmp_path / "adapter")
 
 
 def run_omc_hook(home, event, data):
@@ -789,13 +791,13 @@ def test_omc_bootstrap_before_orca_and_final_check_have_distinct_requirements(tm
     api["write"](home / "settings.json", settings)
     # A removed existing Orca hook fails even during bootstrap.
     with pytest.raises(AssertionError):
-        api["check"](home, user, OMC_ADAPTER, require_orca=False)
+        api["check"](home, user, tmp_path / "adapter", require_orca=False)
     before = api["read"](home / ".meridian-omc-before.json")
     before["hooks"] = {}
     api["write"](home / ".meridian-omc-before.json", before)
-    api["check"](home, user, OMC_ADAPTER, require_orca=False)
+    api["check"](home, user, tmp_path / "adapter", require_orca=False)
     with pytest.raises(AssertionError):
-        api["check"](home, user, OMC_ADAPTER)
+        api["check"](home, user, tmp_path / "adapter")
 
 
 def test_omc_setup_ignores_state_once_without_replacing_existing_exclusions(tmp_path):
@@ -805,7 +807,223 @@ def test_omc_setup_ignores_state_once_without_replacing_existing_exclusions(tmp_
     program = f"omc_ignore_state() {{\n{setup_function_body('omc_ignore_state')}\n}}"
     program += '\nomc_ignore_state "$1"\nomc_ignore_state "$1"\n'
     subprocess.run(["bash", "-euc", program, "fixture", str(tmp_path)], check=True)
-    assert exclude.read_text() == "keep-this\n\n/.omc/\n"
+    assert exclude.read_text() == "keep-this\n/.omc/\n"
+    program = f"omc_unignore_state() {{\n{setup_function_body('omc_unignore_state')}\n}}"
+    program += '\nomc_unignore_state "$1"\n'
+    subprocess.run(["bash", "-euc", program, "fixture", str(tmp_path)], check=True)
+    assert exclude.read_text() == "keep-this\n"
+
+
+def test_omc_install_remove_round_trip_preserves_all_other_assets_and_settings(tmp_path):
+    api, home, user = fake_omc_home(tmp_path)
+    adapter = tmp_path / "adapter"
+    api["remove"](home, user, adapter)
+    settings = api["read"](home / "settings.json")
+    settings.update(
+        env={"OTHER_SWITCH": "keep", "OMC_NOTIFY": "original"},
+        skillOverrides={"autopilot": "off", "user-skill": "name-only"},
+    )
+    api["write"](home / "settings.json", settings)
+    api["write"](user, {"keywordDetector": {"disabled": ["ralph"], "other": "keep"}})
+    api["write"](home / ".omc-config.json", {"hudEnabled": True, "other": "keep"})
+    (home / "CLAUDE.md").write_text("Owner instructions without trailing newline")
+    other = home / "skills/code-review/SKILL.md"
+    other.parent.mkdir(parents=True)
+    other.write_text("Other review skill, no OMC marker")
+    before = {p.relative_to(home): p.read_bytes() for p in home.rglob("*") if p.is_file()}
+    before_user = user.read_bytes()
+    adapter.write_bytes(OMC_ADAPTER.read_bytes())
+    api["install"](home, user, adapter, tmp_path / "staging")
+    api["check"](home, user, adapter)
+    api["install"](home, user, adapter, tmp_path / "staging")
+    api["check"](home, user, adapter)
+    assert not (home / "skills/tdd").exists()
+    assert not (home / "agents/scientist.md").exists()
+    api["remove"](home, user, adapter)
+    assert not adapter.exists()
+    assert user.read_bytes() == before_user
+    assert {p.relative_to(home): p.read_bytes() for p in home.rglob("*") if p.is_file()} == before
+    with pytest.raises(AssertionError, match="OMC absent"):
+        api["check"](home, user, adapter)
+
+
+@pytest.mark.parametrize(
+    "name", ["skills/ralph/SKILL.md", "agents/executor.md", "hooks/pre-tool-use.mjs"]
+)
+def test_omc_remove_refuses_modified_owned_file_before_mutating_settings(tmp_path, name):
+    api, home, user = fake_omc_home(tmp_path)
+    path = home / name
+    path.write_text("Owner changed this asset")
+    settings = (home / "settings.json").read_bytes()
+    with pytest.raises(ValueError, match="modified OMC file"):
+        api["remove"](home, user, tmp_path / "adapter")
+    assert (home / "settings.json").read_bytes() == settings
+    assert path.read_text() == "Owner changed this asset"
+
+
+def test_omc_remove_preserves_other_hooks_in_mixed_group(tmp_path):
+    api, home, user = fake_omc_home(tmp_path)
+    settings = api["read"](home / "settings.json")
+    other = {"type": "command", "command": "printf other-hook"}
+    settings["hooks"]["Stop"][1]["hooks"].append(other)
+    settings["new-setting"] = True
+    api["write"](home / "settings.json", settings)
+    api["remove"](home, user, tmp_path / "adapter")
+    removed = api["read"](home / "settings.json")
+    assert removed["new-setting"] is True
+    assert other in [h for group in removed["hooks"]["Stop"] for h in group["hooks"]]
+
+
+def test_omc_install_refuses_a_colliding_user_asset_before_writing_settings(tmp_path):
+    api, home, user = fake_omc_home(tmp_path)
+    adapter = tmp_path / "adapter"
+    api["remove"](home, user, adapter)
+    adapter.write_bytes(OMC_ADAPTER.read_bytes())
+    path = home / "agents/executor.md"
+    path.parent.mkdir()
+    path.write_text("Owner's executor")
+    before = (home / "settings.json").read_bytes()
+    with pytest.raises(ValueError, match="existing user asset"):
+        api["install"](home, user, adapter, tmp_path / "staging")
+    assert (home / "settings.json").read_bytes() == before
+    assert path.read_text() == "Owner's executor"
+
+
+def test_omc_remove_cleans_only_its_new_runtime_version_cache(tmp_path):
+    api, home, user = fake_omc_home(tmp_path)
+    cache = home / ".omc/update-check.json"
+    api["write"](cache, {"lastCheck": "synthetic"})
+    api["remove"](home, user, tmp_path / "adapter")
+    assert not cache.exists()
+
+
+@pytest.mark.parametrize("event", ["SessionStart", "PreToolUse", "PostToolUseFailure"])
+def test_omc_checks_require_direct_commands_for_events_without_adapter_logic(tmp_path, event):
+    api, home, user = fake_omc_home(tmp_path)
+    settings = api["read"](home / "settings.json")
+    command = settings["hooks"][event][-1]["hooks"][0]
+    assert command["command"].startswith("node ")
+    command["command"] = f"python3 adapter hook {event} " + command["command"][5:]
+    api["write"](home / "settings.json", settings)
+    with pytest.raises(AssertionError, match="missing or duplicate OMC"):
+        api["check"](home, user, tmp_path / "adapter")
+
+
+@pytest.mark.parametrize(
+    "damage", ["missing-skill", "extra-skill", "extra-agent", "disabled-skill"]
+)
+def test_omc_checks_require_exact_active_lifecycle_set(tmp_path, damage):
+    api, home, user = fake_omc_home(tmp_path)
+    if damage == "missing-skill":
+        (home / "skills/ralph/SKILL.md").unlink()
+    elif damage == "extra-skill":
+        path = home / "skills/tdd/.omc-managed"
+        path.parent.mkdir()
+        path.touch()
+    elif damage == "extra-agent":
+        (home / "agents/scientist.md").write_text("synthetic scientist")
+    else:
+        settings = api["read"](home / "settings.json")
+        settings["skillOverrides"]["ralph"] = "off"
+        api["write"](home / "settings.json", settings)
+    with pytest.raises(AssertionError):
+        api["check"](home, user, tmp_path / "adapter")
+
+
+def test_omc_remove_command_leaves_claude_and_hud_checks_passing(tmp_path):
+    api, home, _ = fake_omc_home(tmp_path)
+    local = tmp_path / ".local/bin"
+    local.mkdir(parents=True)
+    adapter = local / "meridian-omc"
+    adapter.write_bytes(OMC_ADAPTER.read_bytes())
+    api["configure"](home, adapter)
+    wrapper = local / "meridian-claude-hud"
+    wrapper.write_text("#!/bin/sh\nprintf 'fixture hud\\n'\n")
+    wrapper.chmod(0o755)
+    claude = local / "claude"
+    claude.write_text(
+        '#!/bin/sh\nprintf \'%s\\n\' \'[{"id":"claude-hud@claude-hud","enabled":true}]\'\n'
+    )
+    claude.chmod(0o755)
+    reporter = tmp_path / ".orca/agent-hooks/claude-statusline.sh"
+    reporter.parent.mkdir(parents=True)
+    reporter.write_text("#!/bin/sh\nexit 0\n")
+    reporter.chmod(0o755)
+    launcher = home / "plugins/claude-hud/statusline.mjs"
+    launcher.parent.mkdir(parents=True)
+    launcher.touch()
+    (home / "plugins/cache/claude-hud/claude-hud/fixture").mkdir(parents=True)
+    checkout = home / "plugins/marketplaces/claude-hud"
+    subprocess.run(["git", "init", "-q", str(checkout)], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(checkout),
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "fixture",
+        ],
+        check=True,
+    )
+    commit = subprocess.check_output(
+        ["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True
+    ).strip()
+    settings = json.loads(
+        claude_settings_filter("claude_settings", api["read"](home / "settings.json")).stdout
+    )
+    settings["statusLine"] = {"type": "command", "command": str(wrapper)}
+    settings["extraKnownMarketplaces"] = {
+        "claude-hud": {"source": {"ref": "fixture"}, "autoUpdate": False}
+    }
+    api["write"](home / "settings.json", settings)
+    driver = tmp_path / "deploy/wsl/driver.sh"
+    driver.parent.mkdir(parents=True)
+    (driver.parent / "meridian-omc.py").write_bytes(OMC_ADAPTER.read_bytes())
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    exclude = tmp_path / ".git/info/exclude"
+    exclude.write_text("keep-this\n/.omc/\n")
+    functions = [
+        "cmd_omc_remove",
+        "omc_unignore_state",
+        "check_claude",
+        "check_claude_hud",
+        "check_omc",
+    ]
+    program = "set -euo pipefail\n" + "\n".join(
+        f"{name}() {{\n{setup_function_body(name)}\n}}" for name in functions
+    )
+    # Binary/version/managed-policy fixtures; the real settings and HUD guards run.
+    program += '\nfail() { echo "$*" >&2; exit 1; }\nok() { echo "$*"; }\n'
+    program += "version_ge() { return 0; }\nclaude_version() { echo fixture; }\n"
+    program += "check_claude_managed() { return 0; }\n"
+    program += (
+        'npm() { [ "$*" = "uninstall -g --ignore-scripts --no-audit '
+        '--no-fund oh-my-claude-sisyphus" ]; }\n'
+    )
+    program += "CLAUDE_MODEL=model\nCLAUDE_VERSION=floor\n"
+    program += "CLAUDE_HUD_VERSION=fixture\nCLAUDE_HUD_REF=fixture\n"
+    program += f"CLAUDE_HUD_COMMIT={commit}\n"
+    program += 'CLAUDE_HUD_WRAPPER="${HOME}/.local/bin/meridian-claude-hud"\n'
+    program += "cmd_omc_remove\ncheck_claude\ncheck_claude_hud\n(check_omc) && exit 9\nexit 0\n"
+    driver.write_text(program)
+    result = subprocess.run(
+        ["bash", str(driver)],
+        env=dict(os.environ, HOME=str(tmp_path)),
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "OMC absent" in result.stderr
+    assert "Orca's usage reporter still fed" in result.stdout
+    assert exclude.read_text() == "keep-this\n"
+
+
 def run_ocr_step(tmp_path, step, version="1.13.9", provider=False):
     # cmd_ocr and check_ocr on a fake home with a fake curl that copies a local fake binary;
     # nothing is downloaded and the real home is untouched.

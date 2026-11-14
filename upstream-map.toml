@@ -23,6 +23,8 @@
 "deploy/wsl/meridian-claude-hud.sh" = { upstream = "jarrodwatts/claude-hud (Claude Code plugin, status line)", how = "build-on", feature = "statusline.mjs rendering of Claude Code status JSON", why = "one status command must feed Orca's usage reporter and display the HUD with a fallback" }
 "deploy/landscape_*.py" = { upstream = "GitHub REST API", how = "build-on", feature = "repository, release, starred-repository, issue and label endpoints", why = "the harness needs its own revisit rules and a consolidated watch issue" }
 
+"deploy/wsl/meridian-omc.py" = { upstream = "oh-my-claudecode", how = "build-on", feature = "standalone lifecycle skills and hook events", why = "Meridian needs a bounded user install, reversible removal and owner/Orca stop precedence" }
+
 # Only differently named rows need aliases; package labels are normalized automatically.
 [dependencies]
 nautilus-trader = "NautilusTrader"

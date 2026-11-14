@@ -18,6 +18,7 @@
 #     codex-bridge  the Codex review plugin for Claude Code
 #     claude-hud    the claude-hud status line for Claude Code, beside Orca's usage reporter
 #     omc           Claude lifecycle in user scope (also called by claude); ADR 0019
+#     omc-remove    remove only Meridian-owned OMC assets; retain other Claude settings
 #   deploy/wsl/setup.sh agents-check  verify the agent runtimes and their settings
 #   deploy/wsl/setup.sh drift         installed against pinned; exit 0 when upkeep is due (changes nothing)
 #   deploy/wsl/setup.sh upkeep        bring this machine to the pins (not Orca's server: the owner's step)
@@ -445,7 +446,7 @@ check_claude() {
   ' "${HOME}/.claude/settings.json" >/dev/null \
     || fail "~/.claude/settings.json is not what deploy/wsl/setup.sh claude writes"
   check_claude_managed
-  check_omc
+  if [ -f "${HOME}/.claude/.meridian-omc-install.json" ]; then check_omc; fi
   ok "Claude Code $(claude_version): ${CLAUDE_MODEL} at high effort, no claude.ai connectors, sync or MCP server; thinking shown, fullscreen, compaction at its defaults"
 }
 
@@ -455,19 +456,21 @@ cmd_omc() {
   npm install -g --ignore-scripts --no-audit --no-fund "oh-my-claude-sisyphus@${OMC_VERSION}"
   local adapter="${HOME}/.local/bin/meridian-omc" tmp
   install -m 0755 "$(dirname "${BASH_SOURCE[0]}")/meridian-omc.py" "${adapter}"
-  python3 "${adapter}" prepare "${HOME}/.claude" "${HOME}/.config/claude-omc/config.jsonc"
-  tmp="$(mktemp -d)"
+  install -d "${HOME}/.cache/meridian"
+  tmp="$(mktemp -d "${HOME}/.cache/meridian/omc-setup.XXXXXX")"
+  python3 "${adapter}" stage "${HOME}/.claude" "${HOME}/.config/claude-omc/config.jsonc" "${tmp}/claude"
   # Prevent setup's unified MCP registry from reading either runtime's user config.
   # No account/auth file is copied into this scratch registry or consulted by setup.
   printf '{}\n' > "${tmp}/empty.json"
   (
     cd "${tmp}"
-    CLAUDE_CONFIG_DIR="${HOME}/.claude" OMC_HOME="${tmp}/omc" OMC_STATE_DIR="${tmp}/state" \
+    CLAUDE_CONFIG_DIR="${tmp}/claude" XDG_CONFIG_HOME="${tmp}/config" \
+      OMC_HOME="${tmp}/omc" OMC_STATE_DIR="${tmp}/state" \
       CLAUDE_MCP_CONFIG_PATH="${tmp}/empty.json" OMC_MCP_REGISTRY_PATH="${tmp}/empty.json" \
       CODEX_HOME="${tmp}/codex" "${HOME}/.local/bin/omc" setup --no-plugin --force --quiet </dev/null
   )
+  python3 "${adapter}" install "${HOME}/.claude" "${HOME}/.config/claude-omc/config.jsonc" "${adapter}" "${tmp}/claude"
   rm -rf "${tmp}"
-  python3 "${adapter}" configure "${HOME}/.claude" "${HOME}/.config/claude-omc/config.jsonc" "${adapter}"
   omc_ignore_state "$(dirname "${BASH_SOURCE[0]}")/../.."
   check_omc
 }
@@ -478,10 +481,35 @@ omc_ignore_state() {
   install -d "${common}/info"
   touch "${common}/info/exclude"
   grep -qxF '/.omc/' "${common}/info/exclude" \
-    || printf '\n/.omc/\n' >> "${common}/info/exclude"
+    || printf '/.omc/\n' >> "${common}/info/exclude"
+}
+
+cmd_omc_remove() {
+  python3 "$(dirname "${BASH_SOURCE[0]}")/meridian-omc.py" remove \
+    "${HOME}/.claude" "${HOME}/.config/claude-omc/config.jsonc" "${HOME}/.local/bin/meridian-omc"
+  npm uninstall -g --ignore-scripts --no-audit --no-fund oh-my-claude-sisyphus
+  omc_unignore_state "$(dirname "${BASH_SOURCE[0]}")/../.."
+  check_claude
+  check_claude_hud
+  ok "OMC absent; Orca hooks, claude-hud and other Claude settings retained"
+}
+
+omc_unignore_state() {
+  local common
+  common="$(git -C "$1" rev-parse --path-format=absolute --git-common-dir)"
+  python3 - "${common}/info/exclude" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+if path.exists():
+    path.write_text(''.join(line for line in path.read_text().splitlines(keepends=True)
+                            if line.rstrip('\r\n') != '/.omc/'))
+PY
 }
 
 check_omc() {
+  [ -f "${HOME}/.claude/.meridian-omc-install.json" ] \
+    || fail "OMC absent (run: deploy/wsl/setup.sh omc)"
   python3 "${HOME}/.local/bin/meridian-omc" check \
     "${HOME}/.claude" "${HOME}/.config/claude-omc/config.jsonc" "${HOME}/.local/bin/meridian-omc" "${1:---before-orca}" \
     || fail "OMC lifecycle settings or coexisting hooks differ from ADR 0019 (run: deploy/wsl/setup.sh omc)"
@@ -1283,6 +1311,7 @@ case "${1:-}" in
   codex-bridge) cmd_codex_bridge ;;
   claude-hud) cmd_claude_hud ;;
   omc) cmd_omc ;;
+  omc-remove) cmd_omc_remove ;;
   drift) cmd_drift "${2:-}" ;;
   upkeep) cmd_upkeep ;;
   orca-automation) cmd_orca_automation ;;
