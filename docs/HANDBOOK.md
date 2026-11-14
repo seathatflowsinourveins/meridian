@@ -106,7 +106,7 @@ flows with it ticked has not been checked.
 
 ### Alpaca paper lane (M3, owner only)
 
-`meridian.alpaca_lane` wires the execution adapter, IEX quotes and the owner's order budget.
+`meridian.alpaca_lane` wires IEX quotes and the [execution adapter](m3-alpaca.md#3-current-adapter-carried-changed-and-omitted) with the [order budget](#rate-budgets).
 Quotes carry prices only: Alpaca documents round-lot sizes but its Asset model has no
 per-symbol shares-per-lot field ([Asset](https://alpaca.markets/sdks/python/api_reference/trading/models.html#asset),
 [quotes](https://docs.alpaca.markets/us/docs/real-time-stock-pricing-data), read 2026-11-13).
@@ -117,11 +117,20 @@ Before a run: stop the previous writer and confirm it is stopped;
 check that AAPL has no open order or position, across every entry route on the paper account.
 AAPL is the same equity as upstream's IBKR stock example. Reconciliation claims AAPL.ALPACA;
 working orders outside that universe or from another writer refuse. No agent starts either mode.
-Copy `deploy/alpaca-lane.template.json` to ignored `local/alpaca-lane.json` and fill its two
-null fields: `order_budget_rows_path` (relative to the settings file or absolute) and
-`quote_max_age_ns` (a positive integer, with no code default). Both files belong outside the
-tree or under `local/`; the rows must pass the production loader. Missing or invalid values
-refuse without printing paths or values. The settings path is selected with `--settings`.
+Copy `deploy/alpaca-lane.template.json` to ignored `local/alpaca-lane.json`; fill its two null fields: `order_budget_rows_path`
+(relative to that file or absolute) and `quote_max_age_ns` (positive integer; no code default).
+Both files belong outside the tree or under `local/` (backups there are ignored too); [rows must pass the production loader](#rate-budgets).
+Missing/invalid values refuse without printing paths or values; `--settings` selects the settings file.
+
+#### Alpaca credentials
+
+The owner creates the two encrypted files in a distro terminal (no TPM, so the host key):
+```bash
+sudo systemd-creds setup
+systemd-ask-password -n "Alpaca paper key id:" | sudo systemd-creds encrypt --with-key=host --name=alpaca-paper-key-id - /etc/credstore.encrypted/alpaca-paper-key-id
+systemd-ask-password -n "Alpaca paper secret key:" | sudo systemd-creds encrypt --with-key=host --name=alpaca-paper-secret-key - /etc/credstore.encrypted/alpaca-paper-secret-key
+```
+`deploy/systemd/meridian-alpaca-paper@.service`, the [unattended lane](#unattended-alpaca-lane-m7)'s template unit, has no `[Install]` section. It runs as `paper` and loads both credentials by absolute path (missing files prevent startup). The loader refuses missing credentials; key values come only from their files, whose directory is named by `CREDENTIALS_DIRECTORY`.
 
 From the repository root, in a distro terminal the owner started outside Orca, use the system
 manager (the existing encrypted credentials target it, not the per-user manager):
@@ -156,39 +165,34 @@ records go to `evidence/M3-alpaca-paper-<stamp>-<mode>.json`. Public records con
 text or identifiers, include commission citations and counts of paper-default/reviewed budget
 rows (also shown at the terminal), and record only the quote-age limit's presence. No real run has been performed.
 
-`uv run python -m meridian.alpaca_sim` is a simulation, not a lane; no typed word.
-It exercises the lane's unchanged one-order strategy and the native engine's order flow.
-It does not exercise the Alpaca adapter, order budget, credentials, streams or venue.
-All quotes are synthetic, generated in process: no market or recorded data, no real price.
+`uv run python -m meridian.alpaca_sim` is a simulation, not a lane; no typed word. It exercises the unchanged one-order strategy and native engine order flow, excluding the Alpaca adapter, order budget, credentials, streams and venue.
+Quotes are synthetic, generated in process: no market or recorded data, no real price.
 PASS means accepted, then cancelled, nothing filled and flat at stop; any fill means FAIL.
 Records go only to `runs/*-simulation.json`, never `evidence/`; it is offline and keyless.
 
 ### Unattended Alpaca lane (M7)
 
-On the owner's instruction of 2026-11-13 ("you nmeed to resolute all in your end", "sudo with
-full sota automation seamless workflow") the landing session installs and enables these units;
-the owner can overrule. The engine places every order: no agent types PAPER or reads a key.
+On the owner's instruction of 2026-11-13 ("you nmeed to resolute all in your end", "sudo with full sota automation seamless
+workflow") the landing session installs and enables these units; the owner can overrule. The engine places every order: no agent
+types PAPER or reads a key.
 
-- **Install or update** (idempotent; sudo): `deploy/wsl/setup.sh unattended` puts the checked-out
-  commit in `/opt/meridian/releases/<commit>` (`current` points to it), creates the settings and
-  rows files in `/etc/meridian-alpaca-paper/` from the templates if absent (root-owned, read by
-  `paper`), `/var/lib/meridian-alpaca-paper` and the three units, then enables both timers.
-  Keys: `docs/m3-alpaca.md` section 6. Fill the settings' nulls with sudo; the step sets none.
-- **Consent and schedule**: `unattended_orders_enabled: true` is the owner's standing consent;
-  null or false refuses `order`. `restart` 09:45 and 16:15, `order` 10:00, Monday to Friday, New
-  York time; no holiday calendar, no catch-up of a missed run.
-- **Refusals** (fixed text, nothing sent): not the unit with both credentials; settings writable
-  by `paper`; for `order`, no consent, a hold, or `order_window_open` false (09:30-15:55 NY today).
-- **Hold file** `/var/lib/meridian-alpaca-paper/hold`: written before an order run's engine starts
-  and removed only on a pass; a failed restart writes one. It refuses `order`, not `restart`. Read
-  the last record, settle the account by hand if needed, then `sudo rm` the hold.
-- **Watch**: `deploy/wsl/setup.sh unattended-check` (units, timers, last results, next runs, the
-  hold); `sudo -u paper /opt/meridian/current/.venv/bin/python -m meridian.alpaca_unattended
-  status` (last outcomes); `journalctl -u 'meridian-alpaca-paper@*'`. Records ("Run records",
-  plus `"unattended": true`) go to the state directory's `runs/` (full) and `evidence/` (scrubbed
-  passes), never to this repository.
-- **Stop**: `sudo systemctl disable --now meridian-alpaca-order.timer`, set the consent to false,
-  or leave a hold file. Not yet run: the install, the credentials as `paper`, an unattended run.
+- **Install or update** (idempotent; sudo): `deploy/wsl/setup.sh unattended` puts the checked-out commit in
+  `/opt/meridian/releases/<commit>` (`current` points to it), creates the settings and rows files in `/etc/meridian-alpaca-paper/`
+  from the templates if absent (root-owned, read by `paper`), `/var/lib/meridian-alpaca-paper` and the three units, then enables
+  both timers. Keys: [Alpaca credentials](#alpaca-credentials). Fill the settings' nulls with sudo; the step sets none.
+- **Consent and schedule**: `unattended_orders_enabled: true` is the owner's standing consent; null or false refuses `order`.
+  `restart` 09:45 and 16:15, `order` 10:00, Monday to Friday, New York time; no holiday calendar, no catch-up of a missed run.
+- **Refusals** (fixed text, nothing sent): not the unit with both credentials; settings writable by `paper`; for `order`, no
+  consent, a hold, or `order_window_open` false (09:30-15:55 NY today).
+- **Hold file** `/var/lib/meridian-alpaca-paper/hold`: written before an order run's engine starts and removed only on a pass; a
+  failed restart writes one. It refuses `order`, not `restart`. Read the last record, settle the account by hand if needed, then
+  `sudo rm` the hold.
+- **Watch**: `deploy/wsl/setup.sh unattended-check` (units, timers, last results, next runs, the hold); `sudo -u paper
+  /opt/meridian/current/.venv/bin/python -m meridian.alpaca_unattended status` (last outcomes); `journalctl -u
+  'meridian-alpaca-paper@*'`. Records ("Run records", plus `"unattended": true`) go to the state directory's `runs/` (full) and
+  `evidence/` (scrubbed passes), never to this repository.
+- **Stop**: `sudo systemctl disable --now meridian-alpaca-order.timer`, set the consent to false, or leave a hold file. Not yet
+  run: the install, the credentials as `paper`, an unattended run.
 
 ## Rules
 
@@ -261,12 +265,12 @@ replay, not a walk-forward validation.
 
 | Venue | Its limit | The budget here | Held by |
 |---|---|---|---|
-| Alpaca (M3) | 200 requests per minute per account, every request counted; 429 past it | 180 paced requests in any 60 s window, burst 18, CANCEL > REDUCE > MODIFY > QUERY > SUBMIT | `meridian/order_budget/` |
+| Alpaca (M3) | 200 requests per minute per account, every request counted; 429 past it | documented fixture: 180 paced requests in any 60 s window, burst 18; production uses owner rows below; CANCEL > REDUCE > MODIFY > QUERY > SUBMIT | `meridian/order_budget/` |
 | IBKR | 50 messages per second from all clients of one Gateway together; error 100 past it, and a likely disconnect | none yet: a run of the M1 or the sandbox lane sends a few messages | n/a |
 | Sandbox | none: the venue is simulated inside the engine | none needed | n/a |
 
 The order budget is the owner's account pacer, harvested from Sextant (see `UPSTREAM.md`).
-Every request takes a token; the bucket holds a burst of 18 and refills one token every
+Every request takes a token; with the fixture rows, the bucket holds 18 and refills one token every
 370,370,371 ns. A request past the budget waits in the pacer's queue, most urgent kind first;
 its caller can withdraw it, and then it is dropped without being sent. An entry also waits
 until the bucket holds more tokens than its protection reserve, so protective orders keep room;
@@ -278,7 +282,12 @@ answers 429 past 200 a minute, with quiet spells in which the bucket fills up ag
 at most 179 in any window, before and after each quiet spell, 161 to 163 a minute under steady
 overload, no 429, no withdrawn entry sent, and every cancel and reduce sent. The budget holds
 within one pacer: a new one starts with a full burst, so a lane that restarts within a minute
-of its last request can add up to 18 to that window unless it starts its pacer empty (M3).
+of its last request can add up to 18 to that window; Alpaca starts each new pacer empty, including after reconnect.
+
+For Alpaca, copy `deploy/alpaca-order-budget.template.json` to the owner-held `order_budget_rows_path`; fill all fields of its 16 rows
+with truthful sources and `REVIEWED` or unreviewed `PAPER_DEFAULT` scopes; optional null reserves may use `UNAVAILABLE`.
+`meridian/alpaca/pacing.py` maps `PAPER_DEFAULT` for M2's unchanged validation and returns separate scope counts; missing/invalid or `FIXTURE_ONLY` rows refuse without values.
+The venue limit must be 200 per 60 s; this repo supplies no production values. Fixture 429 backoff starts at 1 s and doubles to 30 s; production uses its rows.
 
 The engine's own limits are only a backstop: its risk engine throttles submits and modifies
 (100 a second each by default) and denies the excess, but a strategy's cancels and queries

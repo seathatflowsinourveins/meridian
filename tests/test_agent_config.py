@@ -11,6 +11,8 @@ owner's own sessions, which carries its own tests: AGENTS.md keeps such branches
 import json
 import re
 import subprocess
+import sys
+import tomllib
 
 import pytest
 from test_paper_only import REPO_ROOT, git_files
@@ -142,3 +144,119 @@ def test_claude_check_allows_only_the_two_plugin_names():
     assert claude_settings_filter("check_claude", settings).returncode == 0
     settings["disableClaudeAiConnectors"] = False
     assert claude_settings_filter("check_claude", settings).returncode == 1
+
+
+def setup_function_body(name):
+    return (DEPLOY / "setup.sh").read_text().split(f"{name}() {{\n", 1)[1].split("\n}", 1)[0]
+
+
+def run_config_writer(name, tmp_path, helpers=()):
+    # Extract only configuration writers; no installer, agent or service is started.
+    # Replace the home reference in the extracted code, leaving the real HOME untouched.
+    functions = "\n".join(
+        f"{f}() {{\n{setup_function_body(f)}\n}}" for f in (*helpers, name)
+    ).replace("${HOME}", "${fixture_root}")
+    subprocess.run(
+        [
+            "bash",
+            "-eu",
+            "-o",
+            "pipefail",
+            "-c",
+            "fixture_root=$1\nCODEX_MODEL=model\nDSH_MODEL=model\n"
+            'fail() { echo "$*" >&2; exit 1; }\n' + functions + f"\n{name}",
+            "test-config",
+            str(tmp_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def codex_config_check(path):
+    body = setup_function_body("check_codex")
+    program = body.split("\nimport sys\n", 1)[1].split("\nPY", 1)[0]
+    return subprocess.run(
+        [sys.executable, "-I", "-", str(path), "model"],
+        input="import sys\n" + program,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_codex_startup_menu_is_disabled_in_new_and_existing_configs(tmp_path):
+    run_config_writer("codex_config_file", tmp_path)
+    path = tmp_path / ".codex/config.toml"
+    original = path.read_text()
+    assert tomllib.loads(original)["check_for_update_on_startup"] is False
+    for setting in (
+        "",
+        "check_for_update_on_startup = true\n",
+        '"check_for_update_on_startup" = true\n',
+    ):
+        text = original.replace("check_for_update_on_startup = false\n", setting)
+        text = text.replace("apps = false", "apps = true")
+        text += (
+            '\n[hooks.state.test]\ncommand = "keep"\n'
+            '[projects."/example"]\ntrust_level = "trusted"\n'
+        )
+        path.write_text(text)
+        run_config_writer("codex_config", tmp_path, ("codex_config_file", "codex_setting_off"))
+        expected = tomllib.loads(text)
+        expected["check_for_update_on_startup"] = False
+        expected["features"]["apps"] = False
+        assert tomllib.loads(path.read_text()) == expected
+        assert codex_config_check(path).returncode == 0
+        once = path.read_bytes()
+        run_config_writer("codex_config", tmp_path, ("codex_config_file", "codex_setting_off"))
+        assert path.read_bytes() == once
+
+
+@pytest.mark.parametrize("setting", ["", "check_for_update_on_startup = true\n"])
+def test_codex_check_rejects_a_startup_menu(tmp_path, setting):
+    run_config_writer("codex_config_file", tmp_path)
+    path = tmp_path / ".codex/config.toml"
+    path.write_text(path.read_text().replace("check_for_update_on_startup = false\n", setting))
+    assert codex_config_check(path).returncode != 0
+
+
+def test_dsh_writes_home_wide_guide_completion_and_preserves_other_state(tmp_path):
+    run_config_writer("dsh_home_files", tmp_path)
+    path = tmp_path / ".dsh-tui/onboarding.json"
+    assert json.loads(path.read_text()) == {"completed": True, "version": 1}
+    for version in (0, 1, 2):
+        path.write_text(json.dumps({"completed": False, "version": version, "other": "keep"}))
+        run_config_writer("dsh_home_files", tmp_path)
+        assert json.loads(path.read_text()) == {
+            "completed": True,
+            "version": max(1, version),
+            "other": "keep",
+        }
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        {},
+        {"completed": False, "version": 1},
+        {"completed": True, "version": 0},
+        {"completed": True, "version": "1"},
+        {"completed": True, "version": 1},
+    ],
+)
+def test_dsh_check_requires_completed_guide_at_current_revision(state):
+    body = setup_function_body("check_dsh")
+    expression = re.search(
+        r"jq -e '([^']+)'\s*\\\n\s*\"\$\{HOME\}/.dsh-tui/onboarding.json\"", body
+    )
+    assert expression, "agents-check does not check the home-wide guide state"
+    result = subprocess.run(
+        ["jq", "-e", expression[1]],
+        input=json.dumps(state),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode == 0) == (state == {"completed": True, "version": 1})
