@@ -1023,15 +1023,15 @@ cmd_gateway() {
 
 # Upkeep. Three pieces close the loop the weekly landscape watch opens (deploy/landscape_watch.py
 # reports new releases in the GitHub issue labelled `landscape`):
-#   drift            read-only: installed against pinned; exit 0 when there is something to do
+#   drift            installed against pinned and upstream's newest; exit 0 when something is due
 #   upkeep           this machine to the pins, and Claude Code to its newest release
 #   orca-automation  a weekly Orca automation: when drift says so, a worker moves the pins and
 #                    opens one pull request, which lands through review like any other
 drift_report() {
-  # stdin: one "name installed pinned" line per runtime; "-" stands for "not installed".
-  # Returns 0 when any runtime is off its pin.
-  local name have pin state due=1
-  while read -r name have pin; do
+  # stdin: one "name installed pinned newest" line per runtime; "-" stands for "not installed"
+  # or "not read". Returns 0 when a runtime is off its pin or upstream has a newer release.
+  local name have pin newest state due=1
+  while read -r name have pin newest; do
     if [ "${have}" = "${pin}" ]; then
       state="at the pin"
     elif [ "${have}" != "-" ] && version_ge "${have}" "${pin}"; then
@@ -1039,6 +1039,10 @@ drift_report() {
       due=0
     else
       state="behind the pin"
+      due=0
+    fi
+    if [ "${newest}" != "-" ] && [ "${newest}" != "${pin}" ] && version_ge "${newest}" "${pin}"; then
+      state="${state}; upstream has ${newest}"
       due=0
     fi
     printf '%-12s installed %-12s pinned %-12s %s\n' "${name}" "${have}" "${pin}" "${state}"
@@ -1050,26 +1054,32 @@ claude_hud_version() {
   jq -r '.plugins["claude-hud@claude-hud"][0].version // empty' "${HOME}/.claude/plugins/installed_plugins.json" 2>/dev/null
 }
 
+# The newest release of each runtime, read where its installer reads: Anthropic's release
+# bucket, the npm registry, GitHub's latest release. A read that fails gives nothing.
+newest_claude() { curl -fsS --max-time 20 "${CLAUDE_RELEASES}/latest"; }
+newest_npm() { npm view "$1" version; }
+newest_github() { gh_cli api "repos/$1/releases/latest" --jq '.tag_name | ltrimstr("v")'; }
+
 cmd_drift() {
-  # Nothing is installed or changed. The one network read is the list of open issues.
-  # `drift --pull` is the scheduled precheck: it runs from the main checkout, so it first
-  # fast-forwards that checkout and starts again from the script as it then is.
+  # Nothing is installed or changed; it reads versions, upstream's newest releases and the list
+  # of open issues. `drift --pull` is the scheduled precheck: it runs from the main checkout, so
+  # it first fast-forwards that checkout and starts again from the script as it then is.
   local due=1 issue v
   if [ "${1:-}" = "--pull" ]; then
     git -C "$(dirname "$(readlink -f "$0")")" pull -q --ff-only \
       || echo "note: this checkout could not be fast-forwarded; its pins may be old"
     exec "$0" drift
   fi
-  v() { local have; have="$("$1" 2>/dev/null || true)"; printf '%s' "${have:--}"; }
+  v() { local out; out="$("$@" 2>/dev/null </dev/null | head -n 1 || true)"; printf '%s' "${out:--}"; }
   drift_report <<EOF && due=0
-claude-code $(v claude_version) ${CLAUDE_VERSION}
-codex $(v codex_version) ${CODEX_VERSION}
-agy $(v agy_version) ${AGY_VERSION}
-dsh $(v dsh_version) ${DSH_VERSION}
-dsh-tui $(v dsh_tui_version) ${DSH_TUI_VERSION}
-orca $(v orca_version) ${ORCA_VERSION}
-gh $(v gh_version) ${GH_VERSION}
-claude-hud $(v claude_hud_version) ${CLAUDE_HUD_VERSION}
+claude-code $(v claude_version) ${CLAUDE_VERSION} $(v newest_claude)
+codex $(v codex_version) ${CODEX_VERSION} $(v newest_npm @openai/codex)
+agy $(v agy_version) ${AGY_VERSION} $(v newest_github google-antigravity/antigravity-cli)
+dsh $(v dsh_version) ${DSH_VERSION} $(v newest_npm @deepseek-ai/dsh)
+dsh-tui $(v dsh_tui_version) ${DSH_TUI_VERSION} $(v newest_npm @deepseek-harness-tui/dsh-tui)
+orca $(v orca_version) ${ORCA_VERSION} $(v newest_github stablyai/orca)
+gh $(v gh_version) ${GH_VERSION} $(v newest_github cli/cli)
+claude-hud $(v claude_hud_version) ${CLAUDE_HUD_VERSION} $(v newest_github jarrodwatts/claude-hud)
 EOF
   issue="$(cd "$(dirname "$(readlink -f "$0")")" && gh_cli issue list --label landscape --state open --json number --jq '.[0].number' 2>/dev/null || true)"
   if [ -n "${issue}" ]; then
@@ -1086,6 +1096,7 @@ cmd_upkeep() {
   # and otherwise installs the pinned release with its checksum check. Orca is left out: a new
   # server restarts every session, so that step stays the owner's.
   "${HOME}/.local/bin/claude" update </dev/null || echo "note: claude update did not complete"
+  cmd_gh
   cmd_claude
   cmd_codex
   cmd_agy
@@ -1102,7 +1113,7 @@ UPKEEP_PROMPT='Weekly upkeep of the agent runtimes of this repository. Read AGEN
 
 Do this, in order:
 1. Run `deploy/wsl/setup.sh upkeep`, then `deploy/wsl/setup.sh drift`. Read the open GitHub issue labelled `landscape`, if there is one.
-2. For each runtime that drift shows ahead of its pin, or that the issue lists with a newer release (Claude Code, Codex, Antigravity, DeepSeek Harness, dsh-tui, Orca, gh, claude-hud): read its release notes at the source, then move its pin in deploy/wsl/setup.sh with the checksum, integrity value or signed manifest its installer already checks, and bring its UPSTREAM.md row up to date in place. claude-hud moves only to a tag whose commit GitHub marks verified.
+2. For each runtime that drift shows ahead of its pin or with a newer release upstream (Claude Code, Codex, Antigravity, DeepSeek Harness, dsh-tui, Orca, gh, claude-hud): read its release notes at the source, then move its pin in deploy/wsl/setup.sh with the checksum, integrity value or signed manifest its installer already checks, and bring its UPSTREAM.md row up to date in place. claude-hud moves only to a tag whose commit GitHub marks verified.
 3. Claude Code: read its changelog between the old pin and the new one. For each setting or feature that is new, off by default and useful to this setup, either add it to claude_settings and check_claude with a test, or name it in the pull request as considered and left out, with the reason.
 4. If the installed Orca is newer than the version named in .agents/skills/NOTICE.md, refresh the two copied skills the way that file describes.
 5. If a model newer than the lead or worker model ids in deploy/wsl/setup.sh is listed on its vendor'"'"'s models page, say so in the pull request. Do not change a model id.

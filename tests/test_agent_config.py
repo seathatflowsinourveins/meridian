@@ -359,7 +359,7 @@ def drift_report(lines):
 
 
 def test_drift_is_quiet_when_every_runtime_is_at_its_pin():
-    result = drift_report("claude-code 2.1.325 2.1.325\norca 1.4.257 1.4.257\n")
+    result = drift_report("claude-code 2.1.325 2.1.325 2.1.325\norca 1.4.257 1.4.257 -\n")
     assert result.returncode == 1, result.stdout + result.stderr
     assert result.stdout.count("at the pin") == 2
 
@@ -367,16 +367,19 @@ def test_drift_is_quiet_when_every_runtime_is_at_its_pin():
 @pytest.mark.parametrize(
     ("line", "state"),
     [
-        ("claude-code 2.1.330 2.1.325", "ahead of the pin"),
-        ("orca 1.4.255 1.4.257", "behind the pin"),
-        ("claude-hud - 0.15.0", "behind the pin"),
+        ("claude-code 2.1.330 2.1.325 2.1.330", "ahead of the pin; upstream has 2.1.330"),
+        ("orca 1.4.255 1.4.257 -", "behind the pin"),
+        ("claude-hud - 0.15.0 0.15.0", "behind the pin"),
+        ("orca 1.4.257 1.4.257 1.4.258", "at the pin; upstream has 1.4.258"),
     ],
 )
 def test_drift_reports_a_runtime_that_is_off_its_pin(line, state):
-    result = drift_report(f"gh 2.104.0 2.104.0\n{line}\ncodex 0.167.2 0.167.2\n")
+    result = drift_report(f"gh 2.104.0 2.104.0 2.104.0\n{line}\ncodex 0.167.2 0.167.2 0.167.0\n")
     assert result.returncode == 0, result.stdout + result.stderr
-    assert state in result.stdout.splitlines()[1]
-    assert result.stdout.count("at the pin") == 2
+    assert result.stdout.splitlines()[1].endswith(state)
+    # An older or unread upstream version, and one equal to the pin, are not drift.
+    assert result.stdout.splitlines()[0].endswith("at the pin")
+    assert result.stdout.splitlines()[2].endswith("at the pin")
 
 
 def test_the_upkeep_prompt_names_what_a_run_must_never_do():
@@ -395,7 +398,9 @@ def test_the_upkeep_prompt_names_what_a_run_must_never_do():
         assert phrase in never, phrase
     # upkeep leaves Orca's server to the owner: it restarts every session.
     upkeep = setup_function_body("cmd_upkeep")
-    assert "cmd_orca\n" not in upkeep and "cmd_claude_hud" in upkeep
+    assert "cmd_orca\n" not in upkeep
+    for installer in ("cmd_gh", "cmd_claude", "cmd_codex", "cmd_agy", "cmd_dsh", "cmd_claude_hud"):
+        assert f"  {installer}\n" in upkeep, installer
 
 
 def codex_config_check(path):
