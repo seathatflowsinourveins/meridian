@@ -413,14 +413,15 @@ def hook_label(event):
     return re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower()
 
 
-def codex_home(tmp_path, ponytail_trusted=0):
-    # What setup leaves in ~/.codex: Orca's 9 hooks, then oh-my-codex's 8 in the group after them,
-    # each with its trust entry, the ponytail plugin, and oh-my-codex's user file.
+def codex_home(tmp_path, ponytail_trusted=0, orca=True):
+    # What setup leaves in ~/.codex: Orca's 9 hooks (on a fresh distro, not yet: Orca is set up
+    # after Codex), then oh-my-codex's 8 in the group after them, each with its trust entry, the
+    # ponytail plugin, and oh-my-codex's user file.
     write_codex_config(tmp_path)
     run_config_writer("omx_config", tmp_path)
     home = tmp_path / ".codex"
     hooks: dict[str, list] = {}
-    for event in ORCA_EVENTS:
+    for event in ORCA_EVENTS if orca else ():
         hooks.setdefault(event, []).append({"hooks": [{"command": ": orca-agent-hook-form=1"}]})
     for event in OMX_EVENTS:
         command = '"node" "/x/oh-my-codex/dist/scripts/codex-native-hook.js"'
@@ -502,13 +503,13 @@ def test_the_upkeep_prompt_names_what_a_run_must_never_do():
         assert f"  {installer}\n" in upkeep, installer
 
 
-def codex_config_check(path):
+def codex_config_check(path, mode="full"):
     body = setup_function_body("check_codex")
     program = "import" + body.split("<<'PY'", 1)[1].split("\nimport", 1)[1].split("\nPY", 1)[0]
     home = path.parent
     return subprocess.run(
         [sys.executable, "-I", "-", str(path), "model", str(home / "hooks.json")]
-        + [str(home / ".omx-config.json"), DOCS_MCP, PONYTAIL, SERENA_ARGS],
+        + [str(home / ".omx-config.json"), DOCS_MCP, PONYTAIL, SERENA_ARGS, mode],
         input=program,
         capture_output=True,
         text=True,
@@ -813,3 +814,113 @@ def test_the_gitleaks_check_fails_when_missing_or_another_version(tmp_path):
     assert missing.returncode == 1 and "is not 8.30.1" in missing.stderr
     installed, _ = run_gitleaks_step(tmp_path, "cmd_gitleaks", version="8.29.0")
     assert installed.returncode == 1 and "is not 8.30.1" in installed.stderr
+
+
+def test_the_install_check_lets_a_fresh_distro_finish_before_orca_prepares_codex(tmp_path):
+    # `setup.sh agents` runs cmd_codex before cmd_orca: Orca's hooks are not there yet.
+    path = codex_home(tmp_path, orca=False)
+    result = codex_config_check(path, "install")
+    assert result.returncode == 0, result.stderr
+    assert "Orca's 9 Codex hooks are not there yet" in result.stdout
+    assert "wait for the owner's /hooks" in result.stdout
+    # agents-check still requires them.
+    assert "hooks.json entries" in codex_config_check(path).stderr
+    # Installed and trusted later, both checks pass.
+    path = codex_home(tmp_path / "later")
+    assert codex_config_check(path, "install").returncode == 0
+    assert codex_config_check(path).returncode == 0
+
+
+@pytest.mark.parametrize(
+    "break_", ["untrusted omx hook", "unknown hook", "no hooks.json", "orca partly"]
+)
+def test_the_install_check_still_rejects_what_setup_did_not_write(tmp_path, break_):
+    path = codex_home(tmp_path, orca=False)
+    hooks_file = path.parent / "hooks.json"
+    hooks = json.loads(hooks_file.read_text())
+    if break_ == "untrusted omx hook":
+        path.write_text(path.read_text().replace('trusted_hash = "sha256:x"\n', "", 1))
+    elif break_ == "unknown hook":
+        hooks["hooks"]["Stop"].append({"hooks": [{"command": "curl https://example.com"}]})
+    elif break_ == "orca partly":
+        hooks["hooks"]["Stop"].insert(0, {"hooks": [{"command": ": orca-agent-hook-form=1"}]})
+    if break_ == "no hooks.json":
+        hooks_file.unlink()
+    else:
+        hooks_file.write_text(json.dumps(hooks))
+    result = codex_config_check(path, "install")
+    assert result.returncode != 0
+    assert "hooks" in result.stderr
+
+
+def test_cmd_codex_runs_the_install_check_and_agents_check_the_full_one():
+    assert setup_function_body("cmd_codex").rstrip().endswith("check_codex install")
+    script = (DEPLOY / "setup.sh").read_text()
+    agents_check = script.split("  agents-check)\n", 1)[1].split(";;", 1)[0]
+    assert re.search(r"^\s*check_codex$", agents_check, re.M)
+
+
+def set_codex(path, name, table, value):
+    body = setup_function_body("codex_setting")
+    program = body.split("<<'PY'", 1)[1].split("\n", 1)[1].split("\nPY", 1)[0]
+    return subprocess.run(
+        [sys.executable, "-I", "-", str(path), name, table, value],
+        input=program,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize(
+    "before",
+    [
+        # A multi-line array, one with a nested array whose lines open with "[", a comment inside.
+        '[mcp_servers.serena]\nargs = [\n  "start-mcp-server",\n  "--context=agent",\n]\n'
+        'command = "serena"\n',
+        '[mcp_servers.serena]\nargs = [\n  ["x"],\n  # old\n  "y",\n]\ncommand = "serena"\n',
+        '[mcp_servers.serena]\nargs = """\nmulti\nline\n"""\ncommand = "serena"\n',
+    ],
+)
+def test_the_setting_writer_replaces_a_multi_line_value_whole(tmp_path, before):
+    path = tmp_path / "config.toml"
+    after = '\n[hooks.state."/x/hooks.json:stop:0:0"]\ntrusted_hash = "sha256:x"\n'
+    path.write_text('model = "m"\n\n' + before + after)
+    result = set_codex(path, "args", "mcp_servers.serena", SERENA_ARGS)
+    assert result.returncode == 0, result.stderr
+    cfg = tomllib.loads(path.read_text())
+    assert cfg["mcp_servers"]["serena"] == {"args": SERENA["args"], "command": "serena"}
+    assert cfg["hooks"]["state"] == {"/x/hooks.json:stop:0:0": {"trusted_hash": "sha256:x"}}
+    once = path.read_bytes()
+    assert set_codex(path, "args", "mcp_servers.serena", SERENA_ARGS).returncode == 0
+    assert path.read_bytes() == once
+
+
+@pytest.mark.parametrize(
+    "env",
+    [
+        'env = { SERENA_USAGE_REPORTING = "true", OTHER = "keep" }\n',
+        'env = { OTHER = "keep" }\n',
+        'env.SERENA_USAGE_REPORTING = "true"\nenv.OTHER = "keep"\n',
+        '\n[mcp_servers.serena.env]\nSERENA_USAGE_REPORTING = "true"\nOTHER = "keep"\n',
+    ],
+)
+def test_the_setting_writer_sets_a_key_of_an_inline_or_dotted_env_table(tmp_path, env):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[mcp_servers.serena]\ncommand = "serena"\n' + env + "\n[analytics]\nenabled = false\n"
+    )
+    result = set_codex(path, "SERENA_USAGE_REPORTING", "mcp_servers.serena.env", '"false"')
+    assert result.returncode == 0, result.stderr
+    cfg = tomllib.loads(path.read_text())
+    assert cfg["mcp_servers"]["serena"]["env"] == {
+        "SERENA_USAGE_REPORTING": "false",
+        "OTHER": "keep",
+    }
+    assert cfg["analytics"] == {"enabled": False}
+    once = path.read_bytes()
+    assert (
+        set_codex(path, "SERENA_USAGE_REPORTING", "mcp_servers.serena.env", '"false"').returncode
+        == 0
+    )
+    assert path.read_bytes() == once

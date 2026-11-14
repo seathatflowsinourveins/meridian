@@ -453,15 +453,18 @@ cmd_codex() {
   cmd_omx
   codex_ponytail
   codex_serena
-  check_codex
+  # Orca adds its hooks when it prepares Codex, after this step on a fresh distro (`agents`).
+  check_codex install
 }
 
 # codex_setting FILE NAME TABLE VALUE: `NAME = VALUE` (VALUE in TOML) in TABLE, a dotted name
-# (empty means the root; a missing table is added at the end). Other tables, Orca's
+# (empty means the root; a missing table is added at the end, or into its parent when that holds
+# it inline). An old value is replaced whole, a multi-line one included. Other tables, Orca's
 # [hooks.state.*] and [projects.*] among them, are kept, the result is parsed before it replaces
 # the file, and a value already set changes no byte.
 codex_setting() {
   python3 -I - "$@" <<'PY' || fail "cannot set $2 = $4 in table '$3' of $1"
+import json
 import os
 import re
 import sys
@@ -483,28 +486,85 @@ def current(cfg):
     return (type(got), got)
 
 
+def scan(lines):
+    # Table headers by line, and statements as (table, first line, line after the value, key,
+    # value): a value may span lines (a multi-line array or string), and a line inside one is
+    # never read as a header.
+    headers, found, under, i = {}, [], "", 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if not stripped or stripped.startswith("#"):
+            i += 1
+            continue
+        if stripped.startswith("["):
+            m = re.fullmatch(r"\[\s*([^\[\]\"']+?)\s*\]\s*(#.*)?", stripped)
+            under = re.sub(r"\s*\.\s*", ".", m[1]) if m else None
+            headers[i] = under
+            i += 1
+            continue
+        for j in range(i + 1, len(lines) + 1):
+            try:
+                parsed = tomllib.loads("".join(lines[i:j]))
+            except tomllib.TOMLDecodeError:
+                continue
+            break
+        else:
+            sys.exit(f"{path}: line {i + 1} does not parse")
+        ((key, val),) = parsed.items()
+        found.append((under, i, j, key, val))
+        i = j
+    return headers, found
+
+
+def dump(v):
+    # Inline TOML for the kinds of value a Codex setting holds.
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, str)):
+        return json.dumps(v)
+    if isinstance(v, list):
+        return "[" + ", ".join(dump(x) for x in v) + "]"
+    if isinstance(v, dict):
+        pairs = [
+            f"{k if re.fullmatch(r'[A-Za-z0-9_-]+', k) else json.dumps(k)} = {dump(x)}"
+            for k, x in v.items()
+        ]
+        return "{ " + ", ".join(pairs) + " }" if pairs else "{}"
+    sys.exit(f"{path}: cannot write {v!r} inline")
+
+
 with open(path, encoding="utf-8") as f:
     text = f.read()
 if current(tomllib.loads(text)) == (type(want), want):
     sys.exit(0)
 lines = text.splitlines(keepends=True)
-header = next(
-    (i for i, line in enumerate(lines) if re.fullmatch(rf"\s*\[\s*{re.escape(table)}\s*\]\s*(#.*)?\n?", line)),
-    None,
-) if table else -1
-if header is None:
+headers, found = scan(lines)
+line = f"{name} = {value}\n"
+header = -1 if not table else next((i for i, t in headers.items() if t == table), None)
+# The table written in its parent, inline (`env = { ... }`) or as dotted keys (`env.X = ...`).
+inline = [
+    s for s in found if parts and s[0] == ".".join(parts[:-1]) and s[3] == parts[-1] and isinstance(s[4], dict)
+]
+if header is None and inline:
+    merged = {k: v for s in inline for k, v in s[4].items()} | {name: want}
+    for _, start, stop, _, _ in reversed(inline[1:]):
+        del lines[start:stop]
+    lines[inline[0][1] : inline[0][2]] = [f"{parts[-1]} = {dump(merged)}\n"]
+elif header is None:
     if lines and not lines[-1].endswith("\n"):
         lines[-1] += "\n"
-    lines += ["\n", f"[{table}]\n"]
-    header = len(lines) - 1
-end = next((i for i in range(header + 1, len(lines)) if re.match(r"\s*\[", lines[i])), len(lines))
-key = re.compile(rf"\s*(?:{re.escape(name)}|\"{re.escape(name)}\"|'{re.escape(name)}')\s*=")
-hits = [i for i in range(header + 1, end) if key.match(lines[i])]
-for i in reversed(hits):
-    del lines[i]
-lines.insert(hits[0] if hits else header + 1, f"{name} = {value}\n")
+    lines += ["\n", f"[{table}]\n", line]
+else:
+    hits = [(start, stop) for under, start, stop, key, _ in found if under == table and key == name]
+    for start, stop in reversed(hits):
+        del lines[start:stop]
+    lines.insert(hits[0][0] if hits else header + 1, line)
 new = "".join(lines)
-if current(tomllib.loads(new)) != (type(want), want):
+try:
+    done = current(tomllib.loads(new)) == (type(want), want)
+except tomllib.TOMLDecodeError as error:
+    sys.exit(f"{path}: {table}.{name} is written in a form this script does not edit ({error})")
+if not done:
     sys.exit(f"{path}: {name} is set outside table '{table}'")
 with open(f"{path}.new", "w", encoding="utf-8") as f:
     f.write(new)
@@ -709,18 +769,20 @@ sys.exit(f"serena_config.yml: {', '.join(problems)}" if problems else 0)
 PY
 }
 
+# check_codex [install]: the state setup writes. With `install`, Orca's hooks may be missing
+# still (agents-check, without it, requires them).
 check_codex() {
   version_ge "$(codex_version)" "${CODEX_VERSION}" \
     || fail "Codex CLI is older than ${CODEX_VERSION} or missing (run: deploy/wsl/setup.sh codex)"
   python3 -I - "${HOME}/.codex/config.toml" "${CODEX_MODEL}" "${HOME}/.codex/hooks.json" \
-    "${HOME}/.codex/.omx-config.json" "${CODEX_DOCS_MCP}" "ponytail@${PONYTAIL_MARKET}" "${SERENA_MCP_ARGS}" <<'PY' \
+    "${HOME}/.codex/.omx-config.json" "${CODEX_DOCS_MCP}" "ponytail@${PONYTAIL_MARKET}" "${SERENA_MCP_ARGS}" "${1:-full}" <<'PY' \
     || fail "~/.codex is not what deploy/wsl/setup.sh codex writes"
 import json
 import re
 import sys
 import tomllib
 
-config, model, hooks_file, omx_file, docs_url, plugin, serena_args = sys.argv[1:]
+config, model, hooks_file, omx_file, docs_url, plugin, serena_args, mode = sys.argv[1:]
 serena = dict(
     command="serena",
     args=tomllib.loads(f"v = {serena_args}")["v"],
@@ -742,16 +804,20 @@ def trusted(key):
 
 # Every hook entry in hooks.json is Orca's or oh-my-codex's, and each has its trust entry.
 count, untrusted = {"orca": 0, "omx": 0, "unknown": 0}, []
-with open(hooks_file, encoding="utf-8") as f:
-    for event, groups in json.load(f).get("hooks", {}).items():
-        label = re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower()
-        for g, group in enumerate(groups):
-            for h, handler in enumerate(group.get("hooks", [])):
-                command = handler.get("command", "")
-                owner = "orca" if "orca-agent-hook-form" in command else "omx" if "/oh-my-codex/" in command else "unknown"
-                count[owner] += 1
-                if not trusted(f"{hooks_file}:{label}:{g}:{h}"):
-                    untrusted.append(f"{event} {g}:{h}")
+try:
+    with open(hooks_file, encoding="utf-8") as f:
+        hooks = json.load(f).get("hooks", {})
+except (OSError, ValueError):
+    hooks = {}
+for event, groups in hooks.items():
+    label = re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower()
+    for g, group in enumerate(groups):
+        for h, handler in enumerate(group.get("hooks", [])):
+            command = handler.get("command", "")
+            owner = "orca" if "orca-agent-hook-form" in command else "omx" if "/oh-my-codex/" in command else "unknown"
+            count[owner] += 1
+            if not trusted(f"{hooks_file}:{label}:{g}:{h}"):
+                untrusted.append(f"{event} {g}:{h}")
 try:
     with open(omx_file, encoding="utf-8") as f:
         omx = json.load(f)
@@ -779,7 +845,10 @@ problems = [
         ("[analytics] enabled", cfg.get("analytics", {}).get("enabled") is not False),
         ("[feedback] enabled", cfg.get("feedback", {}).get("enabled") is not False),
         ("[otel] metrics_exporter", cfg.get("otel", {}).get("metrics_exporter") != "none"),
-        (f"hooks.json entries {count}", count != {"orca": 9, "omx": 8, "unknown": 0}),
+        (
+            f"hooks.json entries {count}",
+            count not in ({"orca": 9, "omx": 8, "unknown": 0}, *([{"orca": 0, "omx": 8, "unknown": 0}] if mode == "install" else [])),
+        ),
         (f"hooks without trust: {untrusted}", bool(untrusted)),
         (".omx-config.json teamMode", omx.get("teamMode") != "disabled"),
         (
@@ -791,6 +860,8 @@ problems = [
 ]
 if problems:
     sys.exit(f"Codex config: {', '.join(problems)}")
+if count["orca"] == 0:
+    print("note: Orca's 9 Codex hooks are not there yet; Orca adds them, and agents-check requires them")
 waiting = 3 - sum(1 for key in state if key.startswith(f"{plugin}:") and trusted(key))
 if waiting > 0:
     print(f"note: {waiting} of ponytail's 3 hooks wait for the owner's /hooks in codex; its skills work meanwhile")
