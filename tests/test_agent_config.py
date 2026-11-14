@@ -13,6 +13,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 import tomllib
 
 import pytest
@@ -101,6 +102,9 @@ def test_the_setup_script_is_executable_in_git():
     assert entry.startswith("100755 "), f"deploy/wsl/setup.sh is not executable in git: {entry!r}"
 
 
+WRAPPER = "/home/owner/.local/bin/meridian-claude-hud"
+
+
 def claude_settings_filter(function, settings):
     # Exercise the actual jq expressions on fakes without sourcing or running setup.sh.
     script = (DEPLOY / "setup.sh").read_text()
@@ -108,7 +112,8 @@ def claude_settings_filter(function, settings):
     expression = re.search(r"jq [^\n]* '\n(.*?)\n  '", body, re.S)
     assert expression, f"no jq settings expression in {function}"
     return subprocess.run(
-        ["jq", "-e", "--arg", "model", "model", "--arg", "floor", "floor", expression[1]],
+        ["jq", "-e", "--arg", "model", "model", "--arg", "floor", "floor"]
+        + ["--arg", "wrapper", WRAPPER, expression[1]],
         input=json.dumps(settings),
         capture_output=True,
         text=True,
@@ -116,7 +121,7 @@ def claude_settings_filter(function, settings):
     )
 
 
-def test_claude_settings_enable_the_two_plugins_and_preserve_unrelated_settings():
+def test_claude_settings_enable_the_three_plugins_and_preserve_unrelated_settings():
     original = {"hooks": {}, "enabledPlugins": {"unreviewed@example": True}}
     result = claude_settings_filter("claude_settings", original)
     assert result.returncode == 0, result.stderr
@@ -124,6 +129,7 @@ def test_claude_settings_enable_the_two_plugins_and_preserve_unrelated_settings(
     assert settings["enabledPlugins"] == {
         "codex@openai-codex": True,
         "cc-plugin-you-should-know@builtin": True,
+        "claude-hud@claude-hud": True,
         "unreviewed@example": True,
     }
     assert settings["hooks"] == original["hooks"]
@@ -158,11 +164,12 @@ def test_claude_settings_override_an_old_auto_compact_switch():
     assert claude_settings_filter("check_claude", settings).returncode == 1
 
 
-def test_claude_check_allows_only_the_two_plugin_names():
+def test_claude_check_allows_only_the_three_plugin_names():
     settings = json.loads(claude_settings_filter("claude_settings", {}).stdout)
     settings["enabledPlugins"] = {
         "codex@openai-codex": True,
         "cc-plugin-you-should-know@builtin": True,
+        "claude-hud@claude-hud": True,
     }
     assert claude_settings_filter("check_claude", settings).returncode == 0
     settings["enabledPlugins"]["unreviewed@example"] = True
@@ -173,6 +180,139 @@ def test_claude_check_allows_only_the_two_plugin_names():
     assert claude_settings_filter("check_claude", settings).returncode == 0
     settings["disableClaudeAiConnectors"] = False
     assert claude_settings_filter("check_claude", settings).returncode == 1
+
+
+ORCA_STATUS_LINE = '[ -n "${HOME-}" ] && /bin/sh "${HOME-}/.orca/agent-hooks/claude-statusline.sh"'
+HUD_STATUS_LINE = "'/usr/local/bin/node' '/home/owner/.claude/plugins/claude-hud/statusline.mjs'"
+
+
+@pytest.mark.parametrize("before", [None, ORCA_STATUS_LINE, HUD_STATUS_LINE, WRAPPER])
+def test_the_status_line_becomes_the_wrapper_and_keeps_the_rest(before):
+    original: dict = {"hooks": {"Stop": []}, "model": "m"}
+    if before is not None:
+        original["statusLine"] = {"type": "command", "command": before, "padding": 1}
+    result = claude_settings_filter("claude_statusline", original)
+    assert result.returncode == 0, result.stderr
+    settings = json.loads(result.stdout)
+    assert settings["statusLine"] == {"type": "command", "command": WRAPPER}
+    assert {k: v for k, v in settings.items() if k != "statusLine"} == {
+        k: v for k, v in original.items() if k != "statusLine"
+    }
+    again = claude_settings_filter("claude_statusline", settings)
+    assert json.loads(again.stdout) == settings
+
+
+def test_another_status_line_command_is_not_overwritten():
+    original = {"statusLine": {"type": "command", "command": "~/bin/my-status-line"}}
+    result = claude_settings_filter("claude_statusline", original)
+    assert result.returncode != 0
+    assert "statusLine runs another command" in result.stderr
+
+
+def test_the_wrapper_name_suits_both_orca_and_claude_hud():
+    body = (DEPLOY / "setup.sh").read_text()
+    name = re.search(r'^CLAUDE_HUD_WRAPPER="\$\{HOME\}/(\S+)"$', body, re.M)
+    assert name, "no CLAUDE_HUD_WRAPPER in setup.sh"
+    # claude-hud's doctor looks for its name; Orca rewrites a command that names its reporter.
+    assert "claude-hud" in name[1]
+    assert "agent-hooks/claude-statusline" not in name[1]
+    assert WRAPPER.endswith(name[1])
+
+
+def run_wrapper(home, payload, launcher=None, reporter=None):
+    # The wrapper under a fake home: no real Orca, claude-hud or settings file is touched.
+    if launcher is not None:
+        path = home / ".claude" / "plugins" / "claude-hud" / "statusline.mjs"
+        path.parent.mkdir(parents=True)
+        path.write_text(launcher)
+    if reporter is not None:
+        path = home / ".orca" / "agent-hooks" / "claude-statusline.sh"
+        path.parent.mkdir(parents=True)
+        path.write_text(reporter)
+        path.chmod(0o755)
+    environment = {"HOME": str(home), "PATH": "/usr/local/bin:/usr/bin:/bin"}
+    return subprocess.run(
+        [str(DEPLOY / "meridian-claude-hud.sh")],
+        input=payload,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=environment,
+        timeout=20,
+    )
+
+
+PAYLOAD = json.dumps(
+    {
+        "model": {"display_name": "Model"},
+        "effort": {"level": "high"},
+        "context_window": {"used_percentage": 12.7},
+        "rate_limits": {"five_hour": {"used_percentage": 3}},
+    }
+)
+PLAIN_LINE = "[Model] high | ctx 12% | 5h 3% | 7d -%\n"
+
+
+def test_the_wrapper_prints_a_plain_line_without_claude_hud(tmp_path):
+    result = run_wrapper(tmp_path, PAYLOAD)
+    assert (result.returncode, result.stdout, result.stderr) == (0, PLAIN_LINE, "")
+
+
+def test_the_wrapper_prints_what_claude_hud_prints(tmp_path):
+    result = run_wrapper(tmp_path, PAYLOAD, launcher='console.log("one\\ntwo")\n')
+    assert (result.returncode, result.stdout, result.stderr) == (0, "one\ntwo\n", "")
+
+
+@pytest.mark.parametrize("launcher", ["process.exit(3)\n", 'console.error("broken")\n'])
+def test_the_wrapper_falls_back_when_claude_hud_fails_or_is_silent(tmp_path, launcher):
+    result = run_wrapper(tmp_path, PAYLOAD, launcher=launcher)
+    assert (result.returncode, result.stdout, result.stderr) == (0, PLAIN_LINE, "")
+
+
+def test_the_wrapper_feeds_orcas_reporter_without_waiting_for_it(tmp_path):
+    received = tmp_path / "received"
+    reporter = f'#!/bin/sh\ncat > "{received}"\nsleep 5\necho noise\necho noise >&2\n'
+    started = time.monotonic()
+    result = run_wrapper(tmp_path, PAYLOAD, reporter=reporter)
+    assert time.monotonic() - started < 4, "the wrapper waited for Orca's reporter"
+    assert (result.returncode, result.stdout, result.stderr) == (0, PLAIN_LINE, "")
+    for _ in range(40):
+        if received.exists() and received.read_text() == PAYLOAD:
+            break
+        time.sleep(0.05)
+    assert received.read_text() == PAYLOAD
+
+
+def test_the_wrapper_survives_an_empty_payload(tmp_path):
+    result = run_wrapper(tmp_path, "", reporter="#!/bin/sh\nexit 1\n")
+    assert (result.returncode, result.stdout, result.stderr) == (0, "\n", "")
+
+
+def test_the_wrapper_is_executable_in_git():
+    entry = subprocess.run(
+        ["git", "ls-files", "-s", "deploy/wsl/meridian-claude-hud.sh"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert entry.startswith("100755 "), f"the wrapper is not executable in git: {entry!r}"
+
+
+def test_claude_hud_config_is_written_once_with_the_account_labels_off(tmp_path):
+    file = tmp_path / ".claude" / "plugins" / "claude-hud" / "config.json"
+    run_config_writer("claude_hud_config", tmp_path)
+    display = json.loads(file.read_text())["display"]
+    assert display == {
+        "showTools": True,
+        "showAgents": True,
+        "showTodos": True,
+        "showAuth": False,
+        "showAuthUser": False,
+    }
+    file.write_text('{"display": {"showTools": false}}')
+    run_config_writer("claude_hud_config", tmp_path)
+    assert json.loads(file.read_text()) == {"display": {"showTools": False}}
 
 
 def setup_function_body(name):
@@ -201,6 +341,67 @@ def run_config_writer(name, tmp_path, helpers=()):
         capture_output=True,
         text=True,
     )
+
+
+def drift_report(lines):
+    # The table and exit code of `setup.sh drift`, on made-up versions: nothing is installed
+    # or read. sort -V stands in for the script's own version comparison.
+    program = (
+        'version_ge() { [ "$(printf \'%s\\n\' "$1" "$2" | sort -V | head -n 1)" = "$2" ]; }\n'
+        f"drift_report() {{\n{setup_function_body('drift_report')}\n}}\ndrift_report"
+    )
+    return subprocess.run(
+        ["bash", "-eu", "-o", "pipefail", "-c", program],
+        input=lines,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_drift_is_quiet_when_every_runtime_is_at_its_pin():
+    result = drift_report("claude-code 2.1.325 2.1.325 2.1.325\norca 1.4.257 1.4.257 -\n")
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout.count("at the pin") == 2
+
+
+@pytest.mark.parametrize(
+    ("line", "state"),
+    [
+        ("claude-code 2.1.330 2.1.325 2.1.330", "ahead of the pin; upstream has 2.1.330"),
+        ("orca 1.4.255 1.4.257 -", "behind the pin"),
+        ("claude-hud - 0.15.0 0.15.0", "behind the pin"),
+        ("orca 1.4.257 1.4.257 1.4.258", "at the pin; upstream has 1.4.258"),
+    ],
+)
+def test_drift_reports_a_runtime_that_is_off_its_pin(line, state):
+    result = drift_report(f"gh 2.104.0 2.104.0 2.104.0\n{line}\ncodex 0.167.2 0.167.2 0.167.0\n")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines()[1].endswith(state)
+    # An older or unread upstream version, and one equal to the pin, are not drift.
+    assert result.stdout.splitlines()[0].endswith("at the pin")
+    assert result.stdout.splitlines()[2].endswith("at the pin")
+
+
+def test_the_upkeep_prompt_names_what_a_run_must_never_do():
+    script = (DEPLOY / "setup.sh").read_text()
+    prompt = script.split("UPKEEP_PROMPT='", 1)[1].split("\n\nupkeep_automation() {", 1)[0]
+    never = prompt.split("Never:", 1)[1]
+    for phrase in (
+        "merge a pull request",
+        "deploy/wsl/setup.sh orca",
+        "orca-ide serve",
+        "start a lane",
+        "key or credential",
+        "risk/",
+        "plugin, skill or MCP server",
+    ):
+        assert phrase in never, phrase
+    # upkeep leaves Orca's server to the owner: it restarts every session.
+    upkeep = setup_function_body("cmd_upkeep")
+    assert "cmd_orca\n" not in upkeep
+    for installer in ("cmd_gh", "cmd_claude", "cmd_codex", "cmd_agy", "cmd_dsh", "cmd_claude_hud"):
+        assert f"  {installer}\n" in upkeep, installer
 
 
 def codex_config_check(path):
