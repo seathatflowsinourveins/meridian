@@ -6,6 +6,7 @@
 #   deploy/wsl/setup.sh uv            install uv (pinned; installer checksum verified first)
 #   deploy/wsl/setup.sh gh            install the GitHub CLI from GitHub's release, in place of Ubuntu's
 #   deploy/wsl/setup.sh gitleaks      install the pinned gitleaks CI uses, for the lead's merge gate
+#   deploy/wsl/setup.sh ocr           install open-code-review's `ocr`, a second reviewer's file list and rules
 #   deploy/wsl/setup.sh repo          clone the repo to ~/src/meridian and run `uv sync --locked`
 #   deploy/wsl/setup.sh gateway       install IB Gateway (pinned build; never starts it or logs in)
 #   deploy/wsl/setup.sh agents        all of the following, in this order:
@@ -23,7 +24,7 @@
 #   deploy/wsl/setup.sh signins       list the sign-ins left for the owner, with their commands
 #   deploy/wsl/setup.sh orca-pair     owner, once, in Windows Terminal: pair the Windows Orca app
 #
-# Order: check, uv, gh, gitleaks, repo, gateway, then agents. Sign-ins are the owner's: see UPSTREAM.md.
+# Order: check, uv, gh, gitleaks, ocr, repo, gateway, then agents. Sign-ins are the owner's: see UPSTREAM.md.
 # Versions, checksums and the pages they were read from: UPSTREAM.md.
 set -euo pipefail
 # The tools below go to ~/.local/bin. Ubuntu's ~/.profile puts that on PATH only when it existed
@@ -47,6 +48,11 @@ GH_URL="https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERS
 GITLEAKS_VERSION=8.30.1
 GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
 GITLEAKS_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+# open-code-review (ADR 0020), the release binary by its SHA-256 from the release's sha256sum.txt.
+# Not the npm package: its wrapper installs the newest release over itself in the background.
+OCR_VERSION=1.13.9
+OCR_SHA256=2db294981624d6fae9bcfb4df7f9ebfd7f92c40b3a552873dff5887116931d3e
+OCR_URL="https://github.com/alibaba/open-code-review/releases/download/v${OCR_VERSION}/opencodereview-linux-amd64"
 
 # Agent runtimes. By the owner's decision of 2026-11-12 they update themselves where the tool
 # can, in sessions the owner starts (Orca's own launches switch the updaters off). What is
@@ -86,8 +92,8 @@ DSH_MODEL=deepseek-flash
 DSH_ALLOW_SCRIPTS=node-pty,koffi,@deepseek-ai/dsh-subprocess-local,@google/genai,protobufjs
 # Orca server: the server-only release tarball (orcad, its own Node, the orca-ide CLI), by the
 # SHA-256 in the release's checksum file. It does not update itself; a new pin here updates it.
-ORCA_VERSION=1.4.257
-ORCA_SHA256=72f42c1f5e66d828375d70a54fda5a5f910b90471948d93eedbc3a9ed19bc840
+ORCA_VERSION=1.4.258
+ORCA_SHA256=fd7f23f5fb6fe43fb2982d17438d772fac7cc65c8208a212d0ffb224b504e311
 ORCA_ROOT=/opt/orca-server
 # Loopback only, on a port of its own: with mirrored networking a listener on every interface
 # is reachable from the network, and 6768 is the Windows app's default port.
@@ -289,6 +295,32 @@ check_gitleaks() {
   [ "$(command -v gitleaks)" = "${HOME}/.local/bin/gitleaks" ] \
     || fail "gitleaks resolves to $(command -v gitleaks || echo nothing), not ~/.local/bin/gitleaks"
   ok "gitleaks ${GITLEAKS_VERSION} in ~/.local/bin, the build CI uses"
+}
+
+# open-code-review, in its delegation mode only: `ocr delegate preview` lists the files of a diff
+# that a review has to cover and `ocr delegate rule` gives the rules for them; the reviewing
+# agent reads the diff and writes the findings. That mode needs no model provider, key or
+# account, so a provider configuration of its own is refused here (ADR 0020).
+ocr_version() { "${HOME}/.local/bin/ocr" --version 2>/dev/null </dev/null | sed -n '1s/^open-code-review v\([^ ]*\).*/\1/p'; }
+
+cmd_ocr() {
+  if [ "$(ocr_version)" != "${OCR_VERSION}" ]; then
+    local tmp
+    tmp="$(mktemp -d)"
+    curl -fsSLo "${tmp}/ocr" "${OCR_URL}"
+    echo "${OCR_SHA256}  ${tmp}/ocr" | sha256sum -c -
+    install -D -m 0755 "${tmp}/ocr" "${HOME}/.local/bin/ocr"
+    rm -rf "${tmp}"
+  fi
+  check_ocr
+}
+
+check_ocr() {
+  [ "$(ocr_version)" = "${OCR_VERSION}" ] \
+    || fail "open-code-review is not ${OCR_VERSION} in ~/.local/bin (run: deploy/wsl/setup.sh ocr)"
+  [ ! -e "${HOME}/.opencodereview/config.json" ] \
+    || fail "~/.opencodereview/config.json exists: open-code-review runs here without a model provider of its own"
+  ok "open-code-review ${OCR_VERSION} in ~/.local/bin, delegation mode only: no provider of its own"
 }
 
 claude_settings() {
@@ -616,13 +648,24 @@ check_codex_bridge() {
 CLAUDE_HUD_WRAPPER="${HOME}/.local/bin/meridian-claude-hud"
 
 claude_hud_config() {
-  # Written once; afterwards the file is the owner's (`/hud`, `hud set`). The account labels
-  # stay off: they are the two display options that read ~/.claude.json.
+  # Written once; afterwards the file is the owner's (`/hud`, `hud set`). The owner's choice of
+  # 2026-11-13 is every informative display: activity (tools, skills, MCP, agents with their
+  # effort, todos), the model's effort, output speed, the prompt cache (expiry, hit rate),
+  # tokens, cost, compactions, both usage windows with their pace. The account labels stay off:
+  # they are the two display options that read ~/.claude.json.
   local file="${HOME}/.claude/plugins/claude-hud/config.json"
   [ ! -e "${file}" ] || return 0
   mkdir -p "$(dirname "${file}")"
-  printf '%s\n' '{"display":{"showTools":true,"showAgents":true,"showTodos":true,"showAuth":false,"showAuthUser":false}}' \
-    | jq . > "${file}"
+  jq -n '
+    [ "showTools", "showSkills", "showMcp", "showAgents", "showAgentEffort", "showTodos",
+      "showEffortLevel", "showSpeed", "showPromptCache", "showCacheHitRate", "showSessionTokens",
+      "showCompactions", "showConfigCounts", "showDuration", "usagePace", "showCost",
+      "showDailyCost", "showWeeklyCost", "showClaudeCodeVersion", "showSessionName",
+      "showLastResponseAt", "showMemoryUsage", "showAdvisor" ] as $on
+    | { gitStatus: {showAheadBehind: true, showFileStats: true},
+        display: (($on | map({(.): true}) | add)
+          + {showAuth: false, showAuthUser: false, sevenDayThreshold: 0, contextValue: "both"}) }
+  ' > "${file}"
 }
 
 claude_statusline() {
@@ -1109,6 +1152,7 @@ dsh $(v dsh_version) ${DSH_VERSION} $(v newest_npm @deepseek-ai/dsh)
 dsh-tui $(v dsh_tui_version) ${DSH_TUI_VERSION} $(v newest_npm @deepseek-harness-tui/dsh-tui)
 orca $(v orca_version) ${ORCA_VERSION} $(v newest_github stablyai/orca)
 gh $(v gh_version) ${GH_VERSION} $(v newest_github cli/cli)
+ocr $(v ocr_version) ${OCR_VERSION} $(v newest_github alibaba/open-code-review)
 claude-hud $(v claude_hud_version) ${CLAUDE_HUD_VERSION} $(v newest_github jarrodwatts/claude-hud)
 EOF
   issue="$(cd "$(dirname "$(readlink -f "$0")")" && gh_cli issue list --label landscape --state open --json number --jq '.[0].number' 2>/dev/null || true)"
@@ -1127,6 +1171,7 @@ cmd_upkeep() {
   # server restarts every session, so that step stays the owner's.
   "${HOME}/.local/bin/claude" update </dev/null || echo "note: claude update did not complete"
   cmd_gh
+  cmd_ocr
   cmd_claude
   cmd_codex
   cmd_agy
@@ -1143,7 +1188,7 @@ UPKEEP_PROMPT='Weekly upkeep of the agent runtimes of this repository. Read AGEN
 
 Do this, in order:
 1. Run `deploy/wsl/setup.sh upkeep`, then `deploy/wsl/setup.sh drift`. Read the open GitHub issue labelled `landscape`, if there is one.
-2. For each runtime that drift shows ahead of its pin or with a newer release upstream (Claude Code, Codex, Antigravity, DeepSeek Harness, dsh-tui, Orca, gh, claude-hud): read its release notes at the source, then move its pin in deploy/wsl/setup.sh with the checksum, integrity value or signed manifest its installer already checks, and bring its UPSTREAM.md row up to date in place. claude-hud moves only to a tag whose commit GitHub marks verified.
+2. For each runtime that drift shows ahead of its pin or with a newer release upstream (Claude Code, Codex, Antigravity, DeepSeek Harness, dsh-tui, Orca, gh, open-code-review, claude-hud): read its release notes at the source, then move its pin in deploy/wsl/setup.sh with the checksum, integrity value or signed manifest its installer already checks, and bring its UPSTREAM.md row up to date in place. claude-hud moves only to a tag whose commit GitHub marks verified.
 3. Claude Code: read its changelog between the old pin and the new one. For each setting or feature that is new, off by default and useful to this setup, either add it to claude_settings and check_claude with a test, or name it in the pull request as considered and left out, with the reason.
 4. If the installed Orca is newer than the version named in .agents/skills/NOTICE.md, refresh the two copied skills the way that file describes.
 5. If a model newer than the lead or worker model ids in deploy/wsl/setup.sh is listed on its vendor'"'"'s models page, say so in the pull request. Do not change a model id.
@@ -1182,6 +1227,7 @@ case "${1:-}" in
   uv) cmd_uv ;;
   gh) cmd_gh ;;
   gitleaks) cmd_gitleaks ;;
+  ocr) cmd_ocr ;;
   claude) cmd_claude ;;
   codex) cmd_codex ;;
   agy) cmd_agy ;;
@@ -1206,6 +1252,7 @@ case "${1:-}" in
   agents-check)
     check_gh
     check_gitleaks
+    check_ocr
     check_claude
     check_codex
     check_agy
@@ -1217,5 +1264,5 @@ case "${1:-}" in
     ;;
   repo) cmd_repo ;;
   gateway) cmd_gateway ;;
-  *) sed -n '2,27p' "$0"; exit 2 ;;
+  *) sed -n '2,28p' "$0"; exit 2 ;;
 esac
