@@ -557,3 +557,67 @@ def test_the_gitleaks_check_fails_when_missing_or_another_version(tmp_path):
     assert missing.returncode == 1 and "is not 8.30.1" in missing.stderr
     installed, _ = run_gitleaks_step(tmp_path, "cmd_gitleaks", version="8.29.0")
     assert installed.returncode == 1 and "is not 8.30.1" in installed.stderr
+
+
+def run_ocr_step(tmp_path, step, version="1.13.9", provider=False):
+    # cmd_ocr and check_ocr on a fake home with a fake curl that copies a local fake binary;
+    # nothing is downloaded and the real home is untouched.
+    fake = tmp_path / "ocr-release"
+    fake.write_text(f'#!/bin/sh\necho "open-code-review v{version} (0e9060d) linux/amd64"\n')
+    sha = subprocess.run(
+        ["sha256sum", str(fake)], check=True, capture_output=True, text=True
+    ).stdout.split()[0]
+    home = tmp_path / "home"
+    if provider:
+        (home / ".opencodereview").mkdir(parents=True)
+        (home / ".opencodereview" / "config.json").write_text("{}")
+    script = (DEPLOY / "setup.sh").read_text()
+    one_liner = re.search(r"^ocr_version\(\) \{.*\}$", script, re.M)
+    assert one_liner, "setup.sh has no ocr_version"
+    functions = "\n".join(
+        [one_liner[0]]
+        + [f"{f}() {{\n{setup_function_body(f)}\n}}" for f in ("cmd_ocr", "check_ocr")]
+    )
+    program = (
+        'HOME=$1; PATH="$HOME/.local/bin:$PATH"; RELEASE=$2; CALLS=$3\n'
+        f"OCR_VERSION=1.13.9\nOCR_SHA256={sha}\nOCR_URL=https://example.invalid/ocr\n"
+        'fail() { echo "FAIL: $*" >&2; exit 1; }\nok() { echo "ok:   $*"; }\n'
+        'curl() { echo "$@" >> "$CALLS"; cp "$RELEASE" "$2"; }\n' + functions + f"\n{step}"
+    )
+    calls = tmp_path / "curl-calls"
+    result = subprocess.run(
+        ["bash", "-eu", "-o", "pipefail", "-c", program, "t", str(home), str(fake), str(calls)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    count = len(calls.read_text().splitlines()) if calls.exists() else 0
+    return result, count
+
+
+def test_the_ocr_step_installs_the_release_binary_once(tmp_path):
+    first, downloads = run_ocr_step(tmp_path, "cmd_ocr")
+    assert first.returncode == 0, first.stderr
+    assert downloads == 1 and (tmp_path / "home/.local/bin/ocr").is_file()
+    assert "ok:   open-code-review 1.13.9 in ~/.local/bin" in first.stdout
+    again, downloads = run_ocr_step(tmp_path, "cmd_ocr")
+    assert again.returncode == 0 and downloads == 1  # already there: no second download
+
+
+def test_the_ocr_check_fails_on_another_version_or_a_provider_of_its_own(tmp_path):
+    missing, _ = run_ocr_step(tmp_path, "check_ocr")
+    assert missing.returncode == 1 and "is not 1.13.9" in missing.stderr
+    other, _ = run_ocr_step(tmp_path, "cmd_ocr", version="1.13.8")
+    assert other.returncode == 1 and "is not 1.13.9" in other.stderr
+    run_ocr_step(tmp_path, "cmd_ocr")
+    configured, _ = run_ocr_step(tmp_path, "check_ocr", provider=True)
+    assert configured.returncode == 1 and "without a model provider" in configured.stderr
+
+
+def test_ocr_comes_from_the_release_binary_not_the_self_updating_npm_package():
+    assert (
+        setup_value("OCR_URL")
+        .strip('"')
+        .endswith("/releases/download/v${OCR_VERSION}/opencodereview-linux-amd64")
+    )
+    assert "@alibaba-group/open-code-review" not in (DEPLOY / "setup.sh").read_text()
