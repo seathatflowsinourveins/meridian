@@ -106,7 +106,7 @@ flows with it ticked has not been checked.
 
 ### Alpaca paper lane (M3, owner only)
 
-`meridian.alpaca_lane` wires IEX quotes and the [execution adapter](m3-alpaca.md#3-current-adapter-carried-changed-and-omitted) with the [order budget](#rate-budgets).
+`meridian.alpaca_lane` wires session quotes and the [execution adapter](m3-alpaca.md#3-current-adapter-carried-changed-and-omitted) with the [order budget](#rate-budgets).
 Quotes carry prices only: Alpaca documents round-lot sizes but its Asset model has no
 per-symbol shares-per-lot field ([Asset](https://alpaca.markets/sdks/python/api_reference/trading/models.html#asset),
 [quotes](https://docs.alpaca.markets/us/docs/real-time-stock-pricing-data), read 2026-11-13).
@@ -156,14 +156,17 @@ paper connection remain untested; only the owner may perform that attended check
 and execution coverage complete. `order` asks for PAPER, repeats all local checks, then buys
 one share with a DAY LIMIT 2% below a fresh bid, rounded down to the venue tick. It checks
 `quote_age_ns` before pricing and again at paced submission; missing/stale quotes place nothing.
-It requests cancellation once accepted. A pass is accepted, then cancelled, nothing filled,
+[24/5](https://docs.alpaca.markets/us/docs/245-trading-for-trading-api) (read 2026-11-13): Sunday 20:00–Friday 20:00 New York; paper-calendar rows check holidays and early closes.
+Regular uses IEX; overnight uses free real-time indicative `overnight`; pre/after uses delayed SIP, whose age includes 15 minutes (an owner limit of 15 minutes or less refuses it).
+DAY LIMIT sends `extended_hours=true`; overnight requires eligible, unhalted asset flags. Boundaries discard cached quotes and refuse queued submissions across sessions (sources in `UPSTREAM.md`).
+It cancels after venue `new` proves routing; queued `accepted` alone cannot pass. A pass is routed, cancelled, nothing filled,
 flat with no open or in-flight order at stop. Any fill fails and sends no second order; the
 owner inspects and closes any share by hand. An unresolved order also fails: inspect it before
 acting; there is no stop-time cancel or close. The M1 time limits apply (25 s restart, 60 s order).
 All local checks run again after the run. Engine output and failures stay in `runs/`; passing
 records go to `evidence/M3-alpaca-paper-<stamp>-<mode>.json`. Public records contain no broker
 text or identifiers, include commission citations and counts of paper-default/reviewed budget
-rows (also shown at the terminal), and record only the quote-age limit's presence. No real run has been performed.
+rows (also shown at the terminal), session/feed used to price the order, and only the quote-age limit's presence. No real run has been performed.
 
 `uv run python -m meridian.alpaca_sim` is a simulation, not a lane; no typed word. It exercises the unchanged one-order strategy and native engine order flow, excluding the Alpaca adapter, order budget, credentials, streams and venue.
 Quotes are synthetic, generated in process: no market or recorded data, no real price.

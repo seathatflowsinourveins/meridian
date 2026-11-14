@@ -3,6 +3,7 @@
 import asyncio
 import gc
 import importlib
+from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -21,6 +22,11 @@ def node_module(monkeypatch):
     )
     # Never construct a real credential reader or network transport in these tests.
     monkeypatch.setattr(module, "production_wiring", lambda *_: pytest.fail("production wiring"))
+
+    from meridian.alpaca_sessions import session_at
+
+    fixed = datetime.fromisoformat("2026-11-02T15:00:00+00:00")
+    monkeypatch.setattr(module, "session_ns", lambda _, calendar=None: session_at(fixed, calendar))
     yield module
     gc.collect()
 
@@ -40,6 +46,9 @@ class Quotes:
     def __init__(self):
         self.queue = asyncio.Queue()
         self.subscriptions = []
+
+    def select_feed(self, feed):
+        self.feed = feed
 
     async def _start_ws(self):
         pass
@@ -62,11 +71,24 @@ class Quotes:
         await self.handler(row)
 
 
-def build(module, monkeypatch, mode="order", rig=None):
+def build(module, monkeypatch, mode="order", rig=None, when=None, lane_state=None):
     from meridian.alpaca.data import AlpacaQuoteClient
     from meridian.alpaca_lane import RunRecord
 
     rig = rig or Rig()
+    rig.venue.accept_status = "new"
+    lane_state = lane_state or state()
+
+    def test_clock(clock):
+        if when is None:
+            return clock
+        from meridian.alpaca.reports import timestamp_ns
+        from meridian.alpaca_sessions import session_ns
+
+        monkeypatch.setattr(module, "session_ns", session_ns)
+        offset = timestamp_ns(when, "synthetic") - clock.timestamp_ns()
+        return SimpleNamespace(timestamp_ns=lambda: clock.timestamp_ns() + offset)
+
     quotes, captured = Quotes(), {}
     original = module.build_client
     strategy_type = module.OnePaperOrder
@@ -80,6 +102,7 @@ def build(module, monkeypatch, mode="order", rig=None):
 
     def execution(**kwargs):
         kwargs["wiring"] = rig.wiring()
+        kwargs["clock"] = test_clock(kwargs["clock"])
         client = original(**kwargs)
         captured["exec"] = client
         return client
@@ -89,14 +112,18 @@ def build(module, monkeypatch, mode="order", rig=None):
 
     def quote_factory(*, name, config, cache, clock):
         client = AlpacaQuoteClient(
-            name=name, quote_config=config, cache=cache, clock=clock, stream=cast(Any, quotes)
+            name=name,
+            quote_config=config,
+            cache=cache,
+            clock=test_clock(clock),
+            stream=cast(Any, quotes),
         )
         captured["quote"] = client
         return client
 
     monkeypatch.setattr(module.AlpacaQuoteFactory, "create", quote_factory)
-    record = RunRecord(mode, state())
-    node = module.build(state(), record)
+    record = RunRecord(mode, lane_state)
+    node = module.build(lane_state, record)
     return node, record, rig, quotes, captured
 
 
@@ -344,3 +371,265 @@ def test_strategy_prices_without_reading_any_quote_size(node_module, monkeypatch
     asyncio.run(drive())
     assert rig.venue.last_post["limit_price"] == "98.12"
     assert rig.venue.last_post["qty"] == "1"
+
+
+SESSIONS = [
+    ("2026-11-16T02:00:00-05:00", "overnight", "overnight"),
+    ("2026-11-16T08:00:00-05:00", "pre_market", "delayed_sip"),
+    ("2026-11-16T12:00:00-05:00", "regular", "iex"),
+    ("2026-11-16T18:00:00-05:00", "after_hours", "delayed_sip"),
+]
+
+
+def session_build(module, monkeypatch, when, *, eligible=True, halted=False):
+    from dataclasses import replace
+
+    from meridian.alpaca_lane import Settings
+    from meridian.alpaca_sessions import SIP_DELAY_NS
+
+    rig = Rig()
+    get = rig.venue.get
+
+    def asset_flags(path, *args, **kwargs):
+        row = get(path, *args, **kwargs)
+        if path.startswith("/assets/"):
+            row.update(overnight_tradable=eligible, overnight_halted=halted)
+        return row
+
+    rig.venue.get = asset_flags
+    # Synthetic test limit permits the documented delayed feed; never a production default.
+    settings = Settings("unused-fake-path", SIP_DELAY_NS + 10**9)
+    return build(
+        module, monkeypatch, rig=rig, when=when, lane_state=replace(state(), settings=settings)
+    )
+
+
+@pytest.mark.parametrize("when,session,feed", SESSIONS)
+@pytest.mark.parametrize("age_kind", ["fresh", "missing", "stale"])
+def test_each_session_engine_quote_order_fields_and_freshness(
+    node_module, monkeypatch, when, session, feed, age_kind
+):
+    from meridian.alpaca_sessions import SIP_DELAY_NS
+
+    node, record, rig, quotes, clients = session_build(node_module, monkeypatch, when)
+    handle, cache = node.handle(), node.cache
+
+    async def drive():
+        task = asyncio.create_task(run(node))
+        await wait_until(lambda: bool(quotes.subscriptions))
+        assert quotes.feed == feed
+        if age_kind != "missing":
+            age = (
+                SIP_DELAY_NS + 10**9
+                if age_kind == "stale"
+                else (SIP_DELAY_NS if feed == "delayed_sip" else 1)
+            )
+            quotes.queue.put_nowait(quote(clients["quote"], age))
+            await wait_until(lambda: cache.quote(node_module.INSTRUMENT_ID) is not None)
+        if age_kind == "fresh":
+            await wait_until(lambda: any(method == "delete" for method, _ in rig.venue.calls))
+            order = rig.venue.orders[-1]
+            order["status"] = "canceled"
+            rig.stream.push(update("canceled", order))
+            await wait_until(
+                lambda: any(e["type"] == "OrderCanceled" for e in record.data["events"])
+            )
+        else:
+            for _ in range(20):
+                await asyncio.sleep(0.001)
+        handle.stop()
+        await task
+
+    asyncio.run(drive())
+    assert record.data["session"] == session and record.data["feed"] == feed
+    record.data["checks_unchanged_after_run"] = True
+    if age_kind == "fresh":
+        assert record.problems() == []
+        assert rig.venue.last_post["type"] == "limit"
+        assert rig.venue.last_post["time_in_force"] == "day"
+        assert rig.venue.last_post["extended_hours"] is True
+    else:
+        assert getattr(rig.venue, "last_post", None) is None
+        assert record.problems()
+
+
+@pytest.mark.parametrize(
+    "eligible,halted", [(False, False), (True, True), ("true", False), (True, None)]
+)
+def test_overnight_ineligible_asset_refused_unsent(node_module, monkeypatch, eligible, halted):
+    node, record, rig, quotes, clients = session_build(
+        node_module, monkeypatch, SESSIONS[0][0], eligible=eligible, halted=halted
+    )
+    handle = node.handle()
+
+    async def drive():
+        task = asyncio.create_task(run(node))
+        await wait_until(lambda: bool(quotes.subscriptions))
+        quotes.queue.put_nowait(quote(clients["quote"]))
+        await wait_until(lambda: any(e["type"] == "OrderDenied" for e in record.data["events"]))
+        handle.stop()
+        await task
+
+    asyncio.run(drive())
+    assert all(method == "get" for method, _ in rig.venue.calls)
+    assert record.problems()
+
+
+@pytest.mark.parametrize("when", ["2026-11-13T20:00:00-05:00", "2026-11-15T19:59:00-05:00"])
+def test_lane_closed_window_has_no_order_or_quote_connection(node_module, monkeypatch, when):
+    node, record, rig, quotes, clients = session_build(node_module, monkeypatch, when)
+    handle = node.handle()
+
+    async def drive():
+        task = asyncio.create_task(run(node))
+        await wait_until(lambda: record.data["startup_reconciliation"]["trader_started"])
+        assert not clients["exec"]._submit_admitted()
+        handle.stop()
+        await task
+
+    asyncio.run(drive())
+    assert all(method == "get" for method, _ in rig.venue.calls)
+    assert not quotes.subscriptions
+    assert record.data["session"] == "closed"
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        "accepted",
+        "pending_new",
+        "held",
+        "suspended",
+        "done_for_day",
+        "pending_review",
+        "accepted_for_bidding",
+        "calculated",
+        "stopped",
+    ],
+)
+def test_queued_or_inactive_acceptance_never_passes(node_module, monkeypatch, status):
+    node, record, rig, quotes, clients = session_build(node_module, monkeypatch, SESSIONS[0][0])
+    rig.venue.accept_status = status
+    handle = node.handle()
+
+    async def drive():
+        task = asyncio.create_task(run(node))
+        await wait_until(lambda: bool(quotes.subscriptions))
+        quotes.queue.put_nowait(quote(clients["quote"]))
+        await wait_until(lambda: any(e["type"] == "OrderAccepted" for e in record.data["events"]))
+        assert all(method != "delete" for method, _ in rig.venue.calls)
+        order = rig.venue.orders[-1]
+        order["status"] = "canceled"
+        rig.stream.push(update("canceled", order))
+        await wait_until(lambda: any(e["type"] == "OrderCanceled" for e in record.data["events"]))
+        handle.stop()
+        await task
+
+    asyncio.run(drive())
+    record.data["checks_unchanged_after_run"] = True
+    assert not record.data["venue_working_seen"]
+    assert any("working in this session" in problem for problem in record.problems())
+
+
+def test_queued_order_waits_for_new_before_cancel(node_module, monkeypatch):
+    node, record, rig, quotes, clients = session_build(node_module, monkeypatch, SESSIONS[0][0])
+    rig.venue.accept_status = "accepted"
+    handle = node.handle()
+
+    async def drive():
+        task = asyncio.create_task(run(node))
+        await wait_until(lambda: bool(quotes.subscriptions))
+        quotes.queue.put_nowait(quote(clients["quote"]))
+        await wait_until(lambda: any(e["type"] == "OrderAccepted" for e in record.data["events"]))
+        assert not record.data["venue_working_seen"]
+        assert all(method != "delete" for method, _ in rig.venue.calls)
+        order = rig.venue.orders[-1]
+        order["status"] = "new"
+        rig.stream.push(update("new", order))
+        await wait_until(lambda: any(method == "delete" for method, _ in rig.venue.calls))
+        order["status"] = "canceled"
+        rig.stream.push(update("canceled", order))
+        await wait_until(lambda: any(e["type"] == "OrderCanceled" for e in record.data["events"]))
+        handle.stop()
+        await task
+
+    asyncio.run(drive())
+    record.data["checks_unchanged_after_run"] = True
+    assert record.problems() == []
+
+
+def test_holiday_calendar_keeps_lane_closed(node_module, monkeypatch):
+    node, record, rig, quotes, clients = session_build(node_module, monkeypatch, SESSIONS[0][0])
+    get = rig.venue.get
+    rig.venue.get = lambda path, *a, **kw: [] if path == "/calendar" else get(path, *a, **kw)
+    handle = node.handle()
+
+    async def drive():
+        task = asyncio.create_task(run(node))
+        await wait_until(lambda: record.data["startup_reconciliation"]["trader_started"])
+        assert not clients["exec"]._submit_admitted()
+        handle.stop()
+        await task
+
+    asyncio.run(drive())
+    assert not quotes.subscriptions
+    assert all(method == "get" for method, _ in rig.venue.calls)
+    assert record.data["session"] == "closed"
+
+
+def test_overnight_asset_permission_rechecked_at_pacer(node_module, monkeypatch):
+    node, record, rig, quotes, clients = session_build(node_module, monkeypatch, SESSIONS[0][0])
+    handle = node.handle()
+
+    async def drive():
+        task = asyncio.create_task(run(node))
+        await wait_until(lambda: bool(quotes.subscriptions))
+        assert rig.pacer is not None
+        original = rig.pacer.request
+
+        def delayed(kind, send, **kwargs):
+            if kind.name == "SUBMIT":
+                monkeypatch.setattr(clients["exec"], "_asset_admitted", lambda _: False)
+            return original(kind, send, **kwargs)
+
+        rig.pacer.request = delayed
+        quotes.queue.put_nowait(quote(clients["quote"]))
+        await wait_until(lambda: any(e["type"] == "OrderRejected" for e in record.data["events"]))
+        handle.stop()
+        await task
+
+    asyncio.run(drive())
+    assert getattr(rig.venue, "last_post", None) is None
+
+
+def test_queued_price_cannot_cross_session_at_pacer(node_module, monkeypatch):
+    from meridian.alpaca_sessions import session_at
+
+    node, record, rig, quotes, clients = session_build(node_module, monkeypatch, SESSIONS[2][0])
+    handle = node.handle()
+
+    async def drive():
+        task = asyncio.create_task(run(node))
+        await wait_until(lambda: bool(quotes.subscriptions))
+        assert rig.pacer is not None
+        original = rig.pacer.request
+
+        def delayed(kind, send, **kwargs):
+            if kind.name == "SUBMIT":
+                from datetime import datetime
+
+                later = session_at(datetime.fromisoformat(SESSIONS[3][0]))
+                monkeypatch.setattr(clients["exec"], "current_session", lambda: later)
+                # Even a refreshed quote does not make the earlier session's price valid.
+                monkeypatch.setattr(clients["exec"], "quote_usable", lambda: True)
+            return original(kind, send, **kwargs)
+
+        rig.pacer.request = delayed
+        quotes.queue.put_nowait(quote(clients["quote"]))
+        await wait_until(lambda: any(e["type"] == "OrderRejected" for e in record.data["events"]))
+        handle.stop()
+        await task
+
+    asyncio.run(drive())
+    assert getattr(rig.venue, "last_post", None) is None
+    assert record.data["session"] == "regular" and record.data["feed"] == "iex"

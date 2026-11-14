@@ -59,5 +59,10 @@ def parse_equity(row: Mapping[str, Any], *, ts_init: int) -> Equity:
         ts_init,
         ts_init,
         tick_scheme=register_equity_tick_scheme(),
-        info={flag: bool(row.get(flag)) for flag in _FLAGS},
+        info={
+            **{flag: bool(row.get(flag)) for flag in _FLAGS},
+            # Missing or malformed eligibility is never permission to trade overnight.
+            "overnight_tradable": row.get("overnight_tradable") is True,
+            "overnight_halted": row.get("overnight_halted") is not False,
+        },
     )
