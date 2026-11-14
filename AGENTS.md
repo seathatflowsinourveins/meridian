@@ -67,7 +67,7 @@ uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run 
 
 - Four agent runtimes run here through Orca, one git worktree per task: Claude Code leads
   (`claude-fable-5-2`; its workers run `claude-opus-5-5`), Codex (`gpt-6-astra`, `gpt-6.1-sol`
-  for bulk) and Antigravity work and review, DeepSeek Harness takes mechanical tasks only.
+  for bulk) and Antigravity work and review, DeepSeek Harness works (code and research).
 - Work is reviewed by a different model family before it merges (`/codex:review` in Claude
   Code). Findings are fixed in the pull request or closed with a reason.
 - Orca's `orca-cli` and `orchestration` skills are in `.agents/skills/`; the command is
@@ -75,7 +75,7 @@ uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run 
   report that or run `systemctl --user start orca-serve`, never `orca-ide open`, `serve` or
   `serve service install`, which can listen on every interface. Agents' servers bind 127.0.0.1.
 - MCP servers are off machine-wide for Claude Code and Codex. A skill, plugin or MCP server is
-  added only by an evidence record (plan 8.6), and none gets an order tool or broker connector.
+  added only by an ADR (`docs/adr/README.md`), and none gets an order tool or broker connector.
 
 ## The IBKR paper lane (owner only)
 
