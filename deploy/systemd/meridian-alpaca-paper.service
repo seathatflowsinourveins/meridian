@@ -7,7 +7,7 @@
 #
 # The paper keys reach the process only as systemd credentials (systemd.exec(5), systemd 259):
 # the two encrypted files named below, which the owner creates with systemd-creds as described
-# in docs/m3-alpaca.md ("Keys"). With an absolute path a missing file is fatal and the unit
+# in docs/adr/data/m3-alpaca.md ("Keys"). With an absolute path a missing file is fatal and the unit
 # does not start; the lane also refuses without them. This file holds no key, no key-shaped
 # value and no endpoint: the paper endpoint is hard-coded in meridian/alpaca/constants.py.
 #
@@ -16,7 +16,7 @@
 
 [Unit]
 Description=Meridian Alpaca paper lane (paper account only; prepared, not enabled)
-Documentation=https://github.com/seathatflowsinourveins/meridian/blob/main/docs/m3-alpaca.md
+Documentation=https://github.com/seathatflowsinourveins/meridian/blob/main/docs/adr/data/m3-alpaca.md
 After=network-online.target
 Wants=network-online.target
 

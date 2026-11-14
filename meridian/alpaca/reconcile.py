@@ -3,7 +3,7 @@ Startup reconciliation: what the engine is shown, what is withheld, and what ref
 
 Own design, ported from `sextant-paper@a991b73a:src/sextant/alpaca/execution.py` (the report
 generators and `execution_engine_config`), trimmed to M3. Each rule answers one way the
-earlier line's attended starts failed (docs/m3-alpaca.md, section 2):
+earlier line's attended starts failed (docs/adr/data/m3-alpaca.md, section 2):
 
 - A failed start must say why. NautilusTrader keeps only "Failed to get mass status", so each
   stage records its requests, rows and first failure (class, HTTP status, our own reason; never

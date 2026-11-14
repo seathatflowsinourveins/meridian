@@ -1,7 +1,7 @@
 """Offline simulation of the strategy template on the engine's native BacktestEngine.
 
-`uv run python -m meridian.strategy_template.sim [--copies N]`. Like `meridian.alpaca_sim`
-(engine, cash venue, in-process data, strategy, run, dispose: NautilusTrader v2.0.0rc9
+`uv run python -m meridian.strategy_template.sim [--copies N] [--report]`.
+Like `meridian.alpaca_sim` (engine, cash venue, in-process data, strategy, run, dispose: v2.0.0rc9
 `examples/backtest/synthetic_data_pnl_test.py:189-253`). No adapter, no lane, no socket.
 
 Everything here is synthetic and uncalibrated: the quote paths are generated in this process
@@ -42,6 +42,7 @@ from nautilus_trader.model import (
 from meridian import boundary
 
 from .params import TemplateParams
+from .report import ReportUnavailable, require_research, write_report
 from .strategy import SymbolBook, TrailingTemplate
 
 DATA_SOURCE = "synthetic quotes generated in process; no market or recorded data"
@@ -170,7 +171,10 @@ def run(
     copies: int = 1,
     strategy_type: type[SyntheticBreakout] = SyntheticBreakout,
     inspect: Callable[[BacktestEngine, SyntheticBreakout], None] | None = None,
+    report: bool = False,
 ) -> dict[str, Any]:
+    if report:
+        require_research()
     params = params or TemplateParams.from_config(SIM_PARAMS)
     scenarios = scenarios or SCENARIOS
     ids = instrument_ids(scenarios, copies)
@@ -227,6 +231,8 @@ def run(
         }
         if inspect is not None:
             inspect(engine, strategy)
+        if report:
+            data["report"] = write_report(engine)
     finally:
         engine.dispose()
     return data
@@ -260,9 +266,15 @@ def problems(data: dict[str, Any], copies: int = 1) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Offline simulation of the strategy template.")
     parser.add_argument("--copies", type=int, default=1, help="copies of each scenario")
-    copies = max(parser.parse_args(argv).copies, 1)
+    parser.add_argument("--report", action="store_true", help="engine statistics, CSVs and HTML")
+    args = parser.parse_args(argv)
+    copies = max(args.copies, 1)
     print("SIMULATION; not a lane; synthetic quotes and uncalibrated parameters only.")
-    data = run(copies=copies)
+    try:
+        data = run(copies=copies, report=args.report)
+    except ReportUnavailable as exc:
+        print(str(exc))
+        return 2
     found = problems(data, copies)
     record = {
         "schema": "meridian.simulation-record/1",
@@ -296,6 +308,11 @@ def main(argv: list[str] | None = None) -> int:
     out.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print("PASS" if not found else "FAIL: " + "; ".join(found))
     print(f"Simulation record: runs/{out.name}")
+    if args.report:
+        print("Engine statistics (null = undefined):")
+        print(json.dumps(data["report"]["statistics"], indent=2, sort_keys=True, allow_nan=False))
+        print(f"Engine reports: {data['report']['directory']}/")
+        print(f"Tearsheet: {data['report']['directory']}/tearsheet.html")
     return 0 if not found else 1
 
 

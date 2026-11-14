@@ -7,7 +7,7 @@ order budget. Startup reconciliation, order commands and stream events go throug
 exactly as in a run; only the venue is synthetic.
 
 The startup cases replay, on synthetic rows, the shapes of the three attended starts that
-failed in the earlier line (docs/m3-alpaca.md, section 2): another writer's orders on the
+failed in the earlier line (docs/adr/data/m3-alpaca.md, section 2): another writer's orders on the
 account, ended history in a symbol the node had not loaded, and fills older than the venue's
 order history. A failed start must also say why.
 """
