@@ -172,7 +172,7 @@ def instrument_ids(scenarios: dict[str, Any], copies: int) -> dict[InstrumentId,
     return ids
 
 
-def synthetic_universe(ids: list[InstrumentId]) -> UniverseTimeline:
+def synthetic_universe(ids: list[InstrumentId], read_at_ns: int = START_NS) -> UniverseTimeline:
     """SDK-shaped synthetic lists; the same parser/selector as the read-only client.
 
     Endpoint bounds permit at most 50 gainers + 50 losers and 100 actives. Both
@@ -181,7 +181,7 @@ def synthetic_universe(ids: list[InstrumentId]) -> UniverseTimeline:
     if len(ids) > 100:
         raise ValueError("synthetic screener supports at most 100 symbols")
     names = sorted(i.symbol.value for i in ids)
-    when = datetime.fromtimestamp(START_NS // 1_000_000_000, UTC)
+    when = datetime.fromtimestamp(read_at_ns // 1_000_000_000, UTC)
     movers = {
         "market_type": "stocks",
         "last_updated": when,
@@ -196,7 +196,9 @@ def synthetic_universe(ids: list[InstrumentId]) -> UniverseTimeline:
         "last_updated": when,
         "most_actives": [{"symbol": s, "volume": 1000, "trade_count": 10} for s in names],
     }
-    read = parse_screeners(movers, actives, movers_read_at_ns=START_NS, actives_read_at_ns=START_NS)
+    read = parse_screeners(
+        movers, actives, movers_read_at_ns=read_at_ns, actives_read_at_ns=read_at_ns
+    )
     # Synthetic policy, not defaults or tuned values; synthetic calendar, no service read.
     params = UniverseParams(
         provenance=SYNTHETIC,

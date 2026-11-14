@@ -26,7 +26,7 @@ from nautilus_trader.model import (
 from meridian.sim import catalog, runner
 from meridian.sim.strategies import GatedBreakout, refusal
 from meridian.sim.venue import SETS, VenueModels
-from meridian.strategy_template.sim import SCENARIOS
+from meridian.strategy_template.sim import SCENARIOS, synthetic_universe
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = VenueModels(name="test-base")
@@ -68,6 +68,26 @@ def test_every_set_runs_the_template_and_the_bracket(store):
         data = runner.run_set(models, store)
         assert data["problems"] == [], (models.name, data["problems"])
         assert data["statistics"]["total_orders"] == data["orders_total"] > 0
+
+
+def test_the_template_enters_only_symbols_on_the_mover_list(store, base):
+    # BREACH is left off the synthetic screener lists: it never enters, while every
+    # scenario on the list behaves as with the full list.
+    on_list = [i for i in catalog.instrument_ids(SCENARIOS) if i.symbol.value != "BREACH"]
+    data = runner.run_set(BASE, store, universe=synthetic_universe(on_list, catalog.START_NS))
+    assert data["symbols"]["BREACH.SIM"]["entries"] == 0
+    assert data["symbols"]["BREACH.SIM"]["phase"] == "flat"
+    for symbol, report in base[0]["symbols"].items():
+        if symbol != "BREACH.SIM":
+            assert data["symbols"][symbol]["events"] == report["events"], symbol
+    assert base[0]["symbols"]["BREACH.SIM"]["entries"] == 1  # on the full list, it enters
+
+
+def test_a_list_received_after_the_quotes_authorizes_nothing(store):
+    ids = list(catalog.instrument_ids(SCENARIOS))
+    late = synthetic_universe(ids, catalog.START_NS + 3_600_000_000_000)
+    data = runner.run_set(BASE, store, universe=late)
+    assert all(r["entries"] == 0 for r in data["symbols"].values())
 
 
 def test_latency_moves_the_fill_time(store, base):
@@ -130,7 +150,7 @@ class MarketAndLimit(GatedBreakout):
 
 def gated(tmp_path, start_ns):
     store = runner.write_catalog(tmp_path, start_ns=start_ns)
-    data, seen = run(BASE, store, template_type=MarketAndLimit)
+    data, seen = run(BASE, store, template_type=MarketAndLimit, start_ns=start_ns)
     template = [o for o in seen["orders"] if o.strategy_id == seen["template"].strategy_id]
     return data, template
 
