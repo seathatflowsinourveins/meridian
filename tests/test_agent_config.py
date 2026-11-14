@@ -421,25 +421,37 @@ def test_drift_reports_a_runtime_that_is_off_its_pin(line, state):
     assert result.stdout.splitlines()[2].endswith("at the pin")
 
 
-def test_the_upkeep_prompt_names_what_a_run_must_never_do():
+def test_the_upkeep_prompt_lands_through_the_gate_and_names_what_a_run_must_never_do():
     script = (DEPLOY / "setup.sh").read_text()
     prompt = script.split("UPKEEP_PROMPT='", 1)[1].split("\n\nupkeep_automation() {", 1)[0]
-    never = prompt.split("Never:", 1)[1]
+    steps, never = prompt.split("Never:", 1)
+    # The run finishes its own change: another family's review, the gate under the shared
+    # lock, then the pins applied and checked.
     for phrase in (
-        "merge a pull request",
-        "deploy/wsl/setup.sh orca",
-        "orca-ide serve",
+        "codex review --base origin/main",
+        "flock ~/.cache/meridian/landing.lock",
+        "`trial`, `open` and `land`",
+        "never go around it",
+        "git -C ~/src/meridian pull --ff-only",
+        "~/src/meridian/deploy/wsl/setup.sh upkeep",
+        "~/src/meridian/deploy/wsl/setup.sh agents-check",
+    ):
+        assert phrase in steps, phrase
+    for phrase in (
+        "any pull request but your own upkeep changes",
         "start a lane",
         "key or credential",
         "risk/",
         "plugin, skill or MCP server",
+        "change a model id",
+        "stop a process you did not start",
     ):
         assert phrase in never, phrase
-    # upkeep leaves Orca's server to the owner: it restarts every session.
     upkeep = setup_function_body("cmd_upkeep")
-    assert "cmd_orca\n" not in upkeep
-    for installer in ("cmd_gh", "cmd_claude", "cmd_codex", "cmd_agy", "cmd_dsh", "cmd_claude_hud"):
+    for installer in ("cmd_gh", "cmd_ocr", "cmd_claude", "cmd_codex", "cmd_agy", "cmd_dsh"):
         assert f"  {installer}\n" in upkeep, installer
+    # Orca's server is installed last, and only when it is behind its pin.
+    assert upkeep.rstrip().endswith('version_ge "$(orca_version)" "${ORCA_VERSION}" || cmd_orca')
 
 
 def codex_config_check(path):
