@@ -9,13 +9,18 @@ owner's own sessions, which carries its own tests: docs/HANDBOOK.md (Rules) keep
 out of worktrees.
 """
 
+import hashlib
+import importlib.util
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
+import tarfile
 import time
 import tomllib
+from pathlib import Path
 
 import pytest
 from test_paper_only import REPO_ROOT, git_files
@@ -26,7 +31,8 @@ DEPLOY = REPO_ROOT / "deploy" / "wsl"
 GH_NEWEST_FIX = (2, 97, 0)
 
 # Folders the four agents (or Gemini CLI, whose layout Antigravity shares) read in a project.
-AGENT_FOLDERS = (".agents/", ".claude/", ".codex/", ".gemini/", ".dsh/")
+# Also the project folders of serena (the MCP server dsh runs, ADR 0016) and beads.
+AGENT_FOLDERS = (".agents/", ".claude/", ".codex/", ".gemini/", ".dsh/", ".serena/", ".beads/")
 ALLOWED = (".agents/skills/", ".claude/skills/")
 # Files an agent reads wherever they are: Claude Code's project MCP servers.
 AGENT_FILES = {".mcp.json"}
@@ -61,6 +67,8 @@ def test_no_agent_configuration_is_committed():
         ".agents/plugins/x/plugin.json",
         ".gemini/settings.json",
         ".dsh/cordis.patch.yml",
+        ".serena/project.yml",
+        ".beads/issues.db",
     ],
 )
 def test_the_check_catches_agent_configuration(name):
@@ -357,7 +365,7 @@ def setup_function_body(name):
     return (DEPLOY / "setup.sh").read_text().split(f"{name}() {{\n", 1)[1].split("\n}", 1)[0]
 
 
-def run_config_writer(name, tmp_path, helpers=()):
+def run_config_writer(name, tmp_path, helpers=(), model="model"):
     # Extract only configuration writers; no installer, agent or service is started.
     # Replace the home reference in the extracted code, leaving the real HOME untouched.
     functions = "\n".join(
@@ -370,7 +378,7 @@ def run_config_writer(name, tmp_path, helpers=()):
             "-o",
             "pipefail",
             "-c",
-            "fixture_root=$1\nCODEX_MODEL=model\nDSH_MODEL=model\n"
+            f"fixture_root=$1\nCODEX_MODEL=model\nDSH_MODEL={model}\n"
             'fail() { echo "$*" >&2; exit 1; }\n' + functions + f"\n{name}",
             "test-config",
             str(tmp_path),
@@ -421,25 +429,37 @@ def test_drift_reports_a_runtime_that_is_off_its_pin(line, state):
     assert result.stdout.splitlines()[2].endswith("at the pin")
 
 
-def test_the_upkeep_prompt_names_what_a_run_must_never_do():
+def test_the_upkeep_prompt_lands_through_the_gate_and_names_what_a_run_must_never_do():
     script = (DEPLOY / "setup.sh").read_text()
     prompt = script.split("UPKEEP_PROMPT='", 1)[1].split("\n\nupkeep_automation() {", 1)[0]
-    never = prompt.split("Never:", 1)[1]
+    steps, never = prompt.split("Never:", 1)
+    # The run finishes its own change: another family's review, the gate under the shared
+    # lock, then the pins applied and checked.
     for phrase in (
-        "merge a pull request",
-        "deploy/wsl/setup.sh orca",
-        "orca-ide serve",
+        "codex review --base origin/main",
+        "flock ~/.cache/meridian/landing.lock",
+        "`trial`, `open` and `land`",
+        "never go around it",
+        "git -C ~/src/meridian pull --ff-only",
+        "~/src/meridian/deploy/wsl/setup.sh upkeep",
+        "~/src/meridian/deploy/wsl/setup.sh agents-check",
+    ):
+        assert phrase in steps, phrase
+    for phrase in (
+        "any pull request but your own upkeep changes",
         "start a lane",
         "key or credential",
         "risk/",
         "plugin, skill or MCP server",
+        "change a model id",
+        "stop a process you did not start",
     ):
         assert phrase in never, phrase
-    # upkeep leaves Orca's server to the owner: it restarts every session.
     upkeep = setup_function_body("cmd_upkeep")
-    assert "cmd_orca\n" not in upkeep
-    for installer in ("cmd_gh", "cmd_claude", "cmd_codex", "cmd_agy", "cmd_dsh", "cmd_claude_hud"):
+    for installer in ("cmd_gh", "cmd_ocr", "cmd_claude", "cmd_codex", "cmd_agy", "cmd_dsh"):
         assert f"  {installer}\n" in upkeep, installer
+    # Orca's server is installed last, and only when it is behind its pin.
+    assert upkeep.rstrip().endswith('version_ge "$(orca_version)" "${ORCA_VERSION}" || cmd_orca')
 
 
 def codex_config_check(path):
@@ -528,6 +548,396 @@ def test_dsh_check_requires_completed_guide_at_current_revision(state):
         check=False,
     )
     assert (result.returncode == 0) == (state == {"completed": True, "version": 1})
+
+
+# The worker stack of DeepSeek Harness (docs/adr/0016-dsh-worker-stack.md).
+SETUP = (DEPLOY / "setup.sh").read_text(encoding="utf-8")
+GATE = DEPLOY / "dsh-check-gate.sh"
+ORCA_BLOCK = (
+    "# >>> orca-managed-dsh-hooks (managed by Orca; do not edit) >>>\n"
+    "- insert:\n"
+    "    - id: orca-agent-hooks\n"
+    "      name: '@deepseek-ai/dsh-hooks-claude-code'\n"
+    "      config:\n"
+    "        configPath: '/example/.orca/agent-hooks/dsh-hooks.json'\n"
+    "# <<< orca-managed-dsh-hooks <<<\n"
+)
+
+
+def setup_pin(name):
+    match = re.search(rf"^{name}=(\S+)$", SETUP, re.M)
+    assert match, f"setup.sh has no {name} pin"
+    return match[1].strip('"')
+
+
+def dsh_skill_pins():
+    block = re.search(r"^DSH_SKILLS=\(\n(.*?)\n\)$", SETUP, re.M | re.S)
+    assert block, "setup.sh has no DSH_SKILLS list"
+    return [line.strip().strip('"').split() for line in block[1].splitlines()]
+
+
+def test_the_stack_is_pinned_to_exact_commits_versions_and_checksums():
+    upstream = (REPO_ROOT / "UPSTREAM.md").read_text(encoding="utf-8")
+    pins = dsh_skill_pins()
+    assert [repo for repo, *_ in pins] == [
+        "addyosmani/agent-skills",
+        "obra/superpowers",
+        "mattpocock/skills",
+    ]
+    names = []
+    for repo, commit, *paths in pins:
+        assert re.fullmatch(r"[0-9a-f]{40}", commit), f"{repo} is not pinned to a full commit"
+        assert commit in upstream, f"{repo} at {commit} has no UPSTREAM.md row"
+        assert paths and all(re.fullmatch(r"skills/[a-z0-9/-]+", path) for path in paths)
+        names += [path.rsplit("/", 1)[-1] for path in paths]
+    assert len(names) == len(set(names)) == 8, "two skills would share a folder in ~/.dsh/skills"
+    for name in ("AST_GREP_SHA256", "AGENTSVIEW_SHA256"):
+        assert re.fullmatch(r"[0-9a-f]{64}", setup_pin(name)), f"{name} is not a SHA-256"
+        assert setup_pin(name) in upstream, f"{name} has no UPSTREAM.md row"
+    for name in ("AST_GREP_VERSION", "AGENTSVIEW_VERSION"):
+        assert re.fullmatch(r"\d+\.\d+\.\d+", setup_pin(name)), f"{name} is not an exact version"
+    for name in ("DSH_LSP_INTEGRITY", "DSH_LSP_STDIO_INTEGRITY", "DSH_TOOL_LSP_INTEGRITY"):
+        assert re.fullmatch(r"sha512-[A-Za-z0-9+/]{86}==", setup_pin(name)), f"{name} is not sha512"
+        assert setup_pin(name) in upstream, f"{name} has no UPSTREAM.md row"
+
+
+def test_code_navigation_is_the_read_only_lsp_tool_on_the_worktrees_own_pyright(tmp_path):
+    run_config_writer("dsh_home_files", tmp_path)
+    block = (tmp_path / ".dsh/cordis.patch.yml").read_text(encoding="utf-8")
+    for package in ("dsh-lsp", "dsh-lsp-stdio", "dsh-tool-lsp"):
+        assert f"      name: '@deepseek-ai/{package}'\n" in block
+    assert "dsh-mcp-client" not in block, "the stack adds no MCP server"
+
+
+FAKE_SERVER = """#!/usr/bin/env python3
+import json, os, sys
+header = b""
+while not header.endswith(b"\\r\\n\\r\\n"):
+    header += sys.stdin.buffer.read(1)
+length = int(header.split(b":")[1])
+params = json.loads(sys.stdin.buffer.read(length))["params"]
+rest = sys.stdin.buffer.read()
+print(json.dumps({"rootUri": params["rootUri"], "folders": params["workspaceFolders"],
+                  "args": sys.argv[1:], "rest": rest.decode()}))
+"""
+
+
+def frame(message: dict) -> bytes:
+    body = json.dumps(message).encode()
+    return b"Content-Length: %d\r\n\r\n" % len(body) + body
+
+
+def test_the_lsp_server_runs_at_the_worktree_root_from_a_subdirectory(tmp_path):
+    # The provider starts the server in the session's directory and sends it as the workspace.
+    # From a subdirectory, the row's command must still find the worktree's own server and give
+    # it the worktree root, or pyright resolves none of the repository's imports.
+    run_config_writer("dsh_home_files", tmp_path)
+    block = (tmp_path / ".dsh/cordis.patch.yml").read_text(encoding="utf-8")
+    command = re.search(r"^            args: \['-c', '(.*)'\]$", block, re.M)
+    assert command, "no server command in the LSP provider row"
+    shim = tmp_path / ".dsh/lsp/dsh-lsp-root.py"
+    shim.parent.mkdir(parents=True)
+    shim.write_bytes((DEPLOY / "dsh-lsp-root.py").read_bytes())
+    repo = tmp_path / "worktree"
+    (repo / ".venv/bin").mkdir(parents=True)
+    (repo / "meridian").mkdir()
+    server = repo / ".venv/bin/pyright-langserver"
+    server.write_text(FAKE_SERVER)
+    server.chmod(0o755)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subdirectory = (repo / "meridian").resolve()
+    initialize = frame(
+        {
+            "jsonrpc": "2.0",
+            "id": 0,
+            "method": "initialize",
+            "params": {"rootUri": subdirectory.as_uri(), "workspaceFolders": []},
+        }
+    )
+    later = frame({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+    result = subprocess.run(
+        ["sh", "-c", command[1]],
+        cwd=subdirectory,
+        input=initialize + later,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    seen = json.loads(result.stdout)
+    root = repo.resolve().as_uri()
+    assert seen["rootUri"] == root and seen["folders"] == [{"uri": root, "name": "worktree"}]
+    assert seen["args"] == ["--stdio"]
+    assert seen["rest"] == later.decode(), "a message after initialize was changed"
+
+
+def test_the_root_shim_leaves_every_other_message_alone():
+    spec = importlib.util.spec_from_file_location("dsh_lsp_root", DEPLOY / "dsh-lsp-root.py")
+    assert spec and spec.loader
+    shim = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(shim)
+    for body in (b'{"jsonrpc":"2.0","method":"initialized","params":{}}', b"not json", b"[1]"):
+        assert shim.with_root(body, Path("/repo")) is body
+
+
+def write_patch(tmp_path, text):
+    path = tmp_path / ".dsh/cordis.patch.yml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_the_meridian_block_sits_above_orcas_block_and_leaves_it_alone(tmp_path):
+    rows = "- id: session-log-deepseek\n  config:\n    enabled: false\n"
+    old_model = (
+        "- id: agent-default-model\n  config:\n    model: old\n    provider: deepseek-official\n"
+    )
+    path = write_patch(tmp_path, rows + old_model + ORCA_BLOCK)
+    run_config_writer("dsh_home_files", tmp_path)
+    text = path.read_text(encoding="utf-8")
+    split = r"(?=# >>> meridian-managed)|(?<=# <<< meridian-managed <<<\n)"
+    before, ours, after = re.split(split, text)
+    assert before == rows, "the rows above the block changed, or the old model row stayed"
+    assert after == ORCA_BLOCK, "Orca's block is not byte-identical at the end of the file"
+    assert "    model: model\n" in ours and "model: old" not in text
+    assert "    - id: meridian-tool-lsp\n      name: '@deepseek-ai/dsh-tool-lsp'\n" in ours
+    gate = "    - id: meridian-check-gate\n      name: '@deepseek-ai/dsh-hooks-claude-code'\n"
+    assert gate in ours
+    once = path.read_bytes()
+    run_config_writer("dsh_home_files", tmp_path)
+    assert path.read_bytes() == once, "a second run changed the file"
+    run_config_writer("dsh_home_files", tmp_path, model="next")
+    text = path.read_text(encoding="utf-8")
+    assert "    model: next\n" in text and text.count("# >>> meridian-managed") == 1
+    assert text.endswith(ORCA_BLOCK)
+
+
+def test_the_meridian_block_is_written_into_a_new_patch_file(tmp_path):
+    run_config_writer("dsh_home_files", tmp_path)
+    text = (tmp_path / ".dsh/cordis.patch.yml").read_text(encoding="utf-8")
+    assert text.count("- id: agent-default-model\n") == 1
+    assert text.rstrip().endswith("# <<< meridian-managed <<<")
+
+
+def test_the_writer_refuses_an_unclosed_meridian_block(tmp_path):
+    path = write_patch(tmp_path, "# >>> meridian-managed >>>\n- id: x\n" + ORCA_BLOCK)
+    with pytest.raises(subprocess.CalledProcessError):
+        run_config_writer("dsh_home_files", tmp_path)
+    assert path.read_text(encoding="utf-8").endswith(ORCA_BLOCK)
+
+
+def gate_repo(tmp_path, meridian=True):
+    repo = tmp_path / "repo"
+    (repo / "meridian").mkdir(parents=True)
+    if meridian:
+        (repo / "meridian/boundary.py").write_text("")
+        (repo / "size-budget.toml").write_text("")
+    subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
+    (repo / "README").write_text("x\n")
+    commit(repo, "base")
+    # A stand-in for uv: the gate's check line passes or fails as the test says, and each call
+    # is logged, so a test can tell a skipped check from one that ran.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "uv").write_text(
+        '#!/bin/sh\necho "uv $*" | tee -a "$GATE_LOG"\n[ ! -e "$GATE_FAIL" ] || exit 1\n'
+    )
+    (bin_dir / "uv").chmod(0o755)
+    return repo, bin_dir
+
+
+def commit(repo, message):
+    git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-qm", message], check=True)
+
+
+def mark_origin_main(repo):
+    # The repository's origin/main is its current commit, as after a fetch.
+    subprocess.run(
+        ["git", "-C", str(repo), "update-ref", "refs/remotes/origin/main", "HEAD"], check=True
+    )
+
+
+def checks_run(repo) -> int:
+    log = repo.parent / "uv.log"
+    return log.read_text().count("uv sync") if log.exists() else 0
+
+
+def run_gate(repo, bin_dir, session="session-1", fail=None) -> dict | None:
+    env = {
+        "PATH": f"{bin_dir}:/usr/bin:/bin",
+        "HOME": str(repo.parent),
+        "GATE_FAIL": str(fail or repo.parent / "never"),
+        "GATE_LOG": str(repo.parent / "uv.log"),
+    }
+    result = subprocess.run(
+        ["bash", str(GATE)],
+        input=json.dumps({"session_id": session, "cwd": str(repo), "hook_event_name": "Stop"}),
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout) if result.stdout.strip() else None
+
+
+def blocked(decision: dict | None) -> dict:
+    assert decision is not None and decision["decision"] == "block", decision
+    return decision
+
+
+def test_the_gate_lets_a_clean_tree_or_another_repository_stop(tmp_path):
+    repo, bin_dir = gate_repo(tmp_path)
+    flag = tmp_path / "fail"
+    flag.write_text("")
+    assert run_gate(repo, bin_dir, fail=flag) is None, "a clean tree was blocked"
+    other, _ = gate_repo(tmp_path / "other", meridian=False)
+    (other / "README").write_text("changed\n")
+    assert run_gate(other, bin_dir, fail=flag) is None, "another repository was blocked"
+
+
+def test_the_gate_blocks_a_failing_change_at_most_twice_per_session(tmp_path):
+    repo, bin_dir = gate_repo(tmp_path)
+    (repo / "README").write_text("changed\n")
+    flag = tmp_path / "fail"
+    flag.write_text("")
+    first = blocked(run_gate(repo, bin_dir, fail=flag))
+    assert "block 1 of 2" in first["reason"]
+    assert "uv run pytest" in first["reason"], "the failing output is not in the reason"
+    assert "block 2 of 2" in blocked(run_gate(repo, bin_dir, fail=flag))["reason"]
+    assert run_gate(repo, bin_dir, fail=flag) is None, "the gate blocked a third time"
+    blocked(run_gate(repo, bin_dir, session="session-2", fail=flag))
+
+
+def test_a_pass_lets_the_turn_end_and_resets_the_count(tmp_path):
+    repo, bin_dir = gate_repo(tmp_path)
+    (repo / "README").write_text("changed\n")
+    flag = tmp_path / "fail"
+    flag.write_text("")
+    blocked(run_gate(repo, bin_dir, fail=flag))
+    assert run_gate(repo, bin_dir) is None, "a passing check line was blocked"
+    (repo / "README").write_text("changed again\n")
+    assert "block 1 of 2" in blocked(run_gate(repo, bin_dir, fail=flag))["reason"]
+
+
+def test_the_gate_checks_committed_work_ahead_of_origin_main(tmp_path):
+    repo, bin_dir = gate_repo(tmp_path)
+    mark_origin_main(repo)
+    flag = tmp_path / "fail"
+    flag.write_text("")
+    assert run_gate(repo, bin_dir, fail=flag) is None, "work equal to origin/main was blocked"
+    assert checks_run(repo) == 0
+    (repo / "README").write_text("delivered\n")
+    commit(repo, "the work")
+    # A clean tree with a commit ahead of origin/main: the gate runs and blocks the failure.
+    assert "block 1 of 2" in blocked(run_gate(repo, bin_dir, fail=flag))["reason"]
+    flag.unlink()
+    assert run_gate(repo, bin_dir) is None and checks_run(repo) == 2
+    # The same state after a pass is not checked again, even with the check line now failing.
+    flag.write_text("")
+    assert run_gate(repo, bin_dir, fail=flag) is None, "a state that passed was blocked"
+    assert checks_run(repo) == 2, "a state that passed was checked again"
+    # A new commit after the pass is a new state: the gate runs again.
+    (repo / "README").write_text("delivered, then fixed\n")
+    commit(repo, "a follow-up")
+    blocked(run_gate(repo, bin_dir, fail=flag))
+    assert checks_run(repo) == 3
+
+
+def test_without_origin_main_only_a_dirty_tree_counts(tmp_path):
+    repo, bin_dir = gate_repo(tmp_path)
+    (repo / "README").write_text("delivered\n")
+    commit(repo, "the work")
+    flag = tmp_path / "fail"
+    flag.write_text("")
+    assert run_gate(repo, bin_dir, fail=flag) is None and checks_run(repo) == 0
+    (repo / "README").write_text("uncommitted\n")
+    blocked(run_gate(repo, bin_dir, fail=flag))
+
+
+def test_the_gate_script_is_executable_in_git():
+    entry = subprocess.run(
+        ["git", "ls-files", "-s", "--", "deploy/wsl/dsh-check-gate.sh"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert entry.startswith("100755 "), f"the gate script is not executable in git: {entry!r}"
+
+
+def run_release_binaries(tmp_path):
+    # dsh_release_binaries on a fixture home: curl is a stand-in that serves a fake agentsview
+    # release whose checksum the run is given; ast-grep is already at its pin.
+    version = setup_pin("AGENTSVIEW_VERSION")
+    fake = tmp_path / "release" / "agentsview"
+    fake.parent.mkdir(exist_ok=True)
+    fake.write_text(f'#!/bin/sh\necho "agentsview v{version} (fake)"\n')
+    fake.chmod(0o755)
+    tarball = tmp_path / "release" / "agentsview.tar.gz"
+    with tarfile.open(tarball, "w:gz") as archive:
+        archive.add(fake, arcname="agentsview")
+    bin_dir = tmp_path / "fakebin"
+    bin_dir.mkdir(exist_ok=True)
+    (bin_dir / "curl").write_text(
+        f'#!/bin/sh\necho "$@" >> "{tmp_path}/curl.log"\ncp "{tarball}" "$2"\n'
+    )
+    (bin_dir / "curl").chmod(0o755)
+    ast_grep = tmp_path / ".local/bin/ast-grep"
+    ast_grep.parent.mkdir(parents=True, exist_ok=True)
+    ast_grep.write_text(f'#!/bin/sh\necho "ast-grep {setup_pin("AST_GREP_VERSION")}"\n')
+    ast_grep.chmod(0o755)
+    one_liner = re.search(r"^ast_grep_version\(\) \{.*\}$", SETUP, re.M)
+    assert one_liner, "setup.sh has no ast_grep_version"
+    functions = "\n".join(
+        [one_liner[0]]
+        + [
+            f"{f}() {{\n{setup_function_body(f)}\n}}"
+            for f in ("agentsview_version", "dsh_release_binaries")
+        ]
+    ).replace("${HOME}", "${fixture_root}")
+    digest = hashlib.sha256(tarball.read_bytes()).hexdigest()
+    subprocess.run(
+        [
+            "bash",
+            "-eu",
+            "-o",
+            "pipefail",
+            "-c",
+            f"fixture_root=$1\nAST_GREP_VERSION={setup_pin('AST_GREP_VERSION')}\n"
+            f"AGENTSVIEW_VERSION={version}\nAGENTSVIEW_SHA256={digest}\nAGENTSVIEW_URL=fake\n"
+            'fail() { echo "$*" >&2; exit 1; }\n' + functions + "\ndsh_release_binaries",
+            "test-release",
+            str(tmp_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "TMPDIR": str(tmp_path)},
+    )
+    launcher = tmp_path / ".local/bin/agentsview"
+    return launcher, subprocess.run([str(launcher), "--version"], capture_output=True, text=True)
+
+
+def test_a_standalone_agentsview_at_the_pin_does_not_skip_the_private_install(tmp_path):
+    # A standalone agentsview at ~/.local/bin, at the pinned version, is not the private binary.
+    standalone = tmp_path / ".local/bin/agentsview"
+    standalone.parent.mkdir(parents=True)
+    standalone.write_text(f'#!/bin/sh\necho "agentsview v{setup_pin("AGENTSVIEW_VERSION")}"\n')
+    standalone.chmod(0o755)
+    launcher, result = run_release_binaries(tmp_path)
+    assert (tmp_path / ".local/libexec/meridian/agentsview").is_file(), "the install was skipped"
+    assert result.returncode == 0 and "(fake)" in result.stdout, result.stderr
+    assert "AGENTSVIEW_TELEMETRY_ENABLED=0" in launcher.read_text()
+
+
+def test_an_installed_private_agentsview_at_the_pin_is_not_downloaded_again(tmp_path):
+    run_release_binaries(tmp_path)
+    (tmp_path / "curl.log").unlink()
+    _, result = run_release_binaries(tmp_path)
+    assert result.returncode == 0
+    assert not (tmp_path / "curl.log").exists(), "the pinned private binary was downloaded again"
 
 
 def setup_value(name):
@@ -659,3 +1069,51 @@ def test_ocr_comes_from_the_release_binary_not_the_self_updating_npm_package():
         .endswith("/releases/download/v${OCR_VERSION}/opencodereview-linux-amd64")
     )
     assert "@alibaba-group/open-code-review" not in (DEPLOY / "setup.sh").read_text()
+
+
+def start_shim(*command: str) -> subprocess.Popen[bytes]:
+    # The client's input stays open, as dsh-lsp-stdio keeps it until shutdown.
+    return subprocess.Popen(
+        [sys.executable, "-I", str(DEPLOY / "dsh-lsp-root.py"), "/", *command],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def finish(shim: subprocess.Popen[bytes], timeout: float) -> int:
+    try:
+        return shim.wait(timeout=timeout)
+    finally:
+        if shim.poll() is None:
+            shim.kill()
+            shim.wait()
+        for stream in (shim.stdin, shim.stdout, shim.stderr):
+            if stream:
+                stream.close()
+
+
+def test_the_shim_exits_with_the_server_while_the_client_keeps_its_input_open():
+    started = time.monotonic()
+    assert finish(start_shim("/bin/true"), timeout=5) == 0
+    assert time.monotonic() - started < 2, "the shim outlived its server"
+    assert finish(start_shim("sh", "-c", "exit 3"), timeout=5) == 3
+
+
+def test_a_header_block_without_content_length_ends_the_session_cleanly():
+    shim = start_shim("cat")
+    assert shim.stdin is not None
+    shim.stdin.write(b"X-Other: 1\r\n\r\n")
+    shim.stdin.flush()
+    # The shim closes the server's input; cat ends, and the shim returns its status.
+    assert finish(shim, timeout=5) == 0
+
+
+def test_sigterm_ends_the_shim_and_its_server():
+    shim = start_shim("sh", "-c", "echo $$; exec sleep 30")
+    assert shim.stdout is not None
+    server = int(shim.stdout.readline())
+    shim.send_signal(signal.SIGTERM)
+    assert finish(shim, timeout=5) == 128 + signal.SIGTERM
+    with pytest.raises(ProcessLookupError):
+        os.kill(server, 0)

@@ -43,9 +43,10 @@ from nautilus_trader.model import (
 from nautilus_trader.persistence import DataCatalogConfig
 
 from meridian import boundary
+from meridian.alpaca.universe import UniverseTimeline
 from meridian.strategy_template.params import TemplateParams
 from meridian.strategy_template.report import _finite, require_research
-from meridian.strategy_template.sim import SCENARIOS, SIM_PARAMS, path
+from meridian.strategy_template.sim import SCENARIOS, SIM_PARAMS, path, synthetic_universe
 from meridian.strategy_template.sim import problems as template_problems
 
 from . import catalog
@@ -103,8 +104,16 @@ def run_set(
     report_dir: Path | None = None,
     inspect: Inspect | None = None,
     template_type: type[GatedBreakout] = GatedBreakout,
+    start_ns: int = catalog.START_NS,
+    universe: UniverseTimeline | None = None,
 ) -> dict[str, Any]:
-    """One node, one run, one parameter set; the result as plain data."""
+    """One node, one run, one parameter set; the result as plain data.
+
+    The template enters only symbols on a mover list received before the entry
+    (`meridian/alpaca/universe.py`). By default that list comes from synthetic screener
+    responses read at `start_ns`, the catalog's first quote (the template's own
+    `synthetic_universe`: the same parser and selector as the read-only client, no network).
+    """
     ids = catalog.instrument_ids(SCENARIOS, copies)
     config = run_config(models, catalog_path, [*ids, BRACKET])
     node = BacktestNode([config])
@@ -112,6 +121,7 @@ def run_set(
         node.build()
         inputs = {name: spec[1:] for name, spec in SCENARIOS.items()}
         template = template_type(params or TemplateParams.from_config(SIM_PARAMS), [*ids], inputs)
+        template.universe = universe or synthetic_universe([*ids], read_at_ns=start_ns)
         bracket = BracketProbe(BRACKET, **BRACKET_ARGS)
         node.add_strategy(config.id, template)
         node.add_strategy(config.id, bracket)

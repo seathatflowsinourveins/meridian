@@ -84,12 +84,30 @@ run per item (`docs/adr/README.md`).
 | The few-line instruction file | the four maintained sources named in section 1 | add |
 | Shell-output compression | `rtk-ai/rtk` | measure |
 | Status line: context, plan limits, activity, and token and cost accounting | `jarrodwatts/claude-hud` (ADR 0015) | in use |
+| Token and cost accounting for DeepSeek Harness | `kenn-io/agentsview` (reads dsh's sessions) | in use for DeepSeek Harness (ADR 0016) |
 | Write-less-code skill | `DietrichGebert/ponytail` | measure |
+| DeepSeek Harness skills: spec, self-review, source reading, test first, root cause, proof before "done", research, the pull request body | `addyosmani/agent-skills`, `obra/superpowers`, `mattpocock/skills` (single folders at a pin) | in use for DeepSeek Harness (ADR 0016) |
+| Structural search | `ast-grep/ast-grep` | in use for DeepSeek Harness (ADR 0016) |
+
+2026-11-13: ADR 0016 (a stack ADR) adds the skills, structural-search and accounting rows for
+DeepSeek Harness. `kenn-io/agentsview` holds accounting for dsh, whose sessions claude-hud
+and `ccusage/ccusage` do not read.
+`anthropics/claude-plugins-official`'s skill-creator was refused: its scripts call another
+model service.
 
 2026-11-14: token and cost accounting is held by claude-hud, adopted on 2026-11-13 (ADR 0015): the
 session's cost, a daily and weekly ledger, session tokens and both usage windows, all from
 Claude Code's own status payload. `ccusage/ccusage` is not installed: one upstream per job. It
 would add per-model reports over past transcripts, which nothing here needs yet.
+
+2026-11-14: `DietrichGebert/ponytail` is not installed on Claude Code. Read at v5.3.3 (commit
+`7801d061243d7b753bad0e0b3c057cd250b11755`, verified on GitHub, the commit the Codex stack
+pins): for Claude Code it ships three hooks that add its ruleset and a codebase map to every
+session and every subagent, a band module that writes a ledger after each turn, and a prompt
+that makes Claude offer to replace `statusLine`, which claude-hud holds (ADR 0015). On Claude
+Code the cleanup and write-less job is left to the oh-my-claudecode stack now in review, which
+keeps its `ai-slop-cleaner` skill for it; on Codex ponytail holds the job. One upstream per
+job on each runtime. Revisit if that stack is not adopted.
 
 ### Layer 8, memory and retrieval
 | Job | Rests on | State |
@@ -97,6 +115,12 @@ would add per-model reports over past transcripts, which nothing here needs yet.
 | Memory and code search | files in git, ripgrep, pyright | in use (they beat the measured alternative, ADR 0001) |
 | Shared task state | `gastownhall/beads` | measure, only when workers collide over task state |
 | A corpus of broker documents | `microsoft/markitdown`, `VectifyAI/PageIndex` | add, when there is a corpus |
+| Code navigation for DeepSeek Harness | the `lsp` tool of `deepseek-ai/deepseek-harness` (`dsh-lsp` packages) on the worktree's pyright | in use (ADR 0016) |
+| Its runner-up, not installed | `oraios/serena` | watch |
+
+2026-11-13: ADR 0016 adds dsh's official `lsp` tool for code navigation (dsh has no LSP of its
+own). `oraios/serena` is the runner-up: the official package does the job at 170 always-on
+tokens, against 2,927 for serena.
 
 ## Placement of the starred repositories
 
@@ -104,7 +128,11 @@ The owner's starred list was read on 2026-11-13 with `gh api user/starred --pagi
 
 - Starred repositories returned by the command: 393
 - Rows with `starred` = yes: 393
-- Rows with `starred` = no: 17
+- Rows with `starred` = no: 18
+
+2026-11-13 (ADR 0016): `addyosmani/agent-skills`, `obra/superpowers` and `kenn-io/agentsview`
+move into Layer 7 and `oraios/serena` into Layer 8. `ast-grep/ast-grep` (not starred) is added,
+so the rows with `starred` = no go from 17 to 18.
 
 | repository | group | in architecture | starred |
 |---|---|---|---|
@@ -160,12 +188,13 @@ The owner's starred list was read on 2026-11-13 with `gh api user/starred --pagi
 | `coleam00/Archon` | Layer 6, orchestration and review | yes | yes |
 | `agentskills/agentskills` | Layer 7, skills and context | yes | yes |
 | `rtk-ai/rtk` | Layer 7, skills and context | yes | yes |
+| `ast-grep/ast-grep` | Layer 7, skills and context | yes | no |
 | `ccusage/ccusage` | Context and status tools | no | no |
 | `DietrichGebert/ponytail` | Layer 7, skills and context | yes | yes |
 | `gastownhall/beads` | Layer 8, memory and retrieval | yes | yes |
 | `microsoft/markitdown` | Layer 8, memory and retrieval | yes | yes |
 | `VectifyAI/PageIndex` | Layer 8, memory and retrieval | yes | yes |
-| `obra/superpowers` | Measured here and not adopted | no | yes |
+| `obra/superpowers` | Layer 7, skills and context | yes | yes |
 | `EveryInc/compound-engineering-plugin` | Measured here and not adopted | no | yes |
 | `openai/plugins` | Measured here and not adopted | no | yes |
 | `Yeachan-Heo/oh-my-codex` | Measured here and not adopted | no | yes |
@@ -302,7 +331,7 @@ The owner's starred list was read on 2026-11-13 with `gh api user/starred --pagi
 | `weave-os/router` | Gateways | no | yes |
 | `NVIDIA-NeMo/Switchyard` | Gateways | no | yes |
 | `affaan-m/ECC` | Skill packs and frameworks | no | yes |
-| `addyosmani/agent-skills` | Skill packs and frameworks | no | yes |
+| `addyosmani/agent-skills` | Layer 7, skills and context | yes | yes |
 | `wshobson/agents` | Skill packs and frameworks | no | yes |
 | `Yeachan-Heo/oh-my-claudecode` | Skill packs and frameworks | no | yes |
 | `SuperClaude-Org/SuperClaude_Framework` | Skill packs and frameworks | no | yes |
@@ -332,7 +361,7 @@ The owner's starred list was read on 2026-11-13 with `gh api user/starred --pagi
 | `OthmanAdi/planning-with-files` | Context and status tools | no | yes |
 | `ayghri/i-have-adhd` | Context and status tools | no | yes |
 | `toon-format/toon` | Context and status tools | no | yes |
-| `kenn-io/agentsview` | Context and status tools | no | yes |
+| `kenn-io/agentsview` | Layer 7, skills and context | yes | yes |
 | `getagentseal/codeburn` | Context and status tools | no | yes |
 | `graykode/abtop` | Context and status tools | no | yes |
 | `jarrodwatts/claude-hud` | Layer 7, skills and context | yes | yes |
@@ -439,7 +468,7 @@ The owner's starred list was read on 2026-11-13 with `gh api user/starred --pagi
 | `opendatalab/MinerU` | Document stacks, for a later corpus | no | yes |
 | `HKUDS/RAG-Anything` | Document stacks, for a later corpus | no | yes |
 | `andrewyng/context-hub` | Document stacks, for a later corpus | no | yes |
-| `oraios/serena` | Code graphs and search servers | no | yes |
+| `oraios/serena` | Layer 8, memory and retrieval | yes | yes |
 | `colbymchenry/codegraph` | Code graphs and search servers | no | yes |
 | `DeusData/codebase-memory-mcp` | Code graphs and search servers | no | yes |
 | `tirth8205/code-review-graph` | Code graphs and search servers | no | yes |
