@@ -344,7 +344,7 @@ def test_a_start_refused_by_its_last_stage_reads_nothing_more_and_keeps_its_reco
     client = rig.clients[0]
     assert client._started  # the order and position stages were read before the fill stage failed
     assert client.report_trace["fills"].reason == reason
-    assert (client._gap, client.recoveries) == (0, 0)
+    assert (client._gap, client.recoveries) == (1, 0)  # only connect creates a gap
     assert len(rig.venue.listings) == 2  # the order stage's and the fill stage's own
     orders, positions = client.report_trace["orders"], client.report_trace["positions"]
     assert (orders.rows, orders.cancelled, orders.failures) == (1, False, 0)

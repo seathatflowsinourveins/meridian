@@ -1,0 +1,12 @@
+# ADR 0014: You should know for Claude Code (plan 8.6)
+**Status: adopted.** Decided 2026-11-13 on the owner's instruction, not on a measurement.
+
+**Need:** surface omissions during long tasks, alongside the existing review workflow.
+**Candidate:** Anthropic's `cc-plugin-you-should-know@builtin`, bundled with the pinned Claude Code 2.1.322; no independent plugin pin. [Built-in mods](https://code.claude.com/docs/en/plugins/mods/overview#mods-built-into-claude-code), read 2026-11-13; proprietary, under Claude Code's [applicable Anthropic terms](https://code.claude.com/docs/en/legal-and-compliance#license).
+**Advisories:** [Claude Code's advisories page](https://github.com/anthropics/claude-code/security/advisories), read 2026-11-13, lists runtime issues including plugin commit-pin bypass; the visible entries name no You should know issue. This was not a complete advisory audit.
+**What it installs:** no separate download or MCP server; a built-in mod and a side agent with no tools. It sends conversation/tool results, its instructions and recent notes to the session's model; note history persists under `~/.claude/plugins/store/`. [Behavior and cost](https://code.claude.com/docs/en/interactive-mode#you-should-know-suggestions), read 2026-11-13.
+**Always-on context:** enabled for every Claude Code session in the distro through user `enabledPlugins`, subject to upstream availability prerequisites; before/after context was not measured. Per check, conversation uses the session's prompt-cache terms; several thousand instruction tokens and the reply are billed in full, counting toward plan usage or API costs. No measured token or money figure is claimed.
+**With and without:** no A/B run was made; no measured benefit, latency or cost comparison exists.
+**Decision:** adopted on the owner's instruction of 2026-11-13; evidence is that instruction and upstream documentation, not a demonstrated improvement. Setup enables the two named plugins; its check still refuses any third enabled name.
+**Install:** already bundled; the owner had it enabled in user settings. For the pinned runtime, `claude plugin enable cc-plugin-you-should-know@builtin`; no plugin command or user-settings write was run for this ADR.
+**Removal:** `claude plugin disable cc-plugin-you-should-know@builtin`; built-in mods cannot be uninstalled separately. This check accepts disabling it; running the settings-writing setup step enables it again.
