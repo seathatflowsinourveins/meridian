@@ -51,6 +51,7 @@ from nautilus_trader.model import (
     ClientId,
     ClientOrderId,
     InstrumentId,
+    OrderCancelRejected,
     OrderReleased,
     OrderSide,
     Price,
@@ -225,6 +226,11 @@ class TrailingTemplate(Strategy):
             return
         if isinstance(event, OrderReleased):
             self._on_release(book, event.ts_event)
+        if isinstance(event, OrderCancelRejected):
+            # A definitive refusal: the order is still working. Clear the latch so the next
+            # quote may cancel again; an exit is never left resting unmanaged.
+            book.cancel_sent = False
+            book.refusals["cancel rejected"] += 1
         order = self.cache.order(event.client_order_id)
         if order is not None and order.is_closed:
             self._resolve(book, order, event.ts_event)
@@ -232,7 +238,7 @@ class TrailingTemplate(Strategy):
     def on_position_event(self, event: Any) -> None:
         book = self.books.get(event.instrument_id)
         if book is not None:
-            self._check_flat(book, event.ts_event)
+            self._check_flat(book)
 
     # The state machine.
     def _maybe_enter(self, book: SymbolBook, quote: QuoteTick) -> None:
@@ -267,7 +273,10 @@ class TrailingTemplate(Strategy):
             return "re-entry off", 0
         if book.flat_receipt_ns is None:  # R1
             return "no flat receipt", 0
-        if quote.ts_event < book.flat_receipt_ns + int(p.cooldown_seconds * NS_PER_SECOND):
+        # Both sides on the engine clock: the receipt is when flatness was confirmed here,
+        # not the venue's execution time, which a late notification would backdate.
+        cooldown_ns = int(p.cooldown_seconds * NS_PER_SECOND)
+        if self.clock.timestamp_ns() < book.flat_receipt_ns + cooldown_ns:
             return "cooldown", 0
         rank = self.rank(book)
         if rank is None:  # R5
@@ -386,15 +395,15 @@ class TrailingTemplate(Strategy):
         book.sold += filled
         book.order_id = None
         book.phase = Phase.EXITING
-        self._check_flat(book, ts_ns)
+        self._check_flat(book)
 
-    def _check_flat(self, book: SymbolBook, ts_ns: int) -> None:
+    def _check_flat(self, book: SymbolBook) -> None:
         """R1's flat receipt: net zero and every order final; unknown or partial is not flat."""
         if book.phase is not Phase.EXITING or self._order(book) is not None:
             return
         if book.held - book.sold > 0 or not self._is_flat(book.instrument_id):
             return
-        book.phase, book.flat_receipt_ns = Phase.FLAT, ts_ns
+        book.phase, book.flat_receipt_ns = Phase.FLAT, self.clock.timestamp_ns()
         book.exits += 1
         book.events.append("flat")
 

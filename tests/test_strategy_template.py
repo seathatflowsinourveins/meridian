@@ -7,7 +7,17 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from nautilus_trader.model import InstrumentId, OrderSide, OrderType, Price, Quantity, TimeInForce
+from nautilus_trader.core import UUID4
+from nautilus_trader.model import (
+    InstrumentId,
+    OrderCancelRejected,
+    OrderSide,
+    OrderType,
+    Price,
+    Quantity,
+    StrategyId,
+    TimeInForce,
+)
 
 from meridian.alpaca.wire import submit_payload
 from meridian.strategy_template import ActionLog, Phase, TemplateParams, TrailingTemplate, sim
@@ -258,3 +268,71 @@ raise SystemExit(sim.main([]))
     assert "PASS" in result.stdout and "SIMULATION" in result.stdout
     written = [p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*") if p.is_file()]
     assert len(written) == 1 and written[0].startswith("runs/M4-template-")
+
+
+class RejectsFirstCancel(sim.SyntheticBreakout):
+    """The first cancel is answered with a definitive OrderCancelRejected, not sent."""
+
+    rejected = 0
+
+    def _cancel(self, book, what, ts_ns):
+        if self.rejected:
+            return super()._cancel(book, what, ts_ns)
+        self.rejected += 1
+        book.cancel_sent = True
+        self.actions.record(ts_ns, "CANCEL", book.symbol, what)
+        assert book.order_id is not None and self.trader_id is not None
+        self.on_order_event(
+            OrderCancelRejected(
+                self.trader_id,
+                StrategyId("MERIDIAN-M4SIM"),
+                book.instrument_id,
+                book.order_id,
+                "synthetic definitive refusal",
+                UUID4(),
+                ts_ns,
+                ts_ns,
+                False,
+            )
+        )
+
+
+def test_a_rejected_cancel_does_not_abandon_the_exit():
+    _, seen = run({"GAP": sim.SCENARIOS["GAP"]}, strategy_type=RejectsFirstCancel)
+    gap = books_by_name(seen)["GAP"]
+    assert gap.refusals["cancel rejected"] == 1
+    # The next quote cancels again; the remainder is re-priced and the symbol ends flat.
+    assert gap.phase is Phase.FLAT and gap.exits == 1 and "reprice" in gap.events
+    sells = [o.status.name for o in seen["orders"] if o.side == OrderSide.SELL]
+    assert sells == ["CANCELED", "FILLED"]
+
+
+class Late:
+    """An event whose venue time is ten seconds before the engine handles it."""
+
+    def __init__(self, event):
+        self._event = event
+
+    def __getattr__(self, name):
+        return getattr(self._event, name)
+
+    @property
+    def ts_event(self):
+        return self._event.ts_event - 10 * NS_PER_SECOND
+
+
+class LateFillNotices(sim.SyntheticBreakout):
+    def on_order_event(self, event):
+        late = type(event).__name__ in {"OrderFilled", "OrderCanceled"}
+        super().on_order_event(Late(event) if late else event)
+
+    def on_position_event(self, event):
+        super().on_position_event(Late(event))
+
+
+def test_the_cooldown_runs_from_the_flat_receipt_on_the_engine_clock():
+    _, seen = run({"REENTRY": sim.SCENARIOS["REENTRY"]}, strategy_type=LateFillNotices)
+    book = books_by_name(seen)["REENTRY"]
+    assert book.flat_receipt_ns == book.releases[0]  # confirmed when handled, not backdated
+    cooldown = int(PARAMS.cooldown_seconds * NS_PER_SECOND)
+    assert len(book.entries) == 2 and book.entries[1] >= book.flat_receipt_ns + cooldown
