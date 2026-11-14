@@ -63,7 +63,7 @@ rules: keep owner-only paths (`risk/`, `*.contract.json`, `upstream/`, `local/`)
 
 **Skipped by category (5,130 entries), one reason each:** `ui` (2,202) and `theme` (400): panels
 and looks for the Web UI or desktop clients, while workers here run `dsh-tui` or headless;
-`model` (552): other providers, and a new provider is a paid service or account (`AGENTS.md`);
+`model` (552): other providers, and a new provider is a paid service or account (`docs/HANDBOOK.md`, Rules);
 `notify` (369) and `remote` (316): outbound channels and remote control, while Orca carries a
 worker's messages; `fun` (362), `voice` (148), `identity` (132): no job here; `browser` (219):
 browsing, the reverse of job (b); `vision` (199): images; `market` (143): installs plugins, a
