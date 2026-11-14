@@ -1,0 +1,191 @@
+{
+  "actual_setup_twice_identical": true,
+  "skills": [
+    "ai-slop-cleaner",
+    "autopilot",
+    "autoresearch",
+    "cancel",
+    "deep-interview",
+    "omc-plan",
+    "pr",
+    "ralph",
+    "ralplan",
+    "team",
+    "verify"
+  ],
+  "agents": [
+    "analyst",
+    "architect",
+    "code-reviewer",
+    "critic",
+    "debugger",
+    "designer",
+    "executor",
+    "explore",
+    "planner",
+    "security-reviewer",
+    "test-engineer",
+    "verifier",
+    "writer"
+  ],
+  "listing": {
+    "before_skills": {
+      "characters": 31600,
+      "bytes": 31700,
+      "tokens": 7551
+    },
+    "after_skills": {
+      "characters": 2686,
+      "bytes": 2688,
+      "tokens": 672
+    },
+    "before_agents": {
+      "characters": 2864,
+      "bytes": 2866,
+      "tokens": 631
+    },
+    "after_agents": {
+      "characters": 1896,
+      "bytes": 1898,
+      "tokens": 429
+    }
+  },
+  "instructions": {
+    "characters": 7269,
+    "bytes": 7311,
+    "tokens": 1783
+  },
+  "hook_timing": {
+    "UserPromptSubmit/keyword-detector.mjs": {
+      "wrapped": {
+        "median_ms": 87.1,
+        "p95_ms": 90.9,
+        "max_ms": 92.53,
+        "samples": 32
+      },
+      "direct": {
+        "median_ms": 50.53,
+        "p95_ms": 58.56,
+        "max_ms": 64.83,
+        "samples": 32
+      }
+    },
+    "SessionStart/session-start.mjs": {
+      "wrapped": {
+        "median_ms": 79.22,
+        "p95_ms": 82.99,
+        "max_ms": 84.88,
+        "samples": 32
+      },
+      "direct": {
+        "median_ms": 40.01,
+        "p95_ms": 45.98,
+        "max_ms": 46.3,
+        "samples": 32
+      }
+    },
+    "PreToolUse/pre-tool-use.mjs": {
+      "wrapped": {
+        "median_ms": 75.24,
+        "p95_ms": 78.13,
+        "max_ms": 81.83,
+        "samples": 32
+      },
+      "direct": {
+        "median_ms": 38.35,
+        "p95_ms": 41.94,
+        "max_ms": 41.95,
+        "samples": 32
+      }
+    },
+    "PostToolUse/post-tool-use.mjs": {
+      "wrapped": {
+        "median_ms": 79.58,
+        "p95_ms": 83.26,
+        "max_ms": 84.25,
+        "samples": 32
+      },
+      "direct": {
+        "median_ms": 44.63,
+        "p95_ms": 47.42,
+        "max_ms": 47.49,
+        "samples": 32
+      }
+    },
+    "PostToolUseFailure/post-tool-use-failure.mjs": {
+      "wrapped": {
+        "median_ms": 79.44,
+        "p95_ms": 83.74,
+        "max_ms": 84.07,
+        "samples": 32
+      },
+      "direct": {
+        "median_ms": 43.14,
+        "p95_ms": 47.38,
+        "max_ms": 47.63,
+        "samples": 32
+      }
+    },
+    "Stop/persistent-mode.mjs": {
+      "wrapped": {
+        "median_ms": 87.87,
+        "p95_ms": 93.6,
+        "max_ms": 93.76,
+        "samples": 32
+      },
+      "direct": {
+        "median_ms": 48.82,
+        "p95_ms": 53.74,
+        "max_ms": 54.43,
+        "samples": 32
+      }
+    },
+    "Stop/code-simplifier.mjs": {
+      "wrapped": {
+        "median_ms": 74.7,
+        "p95_ms": 80.62,
+        "max_ms": 81.77,
+        "samples": 32
+      },
+      "direct": {
+        "median_ms": 36.61,
+        "p95_ms": 41.37,
+        "max_ms": 41.41,
+        "samples": 32
+      }
+    },
+    "SessionEnd/session-end.mjs": {
+      "wrapped": {
+        "median_ms": 35.76,
+        "p95_ms": 37.87,
+        "max_ms": 38.15,
+        "samples": 32
+      },
+      "direct": {
+        "median_ms": 33.79,
+        "p95_ms": 38.64,
+        "max_ms": 39.02,
+        "samples": 32
+      }
+    }
+  },
+  "profile": {
+    "prose_has_no_trigger": true,
+    "profile_activated": true,
+    "owner_question_releases_stop": true,
+    "orca_ask_releases_stop": true,
+    "ralplan_advanced_once": true,
+    "execution_advanced_once": true,
+    "ralph_advanced_once": true,
+    "qa_advanced_once": true,
+    "complete_is_inactive": true,
+    "next_stop_released": true
+  },
+  "remove_restores_before_files": true,
+  "npm_removed": true,
+  "runtime_sample_files_after_remove": [
+    ".claude/projects/bench/bench.jsonl"
+  ],
+  "python": "3.14.4",
+  "node": "v24.22.3"
+}
