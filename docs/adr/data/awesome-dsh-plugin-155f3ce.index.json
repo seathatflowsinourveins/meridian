@@ -1,0 +1,104 @@
+{
+  "source": "https://github.com/awesome-dsh-plugin/awesome-dsh-plugin",
+  "commit": "155f3cee4ac4089b576837a10ffa3c93785c583f",
+  "commit_date": "2026-11-13T23:20:10Z",
+  "readme_sha256": "b60f4df586bc9d6b16223c468d483f2f841ef03d91d38e344b2bafe6e412f3ba",
+  "readme_bytes": 3973361,
+  "date_read": "2026-11-13",
+  "entry_count": 10974,
+  "section_counts": [
+    {
+      "section": "AGI Architecture Exploration",
+      "count": 74
+    },
+    {
+      "section": "UI Enhancements",
+      "count": 2202
+    },
+    {
+      "section": "Usage & Billing",
+      "count": 589
+    },
+    {
+      "section": "Themes & Appearance",
+      "count": 400
+    },
+    {
+      "section": "Models & Providers",
+      "count": 552
+    },
+    {
+      "section": "Identity & Communication",
+      "count": 132
+    },
+    {
+      "section": "Sessions & Messages",
+      "count": 844
+    },
+    {
+      "section": "Memory",
+      "count": 473
+    },
+    {
+      "section": "Tools & Capabilities",
+      "count": 1503
+    },
+    {
+      "section": "WSL & Windows Interop",
+      "count": 88
+    },
+    {
+      "section": "Browser & Web",
+      "count": 219
+    },
+    {
+      "section": "Vision & Multimodal",
+      "count": 199
+    },
+    {
+      "section": "Voice & Audio",
+      "count": 148
+    },
+    {
+      "section": "Docs & Rendering",
+      "count": 207
+    },
+    {
+      "section": "Skills",
+      "count": 393
+    },
+    {
+      "section": "Workflow & Automation",
+      "count": 658
+    },
+    {
+      "section": "Git & Code Review",
+      "count": 194
+    },
+    {
+      "section": "Notifications & Integrations",
+      "count": 369
+    },
+    {
+      "section": "Development & Runtime",
+      "count": 626
+    },
+    {
+      "section": "Security & Permissions",
+      "count": 283
+    },
+    {
+      "section": "Remote & Mobile",
+      "count": 316
+    },
+    {
+      "section": "Plugin Markets & Managers",
+      "count": 143
+    },
+    {
+      "section": "Just for Fun",
+      "count": 362
+    }
+  ],
+  "full_json_sha256": "8d4d55f9153fabc86ab37ea93313370250a50d8b9ed68a0dfe2ea51e1a4126b1"
+}
