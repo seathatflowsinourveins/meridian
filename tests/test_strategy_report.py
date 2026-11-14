@@ -7,7 +7,6 @@ import sys
 from collections import defaultdict
 from decimal import Decimal
 from html.parser import HTMLParser
-from importlib.util import find_spec
 from pathlib import Path
 
 import pytest
@@ -16,8 +15,6 @@ from meridian import boundary
 from meridian.strategy_template import report, sim
 
 ROOT = Path(__file__).resolve().parents[1]
-HAS_RESEARCH = all(find_spec(name) is not None for name in ("plotly", "pandas"))
-research = pytest.mark.skipif(not HAS_RESEARCH, reason="requires uv sync --group research")
 
 
 def rows(folder, name):
@@ -33,7 +30,6 @@ def generated(request, tmp_path, monkeypatch):
     return folder, data["report"]["statistics"]
 
 
-@research
 def test_engine_statistics_against_fill_cashflows_and_position_lifecycles(generated):
     folder, stats = generated
     fills = sorted(rows(folder, "fills.csv"), key=lambda r: r["ts_event"])
@@ -69,7 +65,6 @@ def test_engine_statistics_against_fill_cashflows_and_position_lifecycles(genera
     assert "NaN" not in (folder / "statistics.json").read_text()
 
 
-@research
 def test_engine_report_columns_and_snapshot_history(generated):
     folder, stats = generated
     orders, fills, positions = (
@@ -101,7 +96,6 @@ class Resources(HTMLParser):
                 self.external.append(value)
 
 
-@research
 def test_report_command_is_socket_free_and_html_is_self_contained(tmp_path):
     code = f"""
 import sys
@@ -141,7 +135,6 @@ raise SystemExit(sim.main(['--report']))
     assert "synthetic, uncalibrated simulation" in html
 
 
-@research
 def test_no_trades_retains_engine_undefined_values(tmp_path, monkeypatch):
     monkeypatch.setattr(boundary, "REPO_ROOT", tmp_path)
     data = sim.run(scenarios={"QUIET": sim.SCENARIOS["QUIET"]}, report=True)["report"]
@@ -158,5 +151,6 @@ def test_missing_group_is_actionable_and_writes_nothing(tmp_path, monkeypatch, c
     monkeypatch.setattr(report, "find_spec", lambda name: None if name == missing else object())
     assert sim.main(["--report"]) == 2
     output = capsys.readouterr().out
-    assert missing in output and "uv sync --locked --group research" in output
+    assert missing in output and "uv sync --locked" in output
+    assert "default dev and research groups" in output and "excludes research" in output
     assert not list(tmp_path.iterdir())

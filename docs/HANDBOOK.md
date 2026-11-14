@@ -316,8 +316,8 @@ means wait), and supply every `TemplateParams` value from configuration: there a
 The package holds the template (`strategy.py`, `params.py`, `actions.py`) and its offline
 simulation, `uv run python -m meridian.strategy_template.sim [--copies N]`. Not yet in a lane.
 Add `--report` for the engine's statistics, order/fill/position CSVs and standalone HTML under
-`runs/`; first `uv sync --locked --group research`. All inputs remain synthetic and uncalibrated.
-[Pinned analysis APIs and interpretation](m5-engine-stats.md): undefined statistics are null; cash PnL includes open principal.
+`runs/`; first `uv sync --locked`. Inputs remain synthetic and uncalibrated; undefined statistics are null.
+[Pinned analysis evidence](adr/data/m5-engine-stats.md) explains the engine's cash-PnL semantics.
 
 1. Start from an upstream template: the strategy template above, a NautilusTrader example or
    built-in strategy at the pinned version, or a cited published method. Name it in the strategy file's docstring (repository,

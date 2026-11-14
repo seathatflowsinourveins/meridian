@@ -23,6 +23,7 @@ research = [
     "ml4t-diagnostic>=0.2.0",
     "openbb-core>=2.0.1",
     "pandera[pandas]>=0.35.0",
+    "plotly>=7.1.0",
     "polars>=2.1.0",
     "skfolio>=1.12.7",
     "vectorbt>=1.2.0",

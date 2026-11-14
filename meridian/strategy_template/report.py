@@ -1,4 +1,4 @@
-"""Export rc9's own backtest analysis; API and semantics: docs/m5-engine-stats.md."""
+"""Export rc9's own backtest analysis; see docs/adr/data/m5-engine-stats.md."""
 
 from __future__ import annotations
 
@@ -22,8 +22,9 @@ def require_research() -> None:
     missing = [name for name in ("pandas", "plotly") if find_spec(name) is None]
     if missing:
         raise ReportUnavailable(
-            f"Simulation report needs {', '.join(missing)}; install the research group with "
-            "`uv sync --locked --group research`, then rerun with --report."
+            f"Simulation report needs {', '.join(missing)}; `uv sync --locked` installs the "
+            "default dev and research groups. A sync that excludes research can omit these "
+            "dependencies; sync with defaults, then rerun with --report."
         )
 
 
