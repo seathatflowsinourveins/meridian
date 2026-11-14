@@ -21,7 +21,8 @@
 #     omc-remove    remove only Meridian-owned OMC assets; retain other Claude settings
 #   deploy/wsl/setup.sh agents-check  verify the agent runtimes and their settings
 #   deploy/wsl/setup.sh drift         installed against pinned; exit 0 when upkeep is due (changes nothing)
-#   deploy/wsl/setup.sh upkeep        bring this machine to the pins, Orca's server last
+#   deploy/wsl/setup.sh upkeep        bring this machine to the pins, Orca's server last (not while
+#                                     ~/.cache/meridian/upkeep.hold holds a reason)
 #   deploy/wsl/setup.sh orca-automation  the weekly Orca automation that moves the pins, lands and applies them
 #   deploy/wsl/setup.sh codex-requirements  write /etc/codex/requirements.toml from meridian.user-data (sudo)
 #   deploy/wsl/setup.sh signins       list the sign-ins left for the owner, with their commands
@@ -1923,8 +1924,20 @@ EOF
     echo "the weekly landscape watch has an open report: issue #${issue}"
     due=0
   fi
+  if upkeep_held; then
+    echo "drift: on hold, so the weekly run does not start"
+    return 1
+  fi
   if [ "${due}" = 0 ]; then echo "drift: there is upkeep to do"; else echo "drift: nothing is due"; fi
   return "${due}"
+}
+
+# The hold: any session can pause upkeep and the weekly run while it has a hand-made state on
+# this machine that an installer would undo. Write the reason into the file; remove it to resume.
+UPKEEP_HOLD="${HOME}/.cache/meridian/upkeep.hold"
+upkeep_held() {
+  [ -s "${UPKEEP_HOLD}" ] || return 1
+  echo "upkeep is on hold (${UPKEEP_HOLD}): $(head -n 3 "${UPKEEP_HOLD}")"
 }
 
 cmd_upkeep() {
@@ -1933,6 +1946,9 @@ cmd_upkeep() {
   # and otherwise installs the pinned release with its checksum check. Orca's server goes last:
   # its service restarts for a few seconds, and the terminals stay, because they run in the
   # terminal daemon, whose scope outlives the service (cmd_orca; UPSTREAM.md, Weekly upkeep).
+  if upkeep_held; then
+    fail "upkeep installs nothing while it is on hold; remove the file when its reason is gone"
+  fi
   "${HOME}/.local/bin/claude" update </dev/null || echo "note: claude update did not complete"
   cmd_gh
   cmd_ocr
@@ -2041,5 +2057,5 @@ case "${1:-}" in
     ;;
   repo) cmd_repo ;;
   gateway) cmd_gateway ;;
-  *) sed -n '2,31p' "$0"; exit 2 ;;
+  *) sed -n '2,32p' "$0"; exit 2 ;;
 esac
