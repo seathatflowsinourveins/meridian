@@ -639,9 +639,10 @@ check_claude_hud() {
     || fail "claude-hud is not installed in Claude Code (run: deploy/wsl/setup.sh claude-hud)"
   [ "$(git -C "${plugins}/marketplaces/claude-hud" rev-parse HEAD 2>/dev/null)" = "${CLAUDE_HUD_COMMIT}" ] \
     || fail "the claude-hud checkout is not at the pinned ${CLAUDE_HUD_COMMIT}"
-  # The launcher runs the highest version in the cache, so the pinned one must be the only one.
-  [ "$(ls "${plugins}/cache/claude-hud/claude-hud" 2>/dev/null)" = "${CLAUDE_HUD_VERSION}" ] \
-    || fail "the plugin cache holds a claude-hud other than ${CLAUDE_HUD_VERSION}"
+  # The launcher runs the highest claude-hud version under any marketplace in the plugin cache,
+  # enabled or not, so the pinned one must be the only one there.
+  [ "$(printf '%s\n' "${plugins}"/cache/*/claude-hud/*)" = "${plugins}/cache/claude-hud/claude-hud/${CLAUDE_HUD_VERSION}" ] \
+    || fail "the plugin cache holds a claude-hud other than ${CLAUDE_HUD_VERSION} from the claude-hud marketplace: $(printf '%s ' "${plugins}"/cache/*/claude-hud/*)"
   jq -e --arg wrapper "${CLAUDE_HUD_WRAPPER}" --arg ref "${CLAUDE_HUD_REF}" '
     .statusLine == {type: "command", command: $wrapper}
     and .extraKnownMarketplaces["claude-hud"].source.ref == $ref
