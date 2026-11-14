@@ -6,6 +6,8 @@ or for not adding it. A decision that is not an addition goes in `docs/HANDBOOK.
 
 ## Format
 
+An ADR decided by the earlier with-and-without method keeps its status, candidate and decision in its own file and its full text in `data/NNNN-record.md`.
+
 - File `docs/adr/NNNN-short-title.md`: the next free four-digit number, then a title in
   lowercase words joined by hyphens. Data and scripts the ADR measures with go in
   `docs/adr/data/`, named with the same number. A method sheet shared by several ADRs goes
@@ -62,4 +64,6 @@ this table; the row's first cell links the file by name, as in `[NNNN](NNNN-shor
 | [0012](0012-dsh-early-stop-guard.md) | dsh-early-stop-guard for DeepSeek Harness (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0013](0013-antigravity-cli-reading.md) | Antigravity CLI documentation reading (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0014](0014-claude-you-should-know.md) | You should know for Claude Code (plan 8.6) | adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0015](0015-claude-hud.md) | claude-hud status line for Claude Code (plan 8.6) | adopted, 2026-11-13 | 2026-11-14 | 2027-02-12 |
 | [0017](0017-rtk-shell-output.md) | rtk shell-output compression for agents | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0020](0020-open-code-review.md) | open-code-review as a second reviewer, in delegation mode (plan 8.6) | adopted, 2026-11-14 | 2026-11-14 | 2027-02-12 |

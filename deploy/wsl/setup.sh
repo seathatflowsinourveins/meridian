@@ -5,6 +5,8 @@
 #   deploy/wsl/setup.sh check         verify what deploy/wsl/meridian.user-data was meant to do
 #   deploy/wsl/setup.sh uv            install uv (pinned; installer checksum verified first)
 #   deploy/wsl/setup.sh gh            install the GitHub CLI from GitHub's release, in place of Ubuntu's
+#   deploy/wsl/setup.sh gitleaks      install the pinned gitleaks CI uses, for the lead's merge gate
+#   deploy/wsl/setup.sh ocr           install open-code-review's `ocr`, a second reviewer's file list and rules
 #   deploy/wsl/setup.sh repo          clone the repo to ~/src/meridian and run `uv sync --locked`
 #   deploy/wsl/setup.sh gateway       install IB Gateway (pinned build; never starts it or logs in)
 #   deploy/wsl/setup.sh agents        all of the following, in this order:
@@ -14,11 +16,15 @@
 #     dsh           DeepSeek Harness and the terminal UI Orca launches for it (npm, pnpm)
 #     orca          Orca server, a loopback-only systemd user service (sudo for /opt)
 #     codex-bridge  the Codex review plugin for Claude Code
+#     claude-hud    the claude-hud status line for Claude Code, beside Orca's usage reporter
 #   deploy/wsl/setup.sh agents-check  verify the agent runtimes and their settings
+#   deploy/wsl/setup.sh drift         installed against pinned; exit 0 when upkeep is due (changes nothing)
+#   deploy/wsl/setup.sh upkeep        bring this machine to the pins, Orca's server last
+#   deploy/wsl/setup.sh orca-automation  the weekly Orca automation that moves the pins, lands and applies them
 #   deploy/wsl/setup.sh signins       list the sign-ins left for the owner, with their commands
 #   deploy/wsl/setup.sh orca-pair     owner, once, in Windows Terminal: pair the Windows Orca app
 #
-# Order: check, uv, gh, repo, gateway, then agents. Sign-ins are the owner's: see UPSTREAM.md.
+# Order: check, uv, gh, gitleaks, ocr, repo, gateway, then agents. Sign-ins are the owner's: see UPSTREAM.md.
 # Versions, checksums and the pages they were read from: UPSTREAM.md.
 set -euo pipefail
 # The tools below go to ~/.local/bin. Ubuntu's ~/.profile puts that on PATH only when it existed
@@ -38,6 +44,15 @@ NODE_VERSION=v24.22.3
 GH_VERSION=2.104.0
 GH_SHA256=98cb101ad87dbbd3f6b2f2bfcbd43197ccd07643140121d8a9cfaa91eadbc24e
 GH_URL="https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz"
+# The same build and checksum as .github/workflows/ci.yml (tests/test_agent_config.py compares them).
+GITLEAKS_VERSION=8.30.1
+GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+GITLEAKS_URL="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+# open-code-review (ADR 0020), the release binary by its SHA-256 from the release's sha256sum.txt.
+# Not the npm package: its wrapper installs the newest release over itself in the background.
+OCR_VERSION=1.13.9
+OCR_SHA256=2db294981624d6fae9bcfb4df7f9ebfd7f92c40b3a552873dff5887116931d3e
+OCR_URL="https://github.com/alibaba/open-code-review/releases/download/v${OCR_VERSION}/opencodereview-linux-amd64"
 
 # Agent runtimes. By the owner's decision of 2026-11-12 they update themselves where the tool
 # can, in sessions the owner starts (Orca's own launches switch the updaters off). What is
@@ -55,9 +70,9 @@ CLAUDE_RELEASE_SIGNER=31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE
 CLAUDE_RELEASES=https://downloads.claude.ai/claude-code-releases
 CLAUDE_MODEL=claude-fable-5-2
 # Codex CLI: OpenAI's npm package and its linux-x64 build, by their registry integrity values.
-CODEX_VERSION=0.167.2
-CODEX_INTEGRITY=sha512-6OFkr2ndzTdFb32OEiUlM9BgpeY8+wnMe8vRhuvt+22TnxVR39KnJ22Ghay98IY9OmEltoNgFN4GALUkxFQCOw==
-CODEX_LINUX_INTEGRITY=sha512-2Rw3VkWonMxwCSgOw+NkiKLOuOzyoQNWmxU7x8GniesdMfhKc4asNqOzTgQwJLKCrSlPc4/6fYTaH7fYcuGWGQ==
+CODEX_VERSION=0.169.0
+CODEX_INTEGRITY=sha512-KhzYlkKPxoNssR8CEm45IjqnFWn7UtlF4CiD3tOJPea51xBs7MaHy0UQG9GSbCqk6Lrjn5QdJDV0QD1/FgWlGw==
+CODEX_LINUX_INTEGRITY=sha512-o05NyAOCDygSPRo1yinzxvkRSdmsZyBD9E7mbpmjRanSfM8lypqWtQgEo4XfNkwhuCR2aFu8mlGOsQGFXVbVww==
 CODEX_MODEL=gpt-6-astra
 # DeepSeek Harness: the engine (`dsh`), pnpm (dsh installs its profiles with it, and pins the
 # 11.x line), the community terminal UI that Orca launches for it (`dsh-tui`), and the two hook
@@ -77,8 +92,8 @@ DSH_MODEL=deepseek-flash
 DSH_ALLOW_SCRIPTS=node-pty,koffi,@deepseek-ai/dsh-subprocess-local,@google/genai,protobufjs
 # Orca server: the server-only release tarball (orcad, its own Node, the orca-ide CLI), by the
 # SHA-256 in the release's checksum file. It does not update itself; a new pin here updates it.
-ORCA_VERSION=1.4.257
-ORCA_SHA256=72f42c1f5e66d828375d70a54fda5a5f910b90471948d93eedbc3a9ed19bc840
+ORCA_VERSION=1.4.258
+ORCA_SHA256=fd7f23f5fb6fe43fb2982d17438d772fac7cc65c8208a212d0ffb224b504e311
 ORCA_ROOT=/opt/orca-server
 # Loopback only, on a port of its own: with mirrored networking a listener on every interface
 # is reachable from the network, and 6768 is the Windows app's default port.
@@ -97,11 +112,17 @@ ORCA_UNIT_ENV=(
 # Claude Code plugin for cross-family review (/codex:review): openai/codex-plugin-cc from its
 # default branch. Its first install here was this commit (tag v1.0.6); it updates with upstream.
 CODEX_BRIDGE_COMMIT=db52e28f4d9ded852ab3942cea316258ae4ef346
+# Claude Code status line (ADR 0015): jarrodwatts/claude-hud at a tag and its commit, the last
+# release signed by its maintainer. It does not follow upstream: later releases are cut by an
+# unattended bot. A new pin here moves it.
+CLAUDE_HUD_REF=v0.15.0
+CLAUDE_HUD_VERSION=0.15.0
+CLAUDE_HUD_COMMIT=b86e1c3e5255880578de4b7cc87dc383228c2a18
 # Antigravity CLI (`agy`): the GitHub release asset of this version, by the SHA-256 digest
 # GitHub shows for it. (Google's install.sh and agy's own updater take the build named in their
 # updater service's manifest instead, checked against the SHA-512 in that manifest.)
-AGY_VERSION=1.5.7
-AGY_SHA256=d6150a8d2a9e29a3d171b2325d6f66b6e7059628f4799a20c069b8ed8f78fdbb
+AGY_VERSION=1.5.8
+AGY_SHA256=905d4accfbd61bc00bee84bfaf24c59b85d334cabd786cf99237b66cfe06ab98
 AGY_URL="https://github.com/google-antigravity/antigravity-cli/releases/download/${AGY_VERSION}/agy_cli_linux_x64.tar.gz"
 # agy's default model, by the label `agy models` prints (plan 8.8: Gemini 4 Carbon, at its
 # highest effort). A label agy no longer offers falls back to its own default, with a warning.
@@ -251,6 +272,57 @@ check_gh() {
   ok "GitHub CLI $(gh_version), GitHub's own build in ~/.local/bin, telemetry off; no Ubuntu gh package"
 }
 
+# The release build prints its bare version (`gitleaks version`; goreleaser's {{.Version}}).
+gitleaks_version() { "${HOME}/.local/bin/gitleaks" version 2>/dev/null </dev/null | head -n 1 | sed 's/^v//'; }
+
+cmd_gitleaks() {
+  # The lead's merge gate runs it as the fifth check on the trial-merged tree, as CI does.
+  if [ "$(gitleaks_version)" != "${GITLEAKS_VERSION}" ]; then
+    local tmp
+    tmp="$(mktemp -d)"
+    curl -fsSLo "${tmp}/gitleaks.tar.gz" "${GITLEAKS_URL}"
+    echo "${GITLEAKS_SHA256}  ${tmp}/gitleaks.tar.gz" | sha256sum -c -
+    tar -xzf "${tmp}/gitleaks.tar.gz" -C "${tmp}" gitleaks
+    install -D -m 0755 "${tmp}/gitleaks" "${HOME}/.local/bin/gitleaks"
+    rm -rf "${tmp}"
+  fi
+  check_gitleaks
+}
+
+check_gitleaks() {
+  [ "$(gitleaks_version)" = "${GITLEAKS_VERSION}" ] \
+    || fail "gitleaks is not ${GITLEAKS_VERSION} in ~/.local/bin (run: deploy/wsl/setup.sh gitleaks)"
+  [ "$(command -v gitleaks)" = "${HOME}/.local/bin/gitleaks" ] \
+    || fail "gitleaks resolves to $(command -v gitleaks || echo nothing), not ~/.local/bin/gitleaks"
+  ok "gitleaks ${GITLEAKS_VERSION} in ~/.local/bin, the build CI uses"
+}
+
+# open-code-review, in its delegation mode only: `ocr delegate preview` lists the files of a diff
+# that a review has to cover and `ocr delegate rule` gives the rules for them; the reviewing
+# agent reads the diff and writes the findings. That mode needs no model provider, key or
+# account, so a provider configuration of its own is refused here (ADR 0020).
+ocr_version() { "${HOME}/.local/bin/ocr" --version 2>/dev/null </dev/null | sed -n '1s/^open-code-review v\([^ ]*\).*/\1/p'; }
+
+cmd_ocr() {
+  if [ "$(ocr_version)" != "${OCR_VERSION}" ]; then
+    local tmp
+    tmp="$(mktemp -d)"
+    curl -fsSLo "${tmp}/ocr" "${OCR_URL}"
+    echo "${OCR_SHA256}  ${tmp}/ocr" | sha256sum -c -
+    install -D -m 0755 "${tmp}/ocr" "${HOME}/.local/bin/ocr"
+    rm -rf "${tmp}"
+  fi
+  check_ocr
+}
+
+check_ocr() {
+  [ "$(ocr_version)" = "${OCR_VERSION}" ] \
+    || fail "open-code-review is not ${OCR_VERSION} in ~/.local/bin (run: deploy/wsl/setup.sh ocr)"
+  [ ! -e "${HOME}/.opencodereview/config.json" ] \
+    || fail "~/.opencodereview/config.json exists: open-code-review runs here without a model provider of its own"
+  ok "open-code-review ${OCR_VERSION} in ~/.local/bin, delegation mode only: no provider of its own"
+}
+
 claude_settings() {
   # Merged into the file, never written over it: Claude Code and Orca keep their own keys there.
   # Bypass mode is the owner's choice for this distro. The deny rules stop Claude Code's file
@@ -277,7 +349,8 @@ claude_settings() {
       autoCompactEnabled: true,
       enabledPlugins: {
         "codex@openai-codex": true,
-        "cc-plugin-you-should-know@builtin": true
+        "cc-plugin-you-should-know@builtin": true,
+        "claude-hud@claude-hud": true
       },
       autoUpdatesChannel: "latest",
       minimumVersion: $floor
@@ -344,7 +417,8 @@ cmd_claude() {
 check_claude() {
   version_ge "$(claude_version)" "${CLAUDE_VERSION}" \
     || fail "Claude Code is older than ${CLAUDE_VERSION} or missing (run: deploy/wsl/setup.sh claude)"
-  # Only Codex review (setup.sh codex-bridge) and the built-in You should know are allowed.
+  # Only Codex review (setup.sh codex-bridge), the built-in You should know and claude-hud
+  # (setup.sh claude-hud) are allowed.
   jq -e --arg model "${CLAUDE_MODEL}" --arg floor "${CLAUDE_VERSION}" '
     .disableClaudeAiConnectors == true and .syncClaudeAiPlugins == false
     and .syncClaudeAiSkills == false and .minimumVersion == $floor
@@ -360,7 +434,8 @@ check_claude() {
     and (["Edit(//**/risk/**)", "Edit(//**/*.contract.json)", "Read(//**/.env)", "Read(//**/.env.*)"]
       - (.permissions.deny // []) == [])
     and ([.enabledPlugins // {} | to_entries[] | select(.value == true) | .key]
-      - ["codex@openai-codex", "cc-plugin-you-should-know@builtin"] == [])
+      - ["codex@openai-codex", "cc-plugin-you-should-know@builtin", "claude-hud@claude-hud"]
+      == [])
   ' "${HOME}/.claude/settings.json" >/dev/null \
     || fail "~/.claude/settings.json is not what deploy/wsl/setup.sh claude writes"
   check_claude_managed
@@ -564,6 +639,115 @@ check_codex_bridge() {
       || fail "the codex-plugin-cc review gate is switched on under ${state}"
   done
   ok "Codex review plugin $(jq -r '.plugins["codex@openai-codex"][0].version' "${HOME}/.claude/plugins/installed_plugins.json") in Claude Code, review gate off"
+}
+
+# claude-hud (ADR 0015). Claude Code has one status line command, and Orca holds it with a
+# reporter that prints nothing. deploy/wsl/meridian-claude-hud.sh runs both: Orca keeps its
+# usage figures and the line shows claude-hud. Orca rewrites only a command it recognises as
+# its own (one naming agent-hooks/claude-statusline), so it leaves the wrapper alone.
+CLAUDE_HUD_WRAPPER="${HOME}/.local/bin/meridian-claude-hud"
+
+claude_hud_config() {
+  # Written once; afterwards the file is the owner's (`/hud`, `hud set`). The owner's choice of
+  # 2026-11-13 is every informative display: activity (tools, skills, MCP, agents with their
+  # effort, todos), the model's effort, output speed, the prompt cache (expiry, hit rate),
+  # tokens, cost, compactions, both usage windows with their pace. The account labels stay off:
+  # they are the two display options that read ~/.claude.json.
+  local file="${HOME}/.claude/plugins/claude-hud/config.json"
+  [ ! -e "${file}" ] || return 0
+  mkdir -p "$(dirname "${file}")"
+  jq -n '
+    [ "showTools", "showSkills", "showMcp", "showAgents", "showAgentEffort", "showTodos",
+      "showEffortLevel", "showSpeed", "showPromptCache", "showCacheHitRate", "showSessionTokens",
+      "showCompactions", "showConfigCounts", "showDuration", "usagePace", "showCost",
+      "showDailyCost", "showWeeklyCost", "showClaudeCodeVersion", "showSessionName",
+      "showLastResponseAt", "showMemoryUsage", "showAdvisor" ] as $on
+    | { gitStatus: {showAheadBehind: true, showFileStats: true},
+        display: (($on | map({(.): true}) | add)
+          + {showAuth: false, showAuthUser: false, sevenDayThreshold: 0, contextValue: "both"}) }
+  ' > "${file}"
+}
+
+claude_statusline() {
+  # The wrapper replaces no status line, Orca's reporter, claude-hud's own command or itself.
+  # Any other command is someone's choice: setup stops instead of overwriting it.
+  local settings="${HOME}/.claude/settings.json" wrapper="${CLAUDE_HUD_WRAPPER}" tmp
+  tmp="$(mktemp)"
+  jq --arg wrapper "${wrapper}" '
+    (.statusLine.command // "") as $now
+    | if $now == "" or $now == $wrapper
+         or ($now | test("agent-hooks/claude-statusline|plugins/claude-hud/statusline"))
+      then .statusLine = {type: "command", command: $wrapper}
+      else error("statusLine runs another command") end
+  ' "${settings}" > "${tmp}" \
+    || { rm -f "${tmp}"; fail "~/.claude/settings.json has a status line command that is not Orca's or claude-hud's; remove it, then rerun: deploy/wsl/setup.sh claude-hud"; }
+  install -m 0644 "${tmp}" "${settings}"
+  rm -f "${tmp}"
+}
+
+cmd_claude_hud() {
+  local claude="${HOME}/.local/bin/claude" mp="${HOME}/.claude/plugins/marketplaces/claude-hud"
+  local hud="${HOME}/.claude/plugins/claude-hud" path
+  export CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1
+  # A checkout at another commit is an older pin: the plugin and its marketplace are removed and
+  # added again at the new one, so that the cache holds the pinned version only.
+  if [ -d "${mp}/.git" ] && [ "$(git -C "${mp}" rev-parse HEAD)" != "${CLAUDE_HUD_COMMIT}" ]; then
+    "${claude}" plugin uninstall claude-hud@claude-hud --scope user --keep-data </dev/null >/dev/null 2>&1 || true
+    "${claude}" plugin marketplace remove claude-hud </dev/null >/dev/null
+    rm -rf "${HOME}/.claude/plugins/cache/claude-hud"
+  fi
+  # The marketplace at the pinned tag; the plugin is installed only once its commit is checked.
+  [ -d "${mp}/.git" ] \
+    || "${claude}" plugin marketplace add "jarrodwatts/claude-hud#${CLAUDE_HUD_REF}" --scope user </dev/null
+  [ "$(git -C "${mp}" rev-parse HEAD)" = "${CLAUDE_HUD_COMMIT}" ] \
+    || fail "the claude-hud checkout is not at ${CLAUDE_HUD_COMMIT} (${CLAUDE_HUD_REF}); nothing was installed from it"
+  if ! "${claude}" plugin list --json </dev/null | jq -e '.[] | select(.id == "claude-hud@claude-hud")' >/dev/null; then
+    "${claude}" plugin install claude-hud@claude-hud --scope user </dev/null
+  fi
+  # claude-hud's launcher runs the newest claude-hud in the plugin cache. Its own `hud install`
+  # would copy it here too; setup does it so that no session has to run /hud first.
+  path="$(jq -r '.plugins["claude-hud@claude-hud"][0].installPath' "${HOME}/.claude/plugins/installed_plugins.json")"
+  [ -r "${path}/scripts/statusline.mjs" ] || fail "claude-hud's launcher is not at ${path}/scripts/statusline.mjs"
+  install -D -m 0644 "${path}/scripts/statusline.mjs" "${hud}/statusline.mjs"
+  install -D -m 0755 "$(dirname "$(readlink -f "$0")")/meridian-claude-hud.sh" "${CLAUDE_HUD_WRAPPER}"
+  claude_hud_config
+  claude_statusline
+  check_claude_hud
+}
+
+check_claude_hud() {
+  local plugins="${HOME}/.claude/plugins" settings="${HOME}/.claude/settings.json" file
+  "${HOME}/.local/bin/claude" plugin list --json </dev/null \
+    | jq -e '.[] | select(.id == "claude-hud@claude-hud" and .enabled)' >/dev/null \
+    || fail "claude-hud is not installed in Claude Code (run: deploy/wsl/setup.sh claude-hud)"
+  [ "$(git -C "${plugins}/marketplaces/claude-hud" rev-parse HEAD 2>/dev/null)" = "${CLAUDE_HUD_COMMIT}" ] \
+    || fail "the claude-hud checkout is not at the pinned ${CLAUDE_HUD_COMMIT}"
+  # The launcher runs the highest claude-hud version under any marketplace in the plugin cache,
+  # enabled or not, so the pinned one must be the only one there.
+  [ "$(printf '%s\n' "${plugins}"/cache/*/claude-hud/*)" = "${plugins}/cache/claude-hud/claude-hud/${CLAUDE_HUD_VERSION}" ] \
+    || fail "the plugin cache holds a claude-hud other than ${CLAUDE_HUD_VERSION} from the claude-hud marketplace: $(printf '%s ' "${plugins}"/cache/*/claude-hud/*)"
+  jq -e --arg wrapper "${CLAUDE_HUD_WRAPPER}" --arg ref "${CLAUDE_HUD_REF}" '
+    .statusLine == {type: "command", command: $wrapper}
+    and .extraKnownMarketplaces["claude-hud"].source.ref == $ref
+    and .extraKnownMarketplaces["claude-hud"].autoUpdate != true
+  ' "${settings}" >/dev/null \
+    || fail "the status line is not the wrapper, or claude-hud is not held at ${CLAUDE_HUD_REF} (run: deploy/wsl/setup.sh claude-hud)"
+  [ -x "${CLAUDE_HUD_WRAPPER}" ] && [ -r "${plugins}/claude-hud/statusline.mjs" ] \
+    || fail "the status line wrapper or claude-hud's launcher is missing (run: deploy/wsl/setup.sh claude-hud)"
+  [ -x "${HOME}/.orca/agent-hooks/claude-statusline.sh" ] \
+    || fail "Orca's usage reporter ~/.orca/agent-hooks/claude-statusline.sh is missing (run: deploy/wsl/setup.sh orca)"
+  # Neither config file may switch on an account label or point the usage figures at a file.
+  for file in "${plugins}/claude-hud/config.json" "${HOME}/.claude/claude-hud.json"; do
+    [ ! -e "${file}" ] || jq -e '
+      [.display.showAuth, .display.showAuthUser, .display.authUserFullEmail] | all(. != true)
+    ' "${file}" >/dev/null || fail "${file} switches on an account label"
+    [ ! -e "${file}" ] || jq -e '
+      [.display.externalUsagePath, .display.externalUsageWritePath] | all(. == null or . == "")
+    ' "${file}" >/dev/null || fail "${file} reads or writes usage figures in another file"
+  done
+  [ -n "$(printf '%s' '{"model":{"display_name":"check"}}' | "${CLAUDE_HUD_WRAPPER}" 2>/dev/null)" ] \
+    || fail "the status line wrapper printed nothing for a sample payload"
+  ok "claude-hud ${CLAUDE_HUD_VERSION} at its pinned commit behind ${CLAUDE_HUD_WRAPPER}; Orca's usage reporter still fed; no account label"
 }
 
 # stdin is closed on purpose: before the owner has signed in, agy with a terminal attached can
@@ -910,16 +1094,161 @@ cmd_gateway() {
   echo "start it with: ${GATEWAY_DIR}/ibgateway   (then log in to Paper Trading yourself)"
 }
 
+# Upkeep. Three pieces close the loop the weekly landscape watch opens (deploy/landscape_watch.py
+# reports new releases in the GitHub issue labelled `landscape`):
+#   drift            installed against pinned and upstream's newest; exit 0 when something is due
+#   upkeep           this machine to the pins, and Claude Code to its newest release
+#   orca-automation  a weekly Orca automation: when drift says so, a worker moves the pins, has
+#                    another model family review the change, lands it through the lead's merge
+#                    gate under the shared landing lock, and applies it with upkeep
+drift_report() {
+  # stdin: one "name installed pinned newest" line per runtime; "-" stands for "not installed"
+  # or "not read". Returns 0 when a runtime is off its pin or upstream has a newer release.
+  local name have pin newest state due=1
+  while read -r name have pin newest; do
+    if [ "${have}" = "${pin}" ]; then
+      state="at the pin"
+    elif [ "${have}" != "-" ] && version_ge "${have}" "${pin}"; then
+      state="ahead of the pin"
+      due=0
+    else
+      state="behind the pin"
+      due=0
+    fi
+    if [ "${newest}" != "-" ] && [ "${newest}" != "${pin}" ] && version_ge "${newest}" "${pin}"; then
+      state="${state}; upstream has ${newest}"
+      due=0
+    fi
+    printf '%-12s installed %-12s pinned %-12s %s\n' "${name}" "${have}" "${pin}" "${state}"
+  done
+  return "${due}"
+}
+
+claude_hud_version() {
+  jq -r '.plugins["claude-hud@claude-hud"][0].version // empty' "${HOME}/.claude/plugins/installed_plugins.json" 2>/dev/null
+}
+
+# The newest release of each runtime, read where its installer reads: Anthropic's release
+# bucket, the npm registry, GitHub's latest release. A read that fails gives nothing.
+newest_claude() { curl -fsS --max-time 20 "${CLAUDE_RELEASES}/latest"; }
+newest_npm() { npm view "$1" version; }
+newest_github() { gh_cli api "repos/$1/releases/latest" --jq '.tag_name | ltrimstr("v")'; }
+
+cmd_drift() {
+  # Nothing is installed or changed; it reads versions, upstream's newest releases and the list
+  # of open issues. `drift --pull` is the scheduled precheck: it runs from the main checkout, so
+  # it first fast-forwards that checkout and starts again from the script as it then is.
+  local due=1 issue v
+  if [ "${1:-}" = "--pull" ]; then
+    git -C "$(dirname "$(readlink -f "$0")")" pull -q --ff-only \
+      || echo "note: this checkout could not be fast-forwarded; its pins may be old"
+    exec "$0" drift
+  fi
+  v() { local out; out="$("$@" 2>/dev/null </dev/null | head -n 1 || true)"; printf '%s' "${out:--}"; }
+  drift_report <<EOF && due=0
+claude-code $(v claude_version) ${CLAUDE_VERSION} $(v newest_claude)
+codex $(v codex_version) ${CODEX_VERSION} $(v newest_npm @openai/codex)
+agy $(v agy_version) ${AGY_VERSION} $(v newest_github google-antigravity/antigravity-cli)
+dsh $(v dsh_version) ${DSH_VERSION} $(v newest_npm @deepseek-ai/dsh)
+dsh-tui $(v dsh_tui_version) ${DSH_TUI_VERSION} $(v newest_npm @deepseek-harness-tui/dsh-tui)
+orca $(v orca_version) ${ORCA_VERSION} $(v newest_github stablyai/orca)
+gh $(v gh_version) ${GH_VERSION} $(v newest_github cli/cli)
+ocr $(v ocr_version) ${OCR_VERSION} $(v newest_github alibaba/open-code-review)
+claude-hud $(v claude_hud_version) ${CLAUDE_HUD_VERSION} $(v newest_github jarrodwatts/claude-hud)
+EOF
+  issue="$(cd "$(dirname "$(readlink -f "$0")")" && gh_cli issue list --label landscape --state open --json number --jq '.[0].number' 2>/dev/null || true)"
+  if [ -n "${issue}" ]; then
+    echo "the weekly landscape watch has an open report: issue #${issue}"
+    due=0
+  fi
+  if [ "${due}" = 0 ]; then echo "drift: there is upkeep to do"; else echo "drift: nothing is due"; fi
+  return "${due}"
+}
+
+cmd_upkeep() {
+  # Claude Code's own updater first (it checks its download itself, as in a session the owner
+  # starts); then each installer, which does nothing when its runtime is at or ahead of the pin
+  # and otherwise installs the pinned release with its checksum check. Orca's server goes last:
+  # its service restarts for a few seconds, and the terminals stay, because they run in the
+  # terminal daemon, whose scope outlives the service (cmd_orca; UPSTREAM.md, Weekly upkeep).
+  "${HOME}/.local/bin/claude" update </dev/null || echo "note: claude update did not complete"
+  cmd_gh
+  cmd_ocr
+  cmd_claude
+  cmd_codex
+  cmd_agy
+  cmd_dsh
+  cmd_codex_bridge
+  cmd_claude_hud
+  version_ge "$(orca_version)" "${ORCA_VERSION}" || cmd_orca
+}
+
+UPKEEP_NAME="Meridian upkeep"
+UPKEEP_PRECHECK="${REPO_DIR}/deploy/wsl/setup.sh drift --pull"
+UPKEEP_PROMPT='Weekly upkeep of the agent runtimes of this repository, from the report to the merged and applied change. You are the lead for this one change: read AGENTS.md and the `lead` skill first; their boundaries hold here.
+
+Do this, in order:
+1. Run `deploy/wsl/setup.sh upkeep`, then `deploy/wsl/setup.sh drift`. Read the open GitHub issue labelled `landscape`, if there is one. If nothing is due, say so and stop.
+2. For each runtime that drift shows ahead of its pin or with a newer release upstream (Claude Code, Codex, Antigravity, DeepSeek Harness, dsh-tui, Orca, gh, open-code-review, claude-hud): read its release notes at the source, then move its pin in deploy/wsl/setup.sh with the checksum, integrity value or signed manifest its installer already checks, and bring its UPSTREAM.md row up to date in place. claude-hud moves only to a tag whose commit GitHub marks verified.
+3. Claude Code: read its changelog between the old pin and the new one. For each setting or feature that is new, off by default and useful to this setup, either add it to claude_settings and check_claude with a test, or name it in the pull request as considered and left out, with the reason.
+4. If Orca'"'"'s pin moves, the two copied skills move with it: after step 8 has installed the new server, refresh them the way .agents/skills/NOTICE.md describes, in a second small change landed the same way.
+5. If a model newer than the lead or worker model ids in deploy/wsl/setup.sh is listed on its vendor'"'"'s models page, say so in the pull request. Do not change a model id.
+6. Commit on this branch. Have another model family review it: `codex review --base origin/main`, run in this worktree. Fix each finding or answer it with a reason, and write the review, its findings and what you did into the review record for the pull request.
+7. Land it yourself through the merge gate. Take the shared lock for the whole landing (`flock ~/.cache/meridian/landing.lock`) and, inside it, from the main checkout `~/src/meridian` after `git pull --ff-only`, run the gate'"'"'s `trial`, `open` and `land` for this branch as the `lead` skill describes. If the gate refuses or a check fails, fix the cause and run `trial` again; never go around it.
+8. After the merge, fast-forward the main checkout (`git -C ~/src/meridian pull --ff-only`) and confirm it holds the merged pins. From there run `~/src/meridian/deploy/wsl/setup.sh upkeep`: it installs the moved pins, Orca'"'"'s server last (its service restarts for a few seconds; the terminals stay). Then run `~/src/meridian/deploy/wsl/setup.sh agents-check` and `~/src/meridian/deploy/wsl/setup.sh drift`, and put the three outputs in a closing comment on the pull request; a runtime that drift still shows behind its pin is a failure to report, not a success.
+
+Never: merge or close any pull request but your own upkeep changes; start a lane (any `python -m meridian.` command); read or print a key or credential; edit anything under risk/ or a *.contract.json; add a plugin, skill or MCP server; change a model id; stop a process you did not start. Everything else a working session needs is allowed.'
+
+upkeep_automation() {
+  orca_cli automations list --json \
+    | jq -c --arg name "${UPKEEP_NAME}" '[.result.automations // .automations // [] | .[] | select(.name == $name)][0] // empty'
+}
+
+cmd_orca_automation() {
+  # Created once; afterwards its prompt and precheck follow this script, and its schedule is the
+  # owner's to edit in Orca.
+  local now id
+  now="$(upkeep_automation)"
+  if [ -z "${now}" ]; then
+    orca_cli automations create --name "${UPKEEP_NAME}" \
+      --trigger weekly --day 1 --time 07:00 --timezone America/New_York \
+      --provider claude --extra-agent-args="--model claude-opus-5-5" \
+      --repo "path:${REPO_DIR}" --setup run \
+      --precheck "${UPKEEP_PRECHECK}" --precheck-timeout 120 \
+      --prompt "${UPKEEP_PROMPT}" --enabled --json >/dev/null
+  elif ! jq -e --arg prompt "${UPKEEP_PROMPT}" --arg precheck "${UPKEEP_PRECHECK}" \
+      '.prompt == $prompt and .precheck.command == $precheck' <<<"${now}" >/dev/null; then
+    id="$(jq -r '.id' <<<"${now}")"
+    orca_cli automations edit "${id}" --precheck "${UPKEEP_PRECHECK}" --precheck-timeout 120 \
+      --prompt "${UPKEEP_PROMPT}" --json >/dev/null
+  fi
+  check_orca_automation
+}
+
+check_orca_automation() {
+  upkeep_automation | jq -e --arg prompt "${UPKEEP_PROMPT}" --arg precheck "${UPKEEP_PRECHECK}" '
+    .enabled == true and .precheck.command == $precheck and .prompt == $prompt
+  ' >/dev/null \
+    || fail "the Orca automation \"${UPKEEP_NAME}\" is missing, disabled or not what this script sets (run: deploy/wsl/setup.sh orca-automation)"
+  ok "Orca automation \"${UPKEEP_NAME}\": weekly, behind the drift precheck; it lands and applies its own change"
+}
+
 case "${1:-}" in
   check) cmd_check ;;
   uv) cmd_uv ;;
   gh) cmd_gh ;;
+  gitleaks) cmd_gitleaks ;;
+  ocr) cmd_ocr ;;
   claude) cmd_claude ;;
   codex) cmd_codex ;;
   agy) cmd_agy ;;
   dsh) cmd_dsh ;;
   orca) cmd_orca ;;
   codex-bridge) cmd_codex_bridge ;;
+  claude-hud) cmd_claude_hud ;;
+  drift) cmd_drift "${2:-}" ;;
+  upkeep) cmd_upkeep ;;
+  orca-automation) cmd_orca_automation ;;
   agents)
     cmd_claude
     cmd_codex
@@ -927,19 +1256,24 @@ case "${1:-}" in
     cmd_dsh
     cmd_orca
     cmd_codex_bridge
+    cmd_claude_hud
     ;;
   signins) cmd_signins ;;
   orca-pair) cmd_orca_pair ;;
   agents-check)
     check_gh
+    check_gitleaks
+    check_ocr
     check_claude
     check_codex
     check_agy
     check_dsh
     check_orca
     check_codex_bridge
+    check_claude_hud
+    check_orca_automation
     ;;
   repo) cmd_repo ;;
   gateway) cmd_gateway ;;
-  *) sed -n '2,22p' "$0"; exit 2 ;;
+  *) sed -n '2,28p' "$0"; exit 2 ;;
 esac
