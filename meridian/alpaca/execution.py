@@ -23,7 +23,7 @@ Rules carried from the earlier line, each with a test (docs/m3-alpaca.md, sectio
 - Every trade update is classified before it acts. An unclassified one, a lost stream, a frame
   the SDK cannot decode or a venue answer the lane cannot read or map (a listing's shape or
   pages, a row, a single order's answer) is a gap: new orders are denied until a full read of
-  orders and positions, issued after the latest gap, has been handed to the engine. A request
+  orders and positions, issued after the latest gap, is reflected in the engine cache. A request
   that gets no answer is not a gap. Another writer's activity stops new orders until a restart.
 """
 
@@ -35,7 +35,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 from alpaca.common.exceptions import APIError
 from nautilus_trader.common import Logger
@@ -55,6 +55,7 @@ from nautilus_trader.model import (
 from websockets.exceptions import WebSocketException
 
 from .budget import AccountPacer, ActionKind
+from .config import AlpacaPaperExecClientConfig
 from .constants import NOT_SUPPORTED, VENUE
 from .credentials import PaperKeys
 from .parsing import instrument_id, parse_equity
@@ -97,6 +98,7 @@ RECOVERY_RETRY_SECS = (1.0, 30.0)
 SNAPSHOT_MARGIN_NS = 1_000_000_000
 # A decoded stream frame that is neither the subscription acknowledgement nor a trade update.
 NOT_A_TRADE_UPDATE = "Alpaca trade stream frame is not a trade update"
+COVERAGE_NOT_APPLIED = "Alpaca recovery read did not converge in the engine cache"
 
 
 @dataclass(frozen=True)
@@ -107,6 +109,14 @@ class Wiring:
     sdk: Callable[[PaperKeys], Any]
     stream: Callable[[PaperKeys], Any]
     pacer: Callable[[Callable[[], int]], AccountPacer] | None
+
+
+@dataclass(frozen=True)
+class _Coverage:
+    generation: int
+    orders: tuple[Any, ...]
+    positions: tuple[Any, ...]
+    recovery: bool
 
 
 @dataclass(eq=False)
@@ -197,6 +207,9 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         self._covered = -1
         self._started = False  # both startup stages have been read once
         self._startup_gens: dict[str, int] = {}
+        self._startup_reports: dict[str, tuple[Any, ...]] = {}
+        self._coverage_pending: _Coverage | None = None
+        self._read_generation = -1
         self._recovery: asyncio.Task | None = None
         self.recoveries = 0
         self.withheld_symbols: set[str] = set()
@@ -233,8 +246,85 @@ class AlpacaPaperExecutionClient(ExecutionClient):
 
     @property
     def coverage_complete(self) -> bool:
-        """True while the stream is live and a full read covers the latest gap."""
-        return self.stream_live and self._covered == self._gap
+        """A current full read whose order states and net positions the cache reflects."""
+        if not self.stream_live:
+            return False
+        pending = self._coverage_pending
+        if pending is not None and pending.generation == self._gap and self._converged(pending):
+            self._covered = pending.generation
+            self.recoveries += pending.recovery
+            self._coverage_pending = None
+        return self._covered == self._gap
+
+    def _converged(self, read: _Coverage) -> bool:
+        # rc9 queues _handle_report (live/clients.py:429); ClientCache reads the actual
+        # engine cache (crates/live/src/python/client/mod.rs:417). Exact equality matters:
+        # a newer fill is not proof that the earlier snapshot was applied.
+        for report in read.orders:
+            order = self._engine_order(report.venue_order_id.value, report.client_order_id)
+            if (
+                order is None
+                or order.status != report.order_status
+                or order.filled_qty != report.filled_qty
+            ):
+                # An unclaimed external order is filtered by rc9. Without a cache record
+                # we cannot distinguish that from a delayed report, so remain closed.
+                return False
+        expected = {iid: Decimal(0) for iid in self.universe}
+        for report in read.positions:
+            quantity = report.quantity.as_decimal()
+            expected[report.instrument_id] = -quantity if report.is_short else quantity
+        actual = dict.fromkeys(expected, Decimal(0))
+        for position in self.cache.positions_open(venue=self.venue, account_id=self.account_id):
+            if position.instrument_id in actual:
+                actual[position.instrument_id] += position.signed_qty
+        return actual == expected
+
+    async def _await_coverage(self, read: _Coverage) -> bool:
+        """Observe cache convergence; only the predicate can open admission. Use the existing
+        request timeout as the maximum lifetime of this unfinished read, and the gateway's
+        budget polling interval to observe it. Neither deadline nor polling grants coverage.
+        rc9 has no report completion callback in its Python client interface.
+        """
+        loop = asyncio.get_running_loop()
+        done = loop.create_future()
+        poll: asyncio.TimerHandle | None = None
+        assert self.gateway is not None
+        interval = self.gateway.pacer.bucket.interval_ns / 1e9
+
+        def check() -> None:
+            nonlocal poll
+            if done.done():
+                return
+            if self._closing or read.generation != self._gap or not self.stream_live:
+                done.set_result(False)
+            elif self.coverage_complete:
+                done.set_result(True)
+            else:
+                poll = loop.call_later(interval, check)
+
+        def expired() -> None:
+            if not done.done():
+                converged = read.generation == self._gap and self.coverage_complete
+                if read.generation == self._gap and not converged:
+                    self._incomplete(ValueError(COVERAGE_NOT_APPLIED))
+                done.set_result(converged)
+
+        config = cast(AlpacaPaperExecClientConfig, self.config)
+        deadline = loop.call_later(config.request_timeout_secs, expired)
+        try:
+            check()
+            return await done
+        finally:
+            deadline.cancel()
+            if poll is not None:
+                poll.cancel()
+            if self._coverage_pending is read:
+                self._coverage_pending = None
+
+    async def _finish_startup_coverage(self, read: _Coverage) -> None:
+        await self._await_coverage(read)
+        await self._recover()
 
     def _log(self) -> Logger:
         # Built per call: the engine's Logger is bound to the thread that creates it.
@@ -277,7 +367,7 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         self._incomplete(ValueError(f"{kind} outcome unknown after send: {_why(exc)}"))
 
     def _incomplete(self, error: BaseException) -> None:
-        """A gap: new orders stop until a full read issued after it has been handed over."""
+        """A gap: new orders stop until the cache reflects a full read issued after it."""
         self._gap += 1
         self.failures.append((None, error))
         self._log().error(f"Alpaca account view incomplete: {type(error).__name__}: {error}")
@@ -659,7 +749,7 @@ class AlpacaPaperExecutionClient(ExecutionClient):
             if not self.stream_live:
                 return
             if await self._recover_once():
-                return
+                continue  # a newer gap may have arrived while the completed wait resumed
             await asyncio.sleep(delay)
             delay = min(delay * 2, cap)
 
@@ -704,10 +794,11 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         mass.add_order_reports(orders)
         mass.add_position_reports(positions)
         self._know_fills(orders, inferred_at=self.clock.timestamp_ns())
+        read = _Coverage(gen, tuple(orders), tuple(positions), recovery=True)
+        self._coverage_pending = read
+        self._read_generation = gen
         self._handle_report(mass)
-        self._covered = gen
-        self.recoveries += 1
-        return True
+        return await self._await_coverage(read)
 
     # ---------------------------------------------------------------- commands
 
@@ -991,7 +1082,7 @@ class AlpacaPaperExecutionClient(ExecutionClient):
         if startup:
             self._know_fills(reports)
             if full:
-                self._startup_stage_done("orders", gen)
+                self._startup_stage_done("orders", gen, reports)
         return reports
 
     async def _generate_fill_reports(self, command: Any) -> list:
@@ -1057,28 +1148,46 @@ class AlpacaPaperExecutionClient(ExecutionClient):
                 if failures:
                     self.failures.extend(failures)
                     raise IncompleteCoverage(reports, failures)
-        self._startup_stage_done("positions", gen)
+        self._startup_stage_done("positions", gen, reports)
         return reports
 
-    def _startup_stage_done(self, stage: str, gen: int) -> None:
-        """The engine runs the startup stages concurrently, in no fixed order. Once both the
-        full order listing and the positions have been read, each since the latest gap, the
-        view is covered; a gap during the reads is read back once startup has passed. After
-        startup, `_recover_once` alone decides coverage."""
+    def _startup_stage_done(self, stage: str, gen: int, reports: Sequence[Any]) -> None:
+        """Startup stages run concurrently. The node applies their mass status before it
+        starts strategies (rc9 crates/live/src/node/mod.rs:982). Keep admission closed until
+        that application is visible too; a changed generation still needs a fresh full read.
+        """
         if self._started:
             return
         self._startup_gens[stage] = gen
+        self._startup_reports[stage] = tuple(reports)
         if not {"orders", "positions"} <= self._startup_gens.keys():
             return
         self._started = True
         if self._startup_gens["orders"] == self._startup_gens["positions"] == self._gap:
-            self._covered = self._gap
+            read = _Coverage(
+                self._gap,
+                self._startup_reports["orders"],
+                self._startup_reports["positions"],
+                recovery=False,
+            )
+            self._coverage_pending = read
+            self._read_generation = self._gap
+            self._recovery = self.create_task(
+                self._finish_startup_coverage(read), "alpaca-startup-coverage"
+            )
         else:
             self._schedule_recovery()
+        self._startup_reports.clear()
 
     def _provides_bulk_position_coverage(self, instrument_id: Any) -> bool:
-        # A withheld row never lets the engine infer "flat" for its instrument.
-        return self.coverage_complete and instrument_id.symbol.value not in self.withheld_symbols
+        # This tells reconciliation whether an absent venue position means flat; it needs
+        # read completeness BEFORE applying orders. Do not read the cache under its borrow,
+        # or use this authority over absent rows as permission to submit a new order.
+        return (
+            self.stream_live
+            and self._read_generation == self._gap
+            and instrument_id.symbol.value not in self.withheld_symbols
+        )
 
     def _calculate_commission(self, instrument, last_qty, last_px, liquidity_side) -> Any:
         return self.commission

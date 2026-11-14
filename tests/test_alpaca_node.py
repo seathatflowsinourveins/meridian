@@ -16,6 +16,7 @@ import asyncio
 import gc
 import json
 import time
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
@@ -38,6 +39,7 @@ from alpaca_fakes import (
 )
 from nautilus_trader.model import (
     ClientOrderId,
+    ExecutionMassStatus,
     InstrumentId,
     OrderSide,
     OrderStatus,
@@ -48,7 +50,10 @@ from nautilus_trader.model import (
 )
 
 from meridian.alpaca.budget import ActionKind
-from meridian.alpaca.execution import NOT_A_TRADE_UPDATE
+from meridian.alpaca.execution import (
+    NOT_A_TRADE_UPDATE,
+    AlpacaPaperExecutionClient,
+)
 from meridian.alpaca.parsing import parse_equity
 from meridian.alpaca.reconcile import OTHER_INSTRUMENT
 from meridian.alpaca.reports import timestamp_ns
@@ -2284,12 +2289,12 @@ def test_a_submission_whose_answer_was_lost_is_read_back_under_the_default_setti
     known, not counted again."""
     rig = Rig()
 
+    def filled(row):
+        row.update(status="filled", filled_qty="1", filled_avg_price="100.00")
+        rig.venue.positions.append(position_row())
+
     def on_start(running, box):
-        answer_lost(
-            rig.venue,
-            "post",
-            lambda row: row.update(status="filled", filled_qty="1", filled_avg_price="100.00"),
-        )
+        answer_lost(rig.venue, "post", filled)
         box["order"] = limit_order(running)
         running.submit_order(box["order"])
 
@@ -2454,6 +2459,235 @@ def test_a_stream_frame_the_sdk_cannot_decode_is_a_gap(frame):
     assert box["second_status"] == OrderStatus.DENIED
     assert box["first_status"] == OrderStatus.FILLED
     assert box["holding"] == [("AAPL.ALPACA", "1")]
+
+
+@pytest.mark.parametrize("change", ["fill", "cancel", "partial"])
+def test_recovery_does_not_admit_an_order_before_the_engine_applies_the_read(change):
+    """Hold the mass report at the client output boundary, without a timing assumption.
+    The read discovers a fill; another order must stay denied until that fill is applied.
+    """
+    rig = Rig()
+
+    def on_start(running, box):
+        box["order"] = limit_order(running, qty="3" if change == "partial" else "1")
+        running.submit_order(box["order"])
+        box["second"], box["third"] = limit_order(running, 2), limit_order(running, 3)
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, row = rig.clients[0], rig.venue.orders[-1]
+        if change == "partial":
+            rig.stream.push(one_more_share(rig, row))
+            await until(lambda: status() == OrderStatus.PARTIALLY_FILLED)
+        hand, pending, queued = client._handle_report, [], asyncio.Event()
+
+        def hold(report, fills=None):
+            if isinstance(report, ExecutionMassStatus):
+                pending.append(report)
+                queued.set()
+            else:
+                hand(report, fills)
+
+        client._handle_report = hold
+        if change == "cancel":
+            row["status"] = "canceled"
+        else:
+            one_more_share(rig, row)  # the read discovers this execution, not the stream
+        rig.stream.push(Frame("[]"))
+        try:
+            await queued.wait()
+            box["held"] = (client.coverage_complete, status(), engine_holds(client))
+            box["strategy"].submit_order(box["second"])
+            await until(lambda: status(2) in (OrderStatus.DENIED, OrderStatus.ACCEPTED))
+            box["second_status"] = status(2)
+        finally:
+            client._handle_report = hand
+            for report in pending:
+                hand(report)
+        await until(lambda: client.coverage_complete)
+        box["applied"] = (status(), engine_holds(client))
+        box["strategy"].submit_order(box["third"])
+        await until(lambda: status(3) == OrderStatus.ACCEPTED)
+
+    box = drive(rig, script, on_start=on_start)
+    assert box["error"] is None
+    previous = OrderStatus.PARTIALLY_FILLED if change == "partial" else OrderStatus.ACCEPTED
+    assert box["held"] == (False, previous, ["1"] if change == "partial" else [])
+    assert box["second_status"] == OrderStatus.DENIED
+    assert (
+        box["applied"]
+        == {
+            "fill": (OrderStatus.FILLED, ["1"]),
+            "cancel": (OrderStatus.CANCELED, []),
+            "partial": (OrderStatus.PARTIALLY_FILLED, ["2"]),
+        }[change]
+    )
+
+
+class PositionView:
+    """A cache view whose positions can be held behind its already-current orders."""
+
+    def __init__(self, cache, signed_qty):
+        self.cache = cache
+        self.signed_qty = Decimal(signed_qty)
+
+    def __getattr__(self, name):
+        return getattr(self.cache, name)
+
+    def positions_open(self, **kwargs):
+        return [SimpleNamespace(instrument_id=AAPL, signed_qty=self.signed_qty)]
+
+
+@pytest.mark.parametrize("quantity", ["0", "1", "-1"])
+def test_recovery_waits_for_net_positions_including_flat_and_accepts_equal_reads(quantity):
+    """Even with every order current, a wrong net position holds admission closed. Once
+    equal, an unchanged read (empty when flat) needs no engine mutation and can complete.
+    """
+    rig = Rig()
+    if quantity != "0":
+        earlier = order_row(side="sell" if quantity == "-1" else "buy")
+        rig.venue.orders.append(earlier)
+        rig.venue.fills.append(fill_activity(earlier))
+        rig.venue.positions.append(
+            {**position_row(qty=quantity), "side": "short" if quantity == "-1" else "long"}
+        )
+
+    async def script(box, status):
+        client = rig.clients[0]
+        cache, hand, queued, pending = client.cache, client._handle_report, asyncio.Event(), []
+
+        def hold(report, fills=None):
+            pending.append(report)
+            queued.set()
+
+        client.cache = PositionView(cache, "-1" if quantity == "1" else "1")
+        client._handle_report = hold
+        try:
+            rig.stream.push(Frame("[]"))
+            await queued.wait()
+            box["held"] = (client.coverage_complete, client._submit_admitted())
+            client.cache = cache
+            # The actual cache already equals this read, which we have not released.
+            await until(lambda: client.coverage_complete)
+            box["equal"] = (client._submit_admitted(), client.recoveries)
+        finally:
+            client.cache, client._handle_report = cache, hand
+            for report in pending:
+                hand(report)
+
+    box = drive(rig, script, on_start=lambda running, box: None)
+    assert box["error"] is None
+    assert box["held"] == (False, False)
+    assert box["equal"] == (True, 1)
+
+
+def test_startup_coverage_waits_for_the_engine_to_apply_the_read(monkeypatch):
+    rig, before = Rig(), []
+    earlier = order_row()
+    rig.venue.orders.append(earlier)
+    rig.venue.fills.append(fill_activity(earlier))
+    rig.venue.positions.append(position_row())
+    stage_done = AlpacaPaperExecutionClient._startup_stage_done
+
+    def observe(client, *args):
+        stage_done(client, *args)
+        if client._started:
+            before.append((client.coverage_complete, engine_holds(client)))
+
+    monkeypatch.setattr(AlpacaPaperExecutionClient, "_startup_stage_done", observe)
+    error, seen = start(rig)
+    assert error is None
+    assert before == [(False, [])]
+    assert seen["coverage_complete"]
+    assert seen["holding"] == [("AAPL.ALPACA", "1")]
+
+
+def test_a_filtered_unclaimed_report_never_opens_coverage_and_times_out(monkeypatch):
+    """rc9 filters an external order without an instrument claim. Its absence is not proof
+    of application: bounded failure and fresh reads replace a silent, indefinite wait.
+    """
+    rig = Rig()
+    earlier = order_row(status="canceled", filled_qty="0")
+    rig.venue.orders.append(earlier)
+    original = strategy
+    monkeypatch.setitem(globals(), "strategy", lambda **kw: original(claim=False, **kw))
+
+    def on_start(running, box):
+        box["order"] = limit_order(running)
+        box["at_start"] = rig.clients[0].coverage_complete
+        running.submit_order(box["order"])
+
+    async def script(box, status):
+        client = rig.clients[0]
+        await until(lambda: status() in (OrderStatus.DENIED, OrderStatus.ACCEPTED))
+        box["status"] = status()
+        assert box["status"] == OrderStatus.DENIED
+        await until(
+            lambda: any(
+                str(exc) == "Alpaca recovery read did not converge in the engine cache"
+                for _, exc in client.failures
+            )
+        )
+        await until(lambda: rig.venue.calls.count(("get", "/positions")) > 1)
+        box["after_timeout"] = (
+            client.coverage_complete,
+            client.recoveries,
+            client.cache.order(ClientOrderId(earlier["client_order_id"])),
+        )
+
+    # Synthetic short deadline: exercises the configured bound, not a timing cure.
+    box = drive(rig, script, on_start=on_start, request_timeout_secs=0.1)
+    assert box["error"] is None
+    assert box["at_start"] is False
+    assert box["after_timeout"] == (False, 0, None)
+    assert ("post", "/orders") not in rig.venue.calls
+
+
+def test_a_stream_fill_between_handover_and_convergence_requires_a_fresh_read():
+    """Queue the read's first share followed by the stream's second share, in output order.
+    The duplicate first share stays known; the newer cache cannot acknowledge the old read.
+    """
+    rig = Rig()
+
+    async def script(box, status):
+        await until(lambda: status() == OrderStatus.ACCEPTED)
+        client, row = rig.clients[0], rig.venue.orders[-1]
+        first = one_more_share(rig, row)
+        hand, cache, queued, pending = (client._handle_report, client.cache, asyncio.Event(), [])
+
+        def hold(report, fills=None):
+            pending.append((report, fills))
+            if isinstance(report, ExecutionMassStatus):
+                queued.set()
+
+        client._handle_report = hold
+        try:
+            rig.stream.push(Frame("[]"))
+            await queued.wait()
+            assert not client.coverage_complete
+            rig.stream.push(first)
+            rig.stream.push(one_more_share(rig, row))
+            await until(lambda: len(pending) == 2 and client.known_executions == 1)
+            # Prevent an observation between the two applications from completing the read.
+            client.cache = PositionView(cache, "0")
+            for report, fills in pending:
+                hand(report, fills)
+            await until(lambda: status() == OrderStatus.FILLED)
+            client.cache = cache
+            assert not client.coverage_complete
+        finally:
+            client.cache, client._handle_report = cache, hand
+        await until(lambda: client.coverage_complete)
+        box["fills"] = fills_of(client)
+        box["failures"] = [str(exc) for _, exc in client.failures]
+        box["counts"] = (client.known_executions, len(client._forwarded), client.recoveries)
+
+    box = drive(rig, script, on_start=two_share_order, request_timeout_secs=0.1)
+    assert box["error"] is None
+    assert box["fills"] == ("2", 2)
+    assert box["counts"] == (1, 1, 1)
+    assert "Alpaca recovery read did not converge in the engine cache" in box["failures"]
+    assert box["holding"] == [("AAPL.ALPACA", "2")]
 
 
 def fills_of(client, number: int = 1) -> tuple[str, int]:
