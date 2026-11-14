@@ -55,10 +55,11 @@ this table; the row's first cell links the file by name, as in `[NNNN](NNNN-shor
 | [0005](0005-claude-code-superpowers.md) | obra/superpowers for Claude Code (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0006](0006-claude-compound-engineering.md) | compound-engineering plugin for Claude Code (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0007](0007-codex-openai-plugins.md) | openai/plugins, the official Codex plugins (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
-| [0008](0008-codex-oh-my-codex.md) | oh-my-codex for Codex CLI (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0008](0008-codex-oh-my-codex.md) | oh-my-codex for Codex CLI (plan 8.6) | superseded by 0018, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0009](0009-dsh-codex-peer.md) | dsh-codex-peer, Codex as a peer of DeepSeek Harness (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0010](0010-dsh-gungnir.md) | dsh-gungnir goal verification for DeepSeek Harness (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0011](0011-dsh-goalloop-agentteams.md) | dsh-goalloop-agentteams completion gate for DeepSeek Harness (plan 8.6) | deferred, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0012](0012-dsh-early-stop-guard.md) | dsh-early-stop-guard for DeepSeek Harness (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0013](0013-antigravity-cli-reading.md) | Antigravity CLI documentation reading (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0014](0014-claude-you-should-know.md) | You should know for Claude Code (plan 8.6) | adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0018](0018-codex-worker-stack.md) | Codex worker stack: oh-my-codex, ponytail, OpenAI's docs server (stack ADR) | adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |

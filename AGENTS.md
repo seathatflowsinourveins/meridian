@@ -74,8 +74,8 @@ uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run 
   `orca-ide`. Its runtime is the `orca-serve` user service on 127.0.0.1:6790: if it is down,
   report that or run `systemctl --user start orca-serve`, never `orca-ide open`, `serve` or
   `serve service install`, which can listen on every interface. Agents' servers bind 127.0.0.1.
-- MCP servers are off machine-wide for Claude Code and Codex. A skill, plugin or MCP server is
-  added only by an ADR (`docs/adr/README.md`), and none gets an order tool or broker connector.
+- Claude Code's MCP servers stay off; Codex's are the named set in `setup.sh` (ADR 0018). A skill,
+  plugin or MCP server is added only by an ADR, and none gets an order tool or broker connector.
 
 ## The IBKR paper lane (owner only)
 

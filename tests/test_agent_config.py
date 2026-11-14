@@ -1,8 +1,9 @@
 """No agent configuration is committed here, apart from the shared skills, and setup stays runnable.
 
 Claude Code, Codex, Antigravity and DeepSeek Harness each load configuration from the folder they
-start in: MCP servers, hooks, plugins and feature switches. Claude Code and Codex have MCP off
-machine-wide (``deploy/wsl/meridian.user-data``); Antigravity has no such setting. So the only
+start in: MCP servers, hooks, plugins and feature switches. Claude Code has MCP off machine-wide
+and Codex allows only the servers ADR 0018 names (``deploy/wsl/meridian.user-data``);
+Antigravity has no such setting. So the only
 agent files git may list are the skills in ``.agents/skills/`` and their links in
 ``.claude/skills/``. This catches an accidental commit. It cannot stop a branch from outside the
 owner's own sessions, which carries its own tests: AGENTS.md keeps such branches out of worktrees.
@@ -22,8 +23,9 @@ DEPLOY = REPO_ROOT / "deploy" / "wsl"
 # (UPSTREAM.md, GitHub CLI row). The pin may not fall below it.
 GH_NEWEST_FIX = (2, 97, 0)
 
-# Folders the four agents (or Gemini CLI, whose layout Antigravity shares) read in a project.
-AGENT_FOLDERS = (".agents/", ".claude/", ".codex/", ".gemini/", ".dsh/")
+# Folders the four agents (or Gemini CLI, whose layout Antigravity shares) read in a project, and
+# oh-my-codex's per-project state.
+AGENT_FOLDERS = (".agents/", ".claude/", ".codex/", ".gemini/", ".dsh/", ".omx/")
 ALLOWED = (".agents/skills/", ".claude/skills/")
 # Files an agent reads wherever they are: Claude Code's project MCP servers.
 AGENT_FILES = {".mcp.json"}
@@ -58,6 +60,7 @@ def test_no_agent_configuration_is_committed():
         ".agents/plugins/x/plugin.json",
         ".gemini/settings.json",
         ".dsh/cordis.patch.yml",
+        ".omx/setup-scope.json",
     ],
 )
 def test_the_check_catches_agent_configuration(name):
@@ -178,6 +181,16 @@ def setup_function_body(name):
     return (DEPLOY / "setup.sh").read_text().split(f"{name}() {{\n", 1)[1].split("\n}", 1)[0]
 
 
+def setup_constant(name):
+    found = re.search(rf"^{name}=(\S+)$", (DEPLOY / "setup.sh").read_text(), re.M)
+    assert found, f"setup.sh has no {name}"
+    return found[1]
+
+
+DOCS_MCP = setup_constant("CODEX_DOCS_MCP")
+PONYTAIL = f"ponytail@{setup_constant('PONYTAIL_MARKET')}"
+
+
 def run_config_writer(name, tmp_path, helpers=()):
     # Extract only configuration writers; no installer, agent or service is started.
     # Replace the home reference in the extracted code, leaving the real HOME untouched.
@@ -191,7 +204,7 @@ def run_config_writer(name, tmp_path, helpers=()):
             "-o",
             "pipefail",
             "-c",
-            "fixture_root=$1\nCODEX_MODEL=model\nDSH_MODEL=model\n"
+            f"fixture_root=$1\nCODEX_MODEL=model\nDSH_MODEL=model\nCODEX_DOCS_MCP={DOCS_MCP}\n"
             'fail() { echo "$*" >&2; exit 1; }\n' + functions + f"\n{name}",
             "test-config",
             str(tmp_path),
@@ -202,20 +215,81 @@ def run_config_writer(name, tmp_path, helpers=()):
     )
 
 
+def write_codex_config(tmp_path):
+    run_config_writer("codex_config", tmp_path, ("codex_config_file", "codex_setting"))
+
+
+ORCA_EVENTS = (
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PermissionRequest",
+    "PostToolUse",
+    "SubagentStart",
+    "SubagentStop",
+    "Stop",
+    "Interrupt",
+)
+OMX_EVENTS = (
+    "SessionStart",
+    "PreToolUse",
+    "PostToolUse",
+    "UserPromptSubmit",
+    "PreCompact",
+    "PostCompact",
+    "SubagentStop",
+    "Stop",
+)
+
+
+def hook_label(event):
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower()
+
+
+def codex_home(tmp_path, ponytail_trusted=0):
+    # What setup leaves in ~/.codex: Orca's 9 hooks, then oh-my-codex's 8 in the group after them,
+    # each with its trust entry, the ponytail plugin, and oh-my-codex's user file.
+    write_codex_config(tmp_path)
+    run_config_writer("omx_config", tmp_path)
+    home = tmp_path / ".codex"
+    hooks: dict[str, list] = {}
+    for event in ORCA_EVENTS:
+        hooks.setdefault(event, []).append({"hooks": [{"command": ": orca-agent-hook-form=1"}]})
+    for event in OMX_EVENTS:
+        command = '"node" "/x/oh-my-codex/dist/scripts/codex-native-hook.js"'
+        hooks.setdefault(event, []).append({"hooks": [{"command": command}]})
+    (home / "hooks.json").write_text(json.dumps({"hooks": hooks}))
+    state = [
+        f'[hooks.state."{home}/hooks.json:{hook_label(event)}:{g}:0"]\ntrusted_hash = "sha256:x"\n'
+        for event, groups in hooks.items()
+        for g in range(len(groups))
+    ]
+    state += [
+        f'[hooks.state."{PONYTAIL}:hooks/claude-codex-hooks.json:{label}:0:0"]\n'
+        'trusted_hash = "sha256:x"\n'
+        for label in ("session_start", "subagent_start", "user_prompt_submit")[:ponytail_trusted]
+    ]
+    with (home / "config.toml").open("a") as f:
+        f.write(f'\n[plugins."{PONYTAIL}"]\nenabled = true\n\n' + "\n".join(state))
+    return home / "config.toml"
+
+
 def codex_config_check(path):
     body = setup_function_body("check_codex")
-    program = body.split("\nimport sys\n", 1)[1].split("\nPY", 1)[0]
+    program = "import" + body.split("<<'PY'", 1)[1].split("\nimport", 1)[1].split("\nPY", 1)[0]
+    home = path.parent
     return subprocess.run(
-        [sys.executable, "-I", "-", str(path), "model"],
-        input="import sys\n" + program,
+        [sys.executable, "-I", "-", str(path), "model", str(home / "hooks.json")]
+        + [str(home / ".omx-config.json"), DOCS_MCP, PONYTAIL],
+        input=program,
         capture_output=True,
         text=True,
         check=False,
     )
 
 
-def test_codex_startup_menu_is_disabled_in_new_and_existing_configs(tmp_path):
-    run_config_writer("codex_config_file", tmp_path)
+def test_codex_config_sets_the_stack_and_keeps_other_tables(tmp_path):
+    write_codex_config(tmp_path)
     path = tmp_path / ".codex/config.toml"
     original = path.read_text()
     assert tomllib.loads(original)["check_for_update_on_startup"] is False
@@ -225,29 +299,138 @@ def test_codex_startup_menu_is_disabled_in_new_and_existing_configs(tmp_path):
         '"check_for_update_on_startup" = true\n',
     ):
         text = original.replace("check_for_update_on_startup = false\n", setting)
-        text = text.replace("apps = false", "apps = true")
+        text = text.replace("apps = false", "apps = true").replace("plugins = true", "plugins = 0")
+        text = text.replace('model_reasoning_effort = "high"', 'model_reasoning_effort = "medium"')
+        text = text.replace(f'url = "{DOCS_MCP}"', 'url = "https://example.com/mcp"')
         text += (
             '\n[hooks.state.test]\ncommand = "keep"\n'
             '[projects."/example"]\ntrust_level = "trusted"\n'
         )
         path.write_text(text)
-        run_config_writer("codex_config", tmp_path, ("codex_config_file", "codex_setting_off"))
+        write_codex_config(tmp_path)
         expected = tomllib.loads(text)
         expected["check_for_update_on_startup"] = False
-        expected["features"]["apps"] = False
+        expected["model_reasoning_effort"] = "high"
+        expected["features"] |= {"apps": False, "plugins": True}
+        expected["mcp_servers"] = {"openaiDeveloperDocs": {"url": DOCS_MCP}}
         assert tomllib.loads(path.read_text()) == expected
-        assert codex_config_check(path).returncode == 0
         once = path.read_bytes()
-        run_config_writer("codex_config", tmp_path, ("codex_config_file", "codex_setting_off"))
+        write_codex_config(tmp_path)
         assert path.read_bytes() == once
 
 
-@pytest.mark.parametrize("setting", ["", "check_for_update_on_startup = true\n"])
-def test_codex_check_rejects_a_startup_menu(tmp_path, setting):
-    run_config_writer("codex_config_file", tmp_path)
-    path = tmp_path / ".codex/config.toml"
-    path.write_text(path.read_text().replace("check_for_update_on_startup = false\n", setting))
+def test_codex_check_accepts_the_stack_and_waits_for_ponytails_hooks(tmp_path):
+    path = codex_home(tmp_path)
+    result = codex_config_check(path)
+    assert result.returncode == 0, result.stderr
+    assert "3 of ponytail's 3 hooks wait for the owner's /hooks" in result.stdout
+    path = codex_home(tmp_path / "trusted", ponytail_trusted=3)
+    result = codex_config_check(path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+
+ADD = "[analytics]"
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "named"),
+    [
+        ("check_for_update_on_startup = false\n", "", "check_for_update_on_startup"),
+        ("check_for_update_on_startup = false", "check_for_update_on_startup = true", "startup"),
+        ("apps = false", "apps = true", "[features] apps"),
+        ("plugins = true", "plugins = false", "[features] plugins"),
+        ('model_reasoning_effort = "high"', 'model_reasoning_effort = "medium"', "effort"),
+        (ADD, '[mcp_servers.broker]\ncommand = "broker-mcp"\n\n' + ADD, "MCP servers"),
+        (f'url = "{DOCS_MCP}"', 'url = "https://example.com/mcp"', "openaiDeveloperDocs"),
+        (ADD, '[plugins."broker@example"]\nenabled = true\n\n' + ADD, "plugins ["),
+        (ADD, '[profiles.x.mcp_servers.y]\nurl = "https://example.com"\n\n' + ADD, "a profile"),
+        ('trusted_hash = "sha256:x"\n', "", "hooks without trust"),
+    ],
+)
+def test_codex_check_rejects_what_the_stack_does_not_name(tmp_path, old, new, named):
+    path = codex_home(tmp_path)
+    text = path.read_text()
+    assert old in text
+    path.write_text(text.replace(old, new, 1))
+    result = codex_config_check(path)
+    assert result.returncode != 0
+    assert named in result.stderr
+
+
+def test_codex_check_rejects_a_hook_that_is_neither_orcas_nor_oh_my_codexs(tmp_path):
+    path = codex_home(tmp_path)
+    hooks_file = path.parent / "hooks.json"
+    hooks = json.loads(hooks_file.read_text())
+    hooks["hooks"]["Stop"].append({"hooks": [{"command": "curl https://example.com"}]})
+    hooks_file.write_text(json.dumps(hooks))
+    with path.open("a") as f:
+        f.write(f'\n[hooks.state."{hooks_file}:stop:2:0"]\ntrusted_hash = "sha256:x"\n')
+    result = codex_config_check(path)
+    assert result.returncode != 0
+    assert "'unknown': 1" in result.stderr
+
+
+@pytest.mark.parametrize("change", ["remove", "team", "triage"])
+def test_codex_check_requires_oh_my_codex_team_mode_and_triage_off(tmp_path, change):
+    path = codex_home(tmp_path)
+    omx_file = path.parent / ".omx-config.json"
+    if change == "remove":
+        omx_file.unlink()
+    else:
+        settings = json.loads(omx_file.read_text())
+        if change == "team":
+            settings["teamMode"] = "enabled"
+        else:
+            settings["promptRouting"]["triage"]["enabled"] = True
+        omx_file.write_text(json.dumps(settings))
     assert codex_config_check(path).returncode != 0
+
+
+def test_omx_config_keeps_other_keys_and_is_stable(tmp_path):
+    path = tmp_path / ".codex/.omx-config.json"
+    path.parent.mkdir()
+    path.write_text(json.dumps({"teamMode": "enabled", "other": 1, "promptRouting": {"x": 2}}))
+    run_config_writer("omx_config", tmp_path)
+    assert json.loads(path.read_text()) == {
+        "teamMode": "disabled",
+        "other": 1,
+        "promptRouting": {"x": 2, "triage": {"enabled": False}},
+    }
+    once = path.read_bytes()
+    run_config_writer("omx_config", tmp_path)
+    assert path.read_bytes() == once
+
+
+def user_data_requirements():
+    # The literal block under the requirements file in the definition, read without the script.
+    lines = (DEPLOY / "meridian.user-data").read_text().splitlines()
+    start = lines.index("  - path: /etc/codex/requirements.toml")
+    start = lines.index("    content: |", start) + 1
+    block = []
+    for line in lines[start:]:
+        if line and not line.startswith("      "):
+            break
+        block.append(line[6:])
+    return "\n".join(block).rstrip("\n") + "\n"
+
+
+def test_codex_requirements_text_is_the_definitions_and_names_each_server(tmp_path):
+    function = setup_function_body("codex_requirements_text")
+    written = subprocess.run(
+        ["bash", "-c", f"f() {{\n{function}\n}}\nf $1", "x", str(DEPLOY / "meridian.user-data")],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert written == user_data_requirements()
+    requirements = tomllib.loads(written)
+    assert requirements["features"] == {"apps": False}
+    write_codex_config(tmp_path)
+    servers = tomllib.loads((tmp_path / ".codex/config.toml").read_text())["mcp_servers"]
+    assert requirements["mcp_servers"] == {
+        name: {"identity": {"url": server["url"]}} for name, server in servers.items()
+    }
 
 
 def test_dsh_writes_home_wide_guide_completion_and_preserves_other_state(tmp_path):

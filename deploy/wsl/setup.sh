@@ -9,12 +9,13 @@
 #   deploy/wsl/setup.sh gateway       install IB Gateway (pinned build; never starts it or logs in)
 #   deploy/wsl/setup.sh agents        all of the following, in this order:
 #     claude        Claude Code, from Anthropic's signed release manifest
-#     codex         Codex CLI (npm)
+#     codex         Codex CLI and its worker stack, ADR 0018 (npm, a local plugin marketplace)
 #     agy           Antigravity CLI (its GitHub release asset)
 #     dsh           DeepSeek Harness and the terminal UI Orca launches for it (npm, pnpm)
 #     orca          Orca server, a loopback-only systemd user service (sudo for /opt)
 #     codex-bridge  the Codex review plugin for Claude Code
 #   deploy/wsl/setup.sh agents-check  verify the agent runtimes and their settings
+#   deploy/wsl/setup.sh codex-requirements  write /etc/codex/requirements.toml from meridian.user-data (sudo)
 #   deploy/wsl/setup.sh signins       list the sign-ins left for the owner, with their commands
 #   deploy/wsl/setup.sh orca-pair     owner, once, in Windows Terminal: pair the Windows Orca app
 #
@@ -59,6 +60,14 @@ CODEX_VERSION=0.167.2
 CODEX_INTEGRITY=sha512-6OFkr2ndzTdFb32OEiUlM9BgpeY8+wnMe8vRhuvt+22TnxVR39KnJ22Ghay98IY9OmEltoNgFN4GALUkxFQCOw==
 CODEX_LINUX_INTEGRITY=sha512-2Rw3VkWonMxwCSgOw+NkiKLOuOzyoQNWmxU7x8GniesdMfhKc4asNqOzTgQwJLKCrSlPc4/6fYTaH7fYcuGWGQ==
 CODEX_MODEL=gpt-6-astra
+# The Codex worker stack (ADR 0018). oh-my-codex by npm's integrity value; ponytail at its v5.3.3
+# release commit, served from a local marketplace; OpenAI's docs server at the URL and name that
+# Codex's own openai-docs skill uses. /etc/codex/requirements.toml allows that server by name.
+OMX_VERSION=0.22.6
+OMX_INTEGRITY=sha512-ZpMHipwnaiHV/T8rp/czmF5U+ugqVdUOb28obL5U61q9WQwvfKAmzP4k1V82EnUXYMvsBgZIzFl0I3HADBbFEQ==
+PONYTAIL_COMMIT=7801d061243d7b753bad0e0b3c057cd250b11755
+PONYTAIL_MARKET=meridian-ponytail
+CODEX_DOCS_MCP=https://developers.openai.com/mcp
 # DeepSeek Harness: the engine (`dsh`), pnpm (dsh installs its profiles with it, and pins the
 # 11.x line), the community terminal UI that Orca launches for it (`dsh-tui`), and the two hook
 # packages that give Orca its status events (at the engine's version). Registry integrity values.
@@ -117,6 +126,7 @@ GATEWAY_DIR="${HOME}/Jts/ibgateway/1050"
 GATEWAY_LIBS="libgtk-3-0t64 libnss3 libnspr4 libasound2t64 libatk1.0-0t64 libatk-bridge2.0-0t64 libatspi2.0-0t64 libcups2t64 xdg-utils"
 REPO=seathatflowsinourveins/meridian
 REPO_DIR="${HOME}/src/meridian"
+USER_DATA="$(dirname "$(readlink -f "$0")")/meridian.user-data"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 ok() { echo "ok:   $*"; }
@@ -180,7 +190,7 @@ cmd_check() {
   ok "claude.ai connectors and every MCP server off for Claude Code in this distro (user and machine-wide)"
   echo "note: that setting does not cover connectors the Claude desktop app itself attaches to a session"
   check_codex_requirements
-  ok "Codex: every MCP server, ChatGPT apps, plugins and memories off machine-wide"
+  ok "Codex: ChatGPT apps off and only the MCP servers ADR 0018 names, machine-wide"
   for source in linux wsl_setup ubuntu_release_upgrader; do
     ubuntu-insights consent "${source}" 2>/dev/null | grep -qx "${source}: false" \
       || fail "Ubuntu Insights consent for ${source} is not recorded as false"
@@ -380,23 +390,41 @@ cmd_codex() {
     npm install -g --strict-allow-scripts "@openai/codex@${CODEX_VERSION}"
   fi
   codex_config
+  cmd_omx
+  codex_ponytail
   check_codex
 }
 
-# codex_setting_off FILE NAME TABLE: `NAME = false` in TABLE (empty means the root).
-# Preserve other tables, parse before replacing, and refuse a missing named table.
-codex_setting_off() {
-  python3 -I - "$1" "$2" "$3" <<'PY' || fail "cannot set $2 = false in table '$3' of $1"
+# codex_setting FILE NAME TABLE VALUE: `NAME = VALUE` (VALUE in TOML) in TABLE, a dotted name
+# (empty means the root; a missing table is added at the end). Other tables, Orca's
+# [hooks.state.*] and [projects.*] among them, are kept, the result is parsed before it replaces
+# the file, and a value already set changes no byte.
+codex_setting() {
+  python3 -I - "$@" <<'PY' || fail "cannot set $2 = $4 in table '$3' of $1"
 import os
 import re
 import sys
 import tomllib
 
-path, name, table = sys.argv[1:]
+path, name, table, value = sys.argv[1:]
+parts = table.split(".") if table else []
+if not all(re.fullmatch(r"[A-Za-z0-9_-]+", part) for part in [*parts, name]):
+    sys.exit(f"{table}.{name} is not a dotted name of bare keys")
+want = tomllib.loads(f"v = {value}")["v"]
+
+
+def current(cfg):
+    for part in parts:
+        cfg = cfg.get(part, {})
+        if not isinstance(cfg, dict):
+            return None
+    got = cfg.get(name)
+    return (type(got), got)
+
+
 with open(path, encoding="utf-8") as f:
     text = f.read()
-cfg = tomllib.loads(text)
-if (cfg.get(table, {}) if table else cfg).get(name) is False:
+if current(tomllib.loads(text)) == (type(want), want):
     sys.exit(0)
 lines = text.splitlines(keepends=True)
 header = next(
@@ -404,16 +432,18 @@ header = next(
     None,
 ) if table else -1
 if header is None:
-    sys.exit(f"{path} has no [{table}] table")
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    lines += ["\n", f"[{table}]\n"]
+    header = len(lines) - 1
 end = next((i for i in range(header + 1, len(lines)) if re.match(r"\s*\[", lines[i])), len(lines))
 key = re.compile(rf"\s*(?:{re.escape(name)}|\"{re.escape(name)}\"|'{re.escape(name)}')\s*=")
 hits = [i for i in range(header + 1, end) if key.match(lines[i])]
 for i in reversed(hits):
     del lines[i]
-lines.insert(hits[0] if hits else header + 1, f"{name} = false\n")
+lines.insert(hits[0] if hits else header + 1, f"{name} = {value}\n")
 new = "".join(lines)
-cfg = tomllib.loads(new)
-if (cfg.get(table, {}) if table else cfg).get(name) is not False:
+if current(tomllib.loads(new)) != (type(want), want):
     sys.exit(f"{path}: {name} is set outside table '{table}'")
 with open(f"{path}.new", "w", encoding="utf-8") as f:
     f.write(new)
@@ -423,18 +453,21 @@ PY
 }
 
 codex_config() {
-  # Written once; Orca later adds its own [hooks.state.*] and [projects.*] tables to this file.
-  # The [features] switches are re-applied on every run. /etc/codex/requirements.toml pins the
-  # same four off in every config layer, a project's .codex/config.toml included.
+  # Written once; Orca later adds its own [hooks.state.*] and [projects.*] tables to this file,
+  # and oh-my-codex its instructions, hooks and trust entries. The settings below are re-applied
+  # on every run. /etc/codex/requirements.toml pins apps off and names the MCP servers allowed.
   local file="${HOME}/.codex/config.toml" feature
   if [ ! -e "${file}" ]; then
     codex_config_file
   fi
   # The startup menu is independent of --no-daemon; tasks typed later do not skip it.
-  codex_setting_off "${file}" check_for_update_on_startup ""
-  for feature in apps plugins skill_mcp_dependency_install memories; do
-    codex_setting_off "${file}" "${feature}" features
+  codex_setting "${file}" check_for_update_on_startup "" false
+  codex_setting "${file}" model_reasoning_effort "" '"high"'
+  for feature in apps skill_mcp_dependency_install memories; do
+    codex_setting "${file}" "${feature}" features false
   done
+  codex_setting "${file}" plugins features true
+  codex_setting "${file}" url mcp_servers.openaiDeveloperDocs "\"${CODEX_DOCS_MCP}\""
 }
 
 codex_config_file() {
@@ -451,11 +484,10 @@ check_for_update_on_startup = false
 
 [features]
 # ChatGPT apps (account connectors) stay off, as claude.ai connectors do for Claude Code, so no
-# account-linked tool (a broker connector among them) reaches an agent here. Plugins, and the MCP
-# servers a skill can ask for, stay off until an evidence record adds one (plan 8.6). So does
-# Codex's own memory: the memory layer is chosen by evidence record too (plan 8.7).
+# account-linked tool (a broker connector among them) reaches an agent here. Plugins are on for
+# the one plugin of ADR 0018; the MCP servers a skill can ask for and Codex's own memory stay off.
 apps = false
-plugins = false
+plugins = true
 skill_mcp_dependency_install = false
 memories = false
 
@@ -471,61 +503,201 @@ TOML
   chmod 0600 "${HOME}/.codex/config.toml"
 }
 
+omx_version() { "${HOME}/.local/bin/omx" --version 2>/dev/null </dev/null | sed -n 's/^oh-my-codex v//p' | head -n 1; }
+
+# oh-my-codex (ADR 0018): the pinned package without its install script (it fetches a native
+# helper this setup does not use), set up in user scope with no MCP server and no team mode.
+cmd_omx() {
+  local tmp exclude
+  if [ "$(omx_version)" != "${OMX_VERSION}" ]; then
+    npm_pinned "oh-my-codex@${OMX_VERSION}" "${OMX_INTEGRITY}"
+    npm install -g --ignore-scripts --no-audit --no-fund "oh-my-codex@${OMX_VERSION}"
+  fi
+  # Its setup writes .omx/setup-scope.json in the folder it runs in.
+  tmp="$(mktemp -d)"
+  (cd "${tmp}" && OMX_AUTO_UPDATE=0 OMX_NATIVE_AUTO_FETCH=0 "${HOME}/.local/bin/omx" setup \
+    --scope user --install-mode legacy --mcp none --team-mode disabled </dev/null)
+  rm -rf "${tmp}"
+  omx_config
+  # Its setup writes "medium" where the key is missing.
+  codex_setting "${HOME}/.codex/config.toml" model_reasoning_effort "" '"high"'
+  # It keeps a .omx/ folder in each project; the line goes to the repository's shared exclude.
+  exclude="$(git -C "${REPO_DIR}" rev-parse --path-format=absolute --git-common-dir)/info/exclude" \
+    || fail "no repository at ${REPO_DIR} for oh-my-codex's ignore line (run: deploy/wsl/setup.sh repo)"
+  install -d "$(dirname "${exclude}")"
+  grep -qxF '.omx/' "${exclude}" 2>/dev/null || printf '%s\n' '.omx/' >> "${exclude}"
+}
+
+# What its setup flag does not keep at run time: team mode off, read from the user file when the
+# project has no setup file; and prompt triage off, because the lead names the workflow.
+omx_config() {
+  local file="${HOME}/.codex/.omx-config.json" tmp
+  tmp="$(mktemp)"
+  { [ -s "${file}" ] && cat "${file}" || echo '{}'; } \
+    | jq '.teamMode = "disabled" | .promptRouting.triage.enabled = false' > "${tmp}"
+  install -m 0600 "${tmp}" "${file}"
+  rm -f "${tmp}"
+}
+
+# ponytail (ADR 0018) as a Codex plugin, from a local marketplace holding the files of its release
+# commit (its own marketplace installs from `main`). Codex runs its hooks once the owner trusts
+# them in /hooks.
+codex_ponytail() {
+  local src="${HOME}/.local/share/meridian/ponytail-src" market="${HOME}/.local/share/meridian/codex-market"
+  local codex="${HOME}/.local/bin/codex" tmp changed=0
+  if [ "$(git -C "${src}" rev-parse HEAD 2>/dev/null)" != "${PONYTAIL_COMMIT}" ]; then
+    rm -rf "${src}"
+    git init -q "${src}"
+    git -C "${src}" fetch -q --depth 1 https://github.com/DietrichGebert/ponytail.git "${PONYTAIL_COMMIT}"
+    git -C "${src}" checkout -q --detach FETCH_HEAD
+  fi
+  [ "$(git -C "${src}" rev-parse HEAD)" = "${PONYTAIL_COMMIT}" ] && [ -z "$(git -C "${src}" status --porcelain)" ] \
+    || fail "the ponytail checkout is not ${PONYTAIL_COMMIT} as fetched"
+  tmp="$(mktemp -d)"
+  tar -C "${src}" --exclude=.git -cf - . | tar -C "${tmp}" -xf -
+  if ! diff -r "${tmp}" "${market}/plugins/ponytail" >/dev/null 2>&1; then
+    rm -rf "${market}/plugins/ponytail"
+    install -d "${market}/plugins" "${market}/.agents/plugins"
+    mv "${tmp}" "${market}/plugins/ponytail"
+    changed=1
+  fi
+  rm -rf "${tmp}"
+  cat > "${market}/.agents/plugins/marketplace.json" <<JSON
+{
+  "name": "${PONYTAIL_MARKET}",
+  "interface": { "displayName": "ponytail ${PONYTAIL_COMMIT:0:7} (deploy/wsl/setup.sh)" },
+  "plugins": [
+    { "name": "ponytail", "source": { "source": "local", "path": "./plugins/ponytail" }, "category": "Productivity" }
+  ]
+}
+JSON
+  grep -qxF "[marketplaces.${PONYTAIL_MARKET}]" "${HOME}/.codex/config.toml" \
+    || "${codex}" plugin marketplace add "${market}" </dev/null
+  if [ "${changed}" = 1 ] || ! grep -qxF "[plugins.\"ponytail@${PONYTAIL_MARKET}\"]" "${HOME}/.codex/config.toml"; then
+    "${codex}" plugin add "ponytail@${PONYTAIL_MARKET}" </dev/null
+  fi
+}
+
 check_codex() {
   version_ge "$(codex_version)" "${CODEX_VERSION}" \
     || fail "Codex CLI is older than ${CODEX_VERSION} or missing (run: deploy/wsl/setup.sh codex)"
-  python3 -I - "${HOME}/.codex/config.toml" "${CODEX_MODEL}" <<'PY' || fail "~/.codex/config.toml is not what deploy/wsl/setup.sh codex writes"
+  python3 -I - "${HOME}/.codex/config.toml" "${CODEX_MODEL}" "${HOME}/.codex/hooks.json" \
+    "${HOME}/.codex/.omx-config.json" "${CODEX_DOCS_MCP}" "ponytail@${PONYTAIL_MARKET}" <<'PY' \
+    || fail "~/.codex is not what deploy/wsl/setup.sh codex writes"
+import json
+import re
 import sys
 import tomllib
 
-with open(sys.argv[1], "rb") as f:
+config, model, hooks_file, omx_file, docs_url, plugin = sys.argv[1:]
+with open(config, "rb") as f:
     cfg = tomllib.load(f)
 features = cfg.get("features", {})
 profiles = cfg.get("profiles", {})
-off = ("apps", "plugins", "skill_mcp_dependency_install", "memories")
+servers = cfg.get("mcp_servers", {})
+plugins = {name for name, p in cfg.get("plugins", {}).items() if p.get("enabled", True) is not False}
+state = cfg.get("hooks", {}).get("state", {})
+
+
+def trusted(key):
+    return "trusted_hash" in state.get(key, {}) and state[key].get("enabled") is not False
+
+
+# Every hook entry in hooks.json is Orca's or oh-my-codex's, and each has its trust entry.
+count, untrusted = {"orca": 0, "omx": 0, "unknown": 0}, []
+with open(hooks_file, encoding="utf-8") as f:
+    for event, groups in json.load(f).get("hooks", {}).items():
+        label = re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower()
+        for g, group in enumerate(groups):
+            for h, handler in enumerate(group.get("hooks", [])):
+                command = handler.get("command", "")
+                owner = "orca" if "orca-agent-hook-form" in command else "omx" if "/oh-my-codex/" in command else "unknown"
+                count[owner] += 1
+                if not trusted(f"{hooks_file}:{label}:{g}:{h}"):
+                    untrusted.append(f"{event} {g}:{h}")
+try:
+    with open(omx_file, encoding="utf-8") as f:
+        omx = json.load(f)
+except (OSError, ValueError):
+    omx = {}
 problems = [
     name
     for name, bad in [
-        ("model", cfg.get("model") != sys.argv[2]),
+        ("model", cfg.get("model") != model),
         ("model_reasoning_effort", cfg.get("model_reasoning_effort") != "high"),
         ("approval_policy", cfg.get("approval_policy") != "never"),
         ("sandbox_mode", cfg.get("sandbox_mode") != "danger-full-access"),
         ("check_for_update_on_startup", cfg.get("check_for_update_on_startup") is not False),
-        *[(f"[features] {name}", features.get(name) is not False) for name in off],
+        *[(f"[features] {name}", features.get(name) is not False) for name in ("apps", "skill_mcp_dependency_install", "memories")],
+        ("[features] plugins", features.get("plugins") is not True),
         ("[features] connectors (the old name of apps)", "connectors" in features),
-        ("MCP servers configured", bool(cfg.get("mcp_servers"))),
+        (f"MCP servers {sorted(servers)}", set(servers) != {"openaiDeveloperDocs"}),
+        ("openaiDeveloperDocs", servers.get("openaiDeveloperDocs", {}) != {"url": docs_url}),
+        (f"plugins {sorted(plugins)}", plugins != {plugin}),
         (
-            "a profile sets features or MCP servers",
-            any("features" in p or "mcp_servers" in p for p in profiles.values()),
+            "a profile sets features, MCP servers or plugins",
+            any(key in p for p in profiles.values() for key in ("features", "mcp_servers", "plugins")),
         ),
         ("[analytics] enabled", cfg.get("analytics", {}).get("enabled") is not False),
         ("[feedback] enabled", cfg.get("feedback", {}).get("enabled") is not False),
         ("[otel] metrics_exporter", cfg.get("otel", {}).get("metrics_exporter") != "none"),
+        (f"hooks.json entries {count}", count != {"orca": 9, "omx": 8, "unknown": 0}),
+        (f"hooks without trust: {untrusted}", bool(untrusted)),
+        (".omx-config.json teamMode", omx.get("teamMode") != "disabled"),
+        (
+            ".omx-config.json prompt triage",
+            omx.get("promptRouting", {}).get("triage", {}).get("enabled") is not False,
+        ),
     ]
     if bad
 ]
-sys.exit(f"config.toml: {', '.join(problems)}" if problems else 0)
+if problems:
+    sys.exit(f"Codex config: {', '.join(problems)}")
+waiting = 3 - sum(1 for key in state if key.startswith(f"{plugin}:") and trusted(key))
+if waiting > 0:
+    print(f"note: {waiting} of ponytail's 3 hooks wait for the owner's /hooks in codex; its skills work meanwhile")
 PY
   check_codex_requirements
-  ok "Codex CLI $(codex_version): ${CODEX_MODEL} at high effort, no ChatGPT apps, plugins, memories or MCP server"
+  [ "$(omx_version)" = "${OMX_VERSION}" ] || fail "oh-my-codex is not ${OMX_VERSION} (run: deploy/wsl/setup.sh codex)"
+  # omx doctor exits 0 whatever it finds; its summary line says what failed.
+  local tmp doctor
+  tmp="$(mktemp -d)"
+  doctor="$(cd "${tmp}" && OMX_AUTO_UPDATE=0 "${HOME}/.local/bin/omx" doctor </dev/null 2>&1)" || true
+  rm -rf "${tmp}"
+  grep -qE '^Results: [0-9]+ passed, [0-9]+ warnings, 0 failed$' <<<"${doctor}" \
+    || fail "omx doctor: $(grep -E '^ *\[XX\]|^Results:' <<<"${doctor}" | tr -s ' ' | tr '\n' ';')"
+  ok "Codex CLI $(codex_version): ${CODEX_MODEL} at high effort, no ChatGPT apps or memories; oh-my-codex ${OMX_VERSION} (omx doctor: 0 failed), the ponytail plugin and the MCP servers ADR 0018 names"
 }
 
-# /etc/codex/requirements.toml, written by deploy/wsl/meridian.user-data: an empty MCP allowlist
-# (no server starts from any config layer) and the account-linked features pinned off.
+# /etc/codex/requirements.toml: the text in deploy/wsl/meridian.user-data, byte for byte. It pins
+# ChatGPT apps off in every config layer and names the MCP servers Codex may start: a server
+# starts only when its name and identity (its command, or its URL) both match.
 check_codex_requirements() {
-  python3 -I - <<'PY' || fail "/etc/codex/requirements.toml does not switch every MCP server and the account features off"
-import sys
-import tomllib
+  cmp -s <(codex_requirements_text "${USER_DATA}") /etc/codex/requirements.toml \
+    || fail "/etc/codex/requirements.toml is not the text in deploy/wsl/meridian.user-data (run: deploy/wsl/setup.sh codex-requirements)"
+}
 
-try:
-    with open("/etc/codex/requirements.toml", "rb") as f:
-        req = tomllib.load(f)
-except (OSError, tomllib.TOMLDecodeError) as error:
-    sys.exit(str(error))
-features = req.get("features", {})
-off = ("apps", "plugins", "skill_mcp_dependency_install", "memories")
-sys.exit(0 if req.get("mcp_servers") == {} and all(features.get(name) is False for name in off) else 1)
-PY
+# codex_requirements_text USER_DATA: the content of the requirements file in the definition (a
+# YAML literal block: indentation removed, trailing blank lines dropped).
+codex_requirements_text() {
+  awk '
+    $0 == "  - path: /etc/codex/requirements.toml" { file = 1; next }
+    file && $0 == "    content: |" { body = 1; next }
+    body && /^$/ { blank++; next }
+    body && /^      / { for (; blank > 0; blank--) print ""; print substr($0, 7); found = 1; next }
+    body { exit }
+    END { exit !found }
+  ' "$1"
+}
+
+cmd_codex_requirements() {
+  local tmp
+  tmp="$(mktemp)"
+  codex_requirements_text "${USER_DATA}" > "${tmp}" || fail "no requirements text in ${USER_DATA}"
+  sudo install -D -m 0644 -o root -g root "${tmp}" /etc/codex/requirements.toml
+  rm -f "${tmp}"
+  check_codex_requirements
+  ok "/etc/codex/requirements.toml is the text in deploy/wsl/meridian.user-data"
 }
 
 cmd_codex_bridge() {
@@ -920,6 +1092,7 @@ case "${1:-}" in
   dsh) cmd_dsh ;;
   orca) cmd_orca ;;
   codex-bridge) cmd_codex_bridge ;;
+  codex-requirements) cmd_codex_requirements ;;
   agents)
     cmd_claude
     cmd_codex
@@ -941,5 +1114,5 @@ case "${1:-}" in
     ;;
   repo) cmd_repo ;;
   gateway) cmd_gateway ;;
-  *) sed -n '2,22p' "$0"; exit 2 ;;
+  *) sed -n '2,23p' "$0"; exit 2 ;;
 esac

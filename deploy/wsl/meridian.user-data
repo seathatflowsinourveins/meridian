@@ -62,19 +62,17 @@ write_files:
       {
         "mcpServers": {}
       }
-  # Codex CLI, machine-wide requirements: an empty MCP allowlist, so no server starts from any
-  # config layer (a project's .codex/config.toml included), and the account-linked features
-  # pinned off in every layer.
+  # Codex CLI, machine-wide (ADR 0018): ChatGPT apps off in every config layer, and a named MCP
+  # allowlist: a server starts only when its name and identity both match. On a running distro,
+  # deploy/wsl/setup.sh codex-requirements writes this same text.
   - path: /etc/codex/requirements.toml
     permissions: "0644"
     content: |
-      [mcp_servers]
-
       [features]
       apps = false
-      plugins = false
-      skill_mcp_dependency_install = false
-      memories = false
+
+      [mcp_servers.openaiDeveloperDocs.identity]
+      url = "https://developers.openai.com/mcp"
 
 package_update: true
 # Bring the image's packages up to date on first boot.

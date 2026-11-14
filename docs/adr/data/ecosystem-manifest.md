@@ -11,6 +11,10 @@ is in the order path.
 selection (maintained, leading, one upstream per job) in one ADR, without a with-and-without
 run per item (`docs/adr/README.md`).
 
+2026-11-13 (ADR 0018, the Codex worker stack): `Yeachan-Heo/oh-my-codex` moves from "measured
+here and not adopted" to layer 7, in use for Codex; `DietrichGebert/ponytail` from "measure" to
+in use, as a Codex plugin; `rtk-ai/rtk` is not adopted (ADR 0017).
+
 ### Layer 1, base system
 | Job | Rests on | State |
 |---|---|---|
@@ -82,9 +86,10 @@ run per item (`docs/adr/README.md`).
 |---|---|---|
 | Skill format | `agentskills/agentskills`, Orca's two skills, the built-in "You should know" | in use |
 | The few-line instruction file | the four maintained sources named in section 1 | add |
-| Shell-output compression | `rtk-ai/rtk` | measure |
+| Shell-output compression | `rtk-ai/rtk` | not adopted, 2026-11-13 (ADR 0017) |
 | Token and cost accounting | `ccusage/ccusage` | measure |
-| Write-less-code skill | `DietrichGebert/ponytail` | measure |
+| Write-less-code skill | `DietrichGebert/ponytail` | in use for Codex, 2026-11-13 (ADR 0018) |
+| Codex workflow layer | `Yeachan-Heo/oh-my-codex` | in use, 2026-11-13 (ADR 0018) |
 
 ### Layer 8, memory and retrieval
 | Job | Rests on | State |
@@ -157,13 +162,13 @@ The owner's starred list was read on 2026-11-13 with `gh api user/starred --pagi
 | `rtk-ai/rtk` | Layer 7, skills and context | yes | yes |
 | `ccusage/ccusage` | Layer 7, skills and context | yes | no |
 | `DietrichGebert/ponytail` | Layer 7, skills and context | yes | yes |
+| `Yeachan-Heo/oh-my-codex` | Layer 7, skills and context | yes | yes |
 | `gastownhall/beads` | Layer 8, memory and retrieval | yes | yes |
 | `microsoft/markitdown` | Layer 8, memory and retrieval | yes | yes |
 | `VectifyAI/PageIndex` | Layer 8, memory and retrieval | yes | yes |
 | `obra/superpowers` | Measured here and not adopted | no | yes |
 | `EveryInc/compound-engineering-plugin` | Measured here and not adopted | no | yes |
 | `openai/plugins` | Measured here and not adopted | no | yes |
-| `Yeachan-Heo/oh-my-codex` | Measured here and not adopted | no | yes |
 | `trailofbits/skills` | Measured here and not adopted | no | yes |
 | `awesome-dsh-plugin/awesome-dsh-plugin` | Measured here and not adopted | no | yes |
 | `MinishLab/semble` | Measured here and not adopted | no | yes |
