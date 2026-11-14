@@ -1735,7 +1735,7 @@ def test_omc_remove_cleans_only_its_new_runtime_version_cache(tmp_path):
 
 
 @pytest.mark.parametrize("event", ["SessionStart", "PreToolUse", "PostToolUseFailure"])
-def test_omc_checks_require_direct_commands_for_events_without_adapter_logic(tmp_path, event):
+def test_omc_checks_require_expected_commands_for_node_events(tmp_path, event):
     api, home, user = fake_omc_home(tmp_path)
     settings = api["read"](home / "settings.json")
     command = settings["hooks"][event][-1]["hooks"][0]

@@ -1,0 +1,111 @@
+{
+  "pin": {
+    "version": "5.8.4",
+    "npm_integrity_verified": true,
+    "hook_matches_git_pin": true,
+    "hook_sha256": "6e60cc98a4894d1665584635729c2a6be69e8e51ae421807185cbde7c8832677"
+  },
+  "install": {
+    "upgrade_from_direct": true,
+    "repeat_settings_identical": true,
+    "check_passed": true,
+    "upstream_unchanged": true
+  },
+  "offline_cases": {
+    "Bash_notice_removed": true,
+    "Edit_notice_removed": true,
+    "Write_notice_removed": true,
+    "Skill_active_state_written": true,
+    "Task_skill_deny_unchanged": true,
+    "Agent_skill_deny_unchanged": true,
+    "OMC_TEAM_WORKER_five_restrictions_unchanged": true,
+    "OMX_TEAM_WORKER_five_restrictions_unchanged": true,
+    "other_tools_and_allowed_paths_unchanged": true,
+    "malformed_input_and_codex_shape_unchanged": true
+  },
+  "timing": {
+    "ordinary_shell": {
+      "direct": {
+        "median_ms": 37.44,
+        "p95_ms": 41.87,
+        "max_ms": 43.74,
+        "samples": 32
+      },
+      "node_preload": {
+        "median_ms": 39.11,
+        "p95_ms": 42.86,
+        "max_ms": 43.03,
+        "samples": 32
+      },
+      "python_capture": {
+        "median_ms": 76.77,
+        "p95_ms": 80.28,
+        "max_ms": 81.82,
+        "samples": 32
+      }
+    },
+    "source_shell": {
+      "direct": {
+        "median_ms": 37.23,
+        "p95_ms": 41.19,
+        "max_ms": 41.42,
+        "samples": 32
+      },
+      "node_preload": {
+        "median_ms": 38.2,
+        "p95_ms": 41.85,
+        "max_ms": 42.8,
+        "samples": 32
+      },
+      "python_capture": {
+        "median_ms": 75.74,
+        "p95_ms": 79.03,
+        "max_ms": 80.03,
+        "samples": 32
+      }
+    },
+    "source_edit": {
+      "direct": {
+        "median_ms": 36.06,
+        "p95_ms": 38.86,
+        "max_ms": 38.96,
+        "samples": 32
+      },
+      "node_preload": {
+        "median_ms": 37.65,
+        "p95_ms": 40.1,
+        "max_ms": 40.71,
+        "samples": 32
+      },
+      "python_capture": {
+        "median_ms": 75.02,
+        "p95_ms": 82.87,
+        "max_ms": 82.92,
+        "samples": 32
+      }
+    },
+    "long_shell": {
+      "direct": {
+        "median_ms": 51.75,
+        "p95_ms": 59.36,
+        "max_ms": 59.75,
+        "samples": 32
+      },
+      "node_preload": {
+        "median_ms": 53.35,
+        "p95_ms": 57.38,
+        "max_ms": 57.66,
+        "samples": 32
+      },
+      "python_capture": {
+        "median_ms": 90.01,
+        "p95_ms": 95.86,
+        "max_ms": 97.9,
+        "samples": 32
+      }
+    }
+  },
+  "node": "v24.22.3",
+  "python": "3.14.4",
+  "owned_filter_removed": true
+}
