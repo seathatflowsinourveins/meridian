@@ -29,6 +29,7 @@ jobs:
       - run: uv run pyright
       # Includes the paper-only test and the boundary refusal tests.
       - run: uv run pytest
+      - run: uv run --group research pytest tests/test_strategy_report.py
       - name: gitleaks (pinned binary, checksum verified)
         run: |
           cd "$RUNNER_TEMP"
