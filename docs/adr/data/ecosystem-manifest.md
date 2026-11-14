@@ -100,6 +100,15 @@ session's cost, a daily and weekly ledger, session tokens and both usage windows
 Claude Code's own status payload. `ccusage/ccusage` is not installed: one upstream per job. It
 would add per-model reports over past transcripts, which nothing here needs yet.
 
+2026-11-14: `DietrichGebert/ponytail` is not installed on Claude Code. Read at v5.3.3 (commit
+`7801d061243d7b753bad0e0b3c057cd250b11755`, verified on GitHub, the commit the Codex stack
+pins): for Claude Code it ships three hooks that add its ruleset and a codebase map to every
+session and every subagent, a band module that writes a ledger after each turn, and a prompt
+that makes Claude offer to replace `statusLine`, which claude-hud holds (ADR 0015). On Claude
+Code the cleanup and write-less job is left to the oh-my-claudecode stack now in review, which
+keeps its `ai-slop-cleaner` skill for it; on Codex ponytail holds the job. One upstream per
+job on each runtime. Revisit if that stack is not adopted.
+
 ### Layer 8, memory and retrieval
 | Job | Rests on | State |
 |---|---|---|
