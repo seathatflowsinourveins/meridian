@@ -584,7 +584,8 @@ async def run(node: LiveNode, seconds: float = 10) -> BaseException | None:
     try:
         async with asyncio.timeout(seconds):
             await node.run_async()
-    except Exception as exc:
+    except (Exception, asyncio.CancelledError) as exc:
+        # Cancellation during a failed test also retains the native run awaitable.
         # Without its traceback: the frames would hold the node, and a node is one per thread.
         exc.__traceback__ = exc.__context__ = exc.__cause__ = None
         return exc
