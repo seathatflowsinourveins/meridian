@@ -1,9 +1,10 @@
 # Meridian handbook
 
-How this harness works: its purpose, its lanes, its rules, the re-entry rules it will carry,
-its rate budgets, its run records, how a strategy is added and how a goal is set. `AGENTS.md`
-holds the rules every agent follows and points here for the rest. At most 400 lines
-(`size-budget.toml`).
+How this harness works: its purpose, its rules, its layout, agents and dependencies, the
+re-entry rules it will carry, its rate budgets, its run records, how a strategy is added and how
+a goal is set. The lanes and their runbooks are in `docs/LANES.md`. `AGENTS.md` holds the
+boundaries every agent follows and points here for the rest. At most 400 lines
+(`size-budget.toml`). One repo, one WSL2 distro (`meridian`).
 
 ## Purpose
 
@@ -33,146 +34,6 @@ Milestones (plan 9.2); each ends in a committed, scrubbed run record:
 | M5 | re-entry and rotation in paper; thresholds calibrated by replay | not started |
 | M6, M7 | TradingView display; unattended operation | not started |
 
-## Lanes
-
-| Lane | Orders go to | Market data | What keeps it off a real-money account |
-|---|---|---|---|
-| IBKR paper (M1) | the IB Gateway logged in to Paper Trading, `127.0.0.1:4002` | the same Gateway | `meridian/boundary.py` refuses unless the Gateway is a paper login, before and after every run |
-| Sandbox (M2) | the engine's sandbox execution client, a simulated venue inside the engine | the IB Gateway, data only | no broker at all: no IBKR execution client in its configuration, and a test that fails if one is added |
-| Alpaca paper (M3) | Alpaca's paper endpoint | Alpaca | the paper endpoint hard-coded; `tests/test_paper_only.py` fails on a live endpoint or live key name |
-
-No agent starts a lane, in any mode: every run is started and attended by the owner. A run's
-terminal check (typing PAPER) only proves a terminal, and agents have terminals too.
-
-### IBKR paper lane (owner only)
-
-Before a run:
-
-- IB Gateway is installed by `deploy/wsl/setup.sh gateway`. The owner starts it with
-  `~/Jts/ibgateway/1050/ibgateway` (its window shows through WSLg) and logs in to
-  **Paper Trading**. The lane connects to `127.0.0.1:4002` and nowhere else.
-- In the Gateway, Configure > Settings > API > Settings: socket port 4002, **Read-Only API
-  unticked**, "Allow connections from localhost only" ticked. The Gateway listens on every
-  interface (`*:4002`) and the machine uses mirrored networking, so that box is what keeps
-  other hosts out. `~/Jts/jts.ini` lists `TrustedIPs=127.0.0.1` only; the box itself is stored
-  in the Gateway's encrypted settings and can only be checked in its window.
-- Optional: the allowlist in `risk/boundary.contract.json`, created as `AGENTS.md` shows.
-- The rc9 source (nautilus_trader@da6b57a:
-  crates/adapters/interactive_brokers/src/execution/reports.rs:L204-211) requests all open
-  orders with either `fetch_all_open_orders` value; the startup AAPL.XNAS cache check
-  includes reconciled external orders and account positions. The order request is a
-  snapshot (https://www.interactivebrokers.com/docs/tws-api/doc/order-management/open-orders),
-  so it does not guarantee visibility of later orders. Only reports returned and successfully
-  cached are visible; Client Portal/mobile coverage remains unverified. Before `fill`, check
-  all paper-account AAPL orders and positions by hand in IBKR, across every entry route.
-
-The clean-account condition, the run commands and what a pass looks like are in `AGENTS.md`,
-under "The IBKR paper lane (owner only)", not in this file.
-
-### Sandbox lane (M2)
-
-The engine's sandbox execution client is a venue simulated inside NautilusTrader: its own
-matching engine fills the strategy's orders against live market data, in a simulated cash
-account. Here it takes the IB Gateway's market data and runs upstream's built-in `ExecTester`
-strategy on 1 share of AAPL, as upstream's sandbox example does (`meridian/sandbox_node.py`).
-The node has one data client, IB's, and the sandbox as its only execution client:
-`tests/test_sandbox_lane.py` fails if any other execution client is added, and runs the lane
-offline on a fake feed.
-
-Before a run: the Gateway set-up of the IBKR lane above. The account needs no particular
-state, because no order goes to it.
-
-```bash
-uv run python -m meridian.sandbox_lane run      # owner only, attended; about 90 seconds
-```
-
-It runs the IBKR lane's paper checks, asks for PAPER at the terminal, checks again, runs the
-node for a minute (the engine's output goes to `runs/...-engine.log`), checks again, and
-writes the record. In that minute `ExecTester` buys 1 share at market on the first quote, keeps
-a LIMIT buy resting 5.00 USD under the bid, and on stop cancels it and sells the share. A pass
-is: the paper checks passed again after the run; the node ran its full time and stopped without
-an error (a stop before its time fails the run); the trader started; AAPL.XNAS came from IB and
-quotes arrived; the engine registered the sandbox and no other execution client; the strategy
-placed orders and the simulated venue accepted one; every order went to the sandbox, was booked
-on the simulated account and ended filled, cancelled or expired; none was denied or rejected;
-nothing was open at stop. The record is `evidence/M2-sandbox-<stamp>-run.json`.
-
-The lane asks IB for delayed-frozen data, upstream's default, so outside regular hours it
-trades against the last quote IB has; the sandbox keeps no trading calendar. A run in which no
-quote arrives fails. After a run the owner can check in IB's own window that the paper account
-shows no new order. Optional and not yet tried: with Read-Only API ticked the Gateway refuses
-orders from every API client; the IBKR lane needs it unticked, and whether market data still
-flows with it ticked has not been checked.
-
-### Alpaca paper lane (M3, owner only)
-
-`meridian.alpaca_lane` wires session quotes and the [execution adapter](m3-alpaca.md#3-current-adapter-carried-changed-and-omitted) with the [order budget](#rate-budgets).
-Quotes carry prices only: Alpaca documents round-lot sizes but its Asset model has no
-per-symbol shares-per-lot field ([Asset](https://alpaca.markets/sdks/python/api_reference/trading/models.html#asset),
-[quotes](https://docs.alpaca.markets/us/docs/real-time-stock-pricing-data), read 2026-11-13).
-The client validates then drops sizes, publishing zero as unknown following rc9's CoinAPI and
-IB adapters (paths and lines in `UPSTREAM.md`); **no consumer may use this lane's quote sizes**.
-
-Before a run: stop the previous writer and confirm it is stopped;
-check that AAPL has no open order or position, across every entry route on the paper account.
-AAPL is the same equity as upstream's IBKR stock example. Reconciliation claims AAPL.ALPACA;
-working orders outside that universe or from another writer refuse. No agent starts either mode.
-Copy `deploy/alpaca-lane.template.json` to ignored `local/alpaca-lane.json`; fill its two null fields: `order_budget_rows_path`
-(relative to that file or absolute) and `quote_max_age_ns` (positive integer; no code default).
-Both files belong outside the tree or under `local/` (backups there are ignored too); [rows must pass the production loader](#rate-budgets).
-Missing/invalid values refuse without printing paths or values; `--settings` selects the settings file.
-
-#### Alpaca credentials
-
-The owner creates the two encrypted files in a distro terminal (no TPM, so the host key):
-```bash
-sudo systemd-creds setup
-systemd-ask-password -n "Alpaca paper key id:" | sudo systemd-creds encrypt --with-key=host --name=alpaca-paper-key-id - /etc/credstore.encrypted/alpaca-paper-key-id
-systemd-ask-password -n "Alpaca paper secret key:" | sudo systemd-creds encrypt --with-key=host --name=alpaca-paper-secret-key - /etc/credstore.encrypted/alpaca-paper-secret-key
-```
-`deploy/systemd/meridian-alpaca-paper.service` is prepared, not installed/enabled, and has no `[Install]` section. It runs as `paper`, loads both credentials by absolute path (missing files prevent startup), and runs only `python -m meridian.alpaca.credentials`: presence/format checks, no socket. M7 installs `/opt/meridian`. The loader refuses missing credentials; key values come only from their files, whose directory is named by `CREDENTIALS_DIRECTORY`.
-
-From the repository root, in a distro terminal the owner started outside Orca, use the system
-manager (the existing encrypted credentials target it, not the per-user manager):
-
-```bash
-sudo systemd-run --pty --wait --collect --service-type=exec \
-  --unit=meridian-alpaca-attended --uid="$(id -u)" --gid="$(id -g)" \
-  --working-directory="$PWD" --property=UMask=0077 \
-  --property=LoadCredentialEncrypted=alpaca-paper-key-id:/etc/credstore.encrypted/alpaca-paper-key-id \
-  --property=LoadCredentialEncrypted=alpaca-paper-secret-key:/etc/credstore.encrypted/alpaca-paper-secret-key \
-  "$PWD/.venv/bin/python" -m meridian.alpaca_lane restart
-```
-
-Replace the final `restart` with `order` for the one-order run; append `--settings /absolute/path`
-for another local settings file. `--pty` supplies the terminal for PAPER; `--wait` waits even
-if the PTY is detached. The fixed unit name prevents overlapping instances of this command,
-but cannot exclude another writer. `--uid` uses the owner's current checkout permissions.
-This command follows installed systemd 259's systemd-run(1) and systemd.exec(5), read 2026-11-13.
-It was **not run**: credential loading/decryption, TTY attachment, sudo policy and the actual
-paper connection remain untested; only the owner may perform that attended check.
-
-`restart` reconciles, sends no order or cancel, stops, and passes only with the instrument clean
-and execution coverage complete. `order` asks for PAPER, repeats all local checks, then buys
-one share with a DAY LIMIT 2% below a fresh bid, rounded down to the venue tick. It checks
-`quote_age_ns` before pricing and again at paced submission; missing/stale quotes place nothing.
-[24/5](https://docs.alpaca.markets/us/docs/245-trading-for-trading-api) (read 2026-11-13): Sunday 20:00–Friday 20:00 New York; paper-calendar rows check holidays and early closes.
-Regular uses IEX; overnight uses free real-time indicative `overnight`; pre/after uses delayed SIP, whose age includes 15 minutes (an owner limit of 15 minutes or less refuses it).
-DAY LIMIT sends `extended_hours=true`; overnight requires eligible, unhalted asset flags. Boundaries discard cached quotes and refuse queued submissions across sessions (sources in `UPSTREAM.md`).
-It cancels after venue `new` proves routing; queued `accepted` alone cannot pass. A pass is routed, cancelled, nothing filled,
-flat with no open or in-flight order at stop. Any fill fails and sends no second order; the
-owner inspects and closes any share by hand. An unresolved order also fails: inspect it before
-acting; there is no stop-time cancel or close. The M1 time limits apply (25 s restart, 60 s order).
-All local checks run again after the run. Engine output and failures stay in `runs/`; passing
-records go to `evidence/M3-alpaca-paper-<stamp>-<mode>.json`. Public records contain no broker
-text or identifiers, include commission citations and counts of paper-default/reviewed budget
-rows (also shown at the terminal), session/feed used to price the order, and only the quote-age limit's presence. No real run has been performed.
-
-`uv run python -m meridian.alpaca_sim` is a simulation, not a lane; no typed word. It exercises the unchanged one-order strategy and native engine order flow, excluding the Alpaca adapter, order budget, credentials, streams and venue.
-Quotes are synthetic, generated in process: no market or recorded data, no real price.
-PASS means accepted, then cancelled, nothing filled and flat at stop; any fill means FAIL.
-Records go only to `runs/*-simulation.json`, never `evidence/`; it is offline and keyless.
-
 ## Rules
 
 | Rule | Where it is held | How |
@@ -180,21 +41,37 @@ Records go only to `runs/*-simulation.json`, never `evidence/`; it is offline an
 | Paper only: no route to a real-money account is created, enabled or tested | `meridian/boundary.py` for IBKR; the sandbox's wiring; Alpaca's hard-coded paper endpoint (M3) | refused at run time |
 | | `tests/test_paper_only.py`: live endpoints, ports, trading modes, key names | CI tripwire |
 | Only the engine places orders; no agent, script, skill or MCP server gets an order tool or broker connector; no agent starts a lane | `AGENTS.md` | rule |
-| `risk/` and `*.contract.json` belong to the owner | `AGENTS.md`; `.gitignore` keeps every contract copy out of git | rule |
+| `risk/` and `*.contract.json` belong to the owner: read them, never create or edit them | `AGENTS.md`; `.gitignore` keeps every contract copy out of git | rule |
 | No credential or key value is read, printed, copied or moved | `AGENTS.md`; gitleaks over the whole history in CI | rule; CI tripwire |
-| Nothing derived from an account and no calibrated parameter in this public repository; such data goes to the private `meridian-evidence` | `tests/test_public_tree.py` (account-id shapes, allowlist copies); run records scrubbed before writing | CI tripwire |
-| CI is fork-safe: no self-hosted runner, no `pull_request_target`, no secret a fork could reach | `tests/test_public_tree.py` | CI tripwire |
-| Every install or integration has an `UPSTREAM.md` row, marked upstream or own design | `AGENTS.md` | rule |
-| Upstream files are verbatim copies; harvested own-design files say what changed | `tests/test_upstream_unmodified.py`, `tests/test_order_budget_harvest.py` | CI |
-| New Python releases wait 7 days; the engine is pinned exactly | `pyproject.toml` (`exclude-newer`), Dependabot's cooldown | resolver |
+| Nothing derived from an account and no calibrated parameter in this public repository: account ids, raw order or fill history, reconciliation fixtures and tuned thresholds go to the private `meridian-evidence` (clone it as `~/src/meridian-evidence`); scrubbed run records may stay in `evidence/` | `tests/test_public_tree.py` (IBKR-style account-id shapes, allowlist copies); run records scrubbed before writing | CI tripwire |
+| CI is fork-safe: no self-hosted runner, no `pull_request_target`, no secret a fork's pull request could reach | `tests/test_public_tree.py`, which checks the workflow files | CI tripwire |
+| Everything installed, integrated or built on has an `UPSTREAM.md` row and code-area map, added in the same commit: version or commit, the URL that was read, the date, what it is for, "upstream" or "own design"; start from upstream's own example | `AGENTS.md`, `upstream-map.toml`, `tests/test_upstream_gate.py` | rule; CI |
+| Files under `upstream/` are verbatim copies, never edited (its `NOTICE.md` is the one file written here); harvested own-design files say what changed | `tests/test_upstream_unmodified.py`, `tests/test_order_budget_harvest.py` | CI |
+| `uv.lock` is committed; new releases wait 7 days; the engine is the one named exception and is pinned exactly | `pyproject.toml` (`exclude-newer`), Dependabot's cooldown | resolver |
 | One evidence ADR per ecosystem addition, at most 60 lines | `docs/adr/README.md`, `tests/test_size_budget.py` | rule; CI |
 | The size budget | `size-budget.toml`, `tests/test_size_budget.py` | CI tripwire |
 | The owner sets goals; a goal never names a lane run, an order, the IB Gateway, port 4002 or a step only the owner takes | "Goals" below | rule |
-| Work is reviewed by a different model family before it merges; findings are fixed or closed with a reason; nothing auto-files issues | plan 9.5 | rule |
+| Work is reviewed by a different model family before it merges (`/codex:review` in Claude Code); findings are fixed in the pull request or closed with a reason; nothing auto-files issues | plan 9.5 | rule |
+| MCP servers are off machine-wide for Claude Code and Codex; a skill, plugin or MCP server is added only by an ADR (`docs/adr/README.md`), and none gets an order tool or broker connector | `deploy/wsl/setup.sh agents-check` | check |
+| Ask the owner before adding a paid service or an account; no licence is chosen for this repo's own code: that is the owner's decision | the owner | rule |
 | One writer per account; plain DAY LIMIT entries, no brackets | plan 9.1 | rule; the M1 record fails an order that is not a DAY LIMIT |
+
+The offline gate requires exactly one map entry per `meridian/` or `deploy/` file, citing an upstream
+row, feature and local need; unused entries fail. Project and group dependency rows must match
+locked versions. Add the register row and map entry with the change; CI checks both.
 
 A tripwire catches a mistake, not a determined change: agents here run in bypass mode and can
 edit the tests too. The owner's GitHub settings are the lock, where GitHub offers one.
+`tests/test_paper_only.py` is such a tripwire; the paper boundary itself is `meridian/boundary.py`.
+
+- Account ids stay out of the repo and out of `evidence/`. The allowlist holds SHA-256 hashes.
+  A hash of a short id can be reversed by trying every id, so treat
+  `risk/boundary.contract.json` as if it held the id itself; git ignores it.
+- A branch from outside the owner's sessions (a fork's pull request) is read on GitHub, never
+  opened in an Orca worktree or agent session: its setup and hooks would run as the owner unread.
+- Check a finding at its source before acting on it. Find the root cause before disabling a
+  check. Run the checks before saying something works. Report a failure as a failure. Add
+  nothing the current milestone does not need.
 
 ## Re-entry and rotation (own design; thresholds uncalibrated)
 
@@ -345,7 +222,7 @@ repository changes either. A goal here:
   (a trust dialog, a key, a merge, an attended run).
 
 ```text
-/goal on this branch uv sync --locked and the check line under "Commands" in AGENTS.md exit 0, their last lines printed; or stop after 20 turns
+/goal on this branch uv sync --locked and the check line at the end of AGENTS.md exit 0, their last lines printed; or stop after 20 turns
 /goal uv run pytest -q tests/test_size_budget.py exits 0 and git diff --quiet <start> -- size-budget.toml tests/test_size_budget.py; echo "exit $?" prints exit 0, both outputs printed; or stop after 10 turns
 ```
 
@@ -381,10 +258,36 @@ Codex's `create_goal` tool tells its model to start a goal only when the user or
 instructions ask; DeepSeek Harness refuses a model-created goal without a direct human request
 in that turn. `codex features list` shows `goals` stable and on.
 
+## Layout, agents and dependencies
+
+| Path | What it is |
+|---|---|
+| `deploy/wsl/` | the distro definition (cloud-init) and the user-level setup script |
+| `meridian/boundary.py`, `meridian/ib_probe.py` | the paper checks (Gateway login mode, ports, account form, optional allowlist) and the probe that asks the Gateway which accounts it manages (own design) |
+| `meridian/ibkr_paper.py`, `meridian/ibkr_node.py` | IBKR paper lane: gate, owner confirmation, run record; the engine side, built on upstream's example |
+| `meridian/order_budget/`, `meridian/sandbox_*.py` | M2: the order budget (the owner's pacer, from Sextant) and the sandbox lane (no broker) |
+| `meridian/alpaca/` | Alpaca paper execution adapter (M3 groundwork, own design); study in `docs/m3-alpaca.md` |
+| `deploy/systemd/` | the Alpaca lane's unit for `paper`, prepared and not enabled; keys only as systemd credentials |
+| `upstream/` | upstream example files, unmodified |
+| `.agents/skills/` | skills every agent reads; each has a link in `.claude/skills/` for Claude Code |
+| `orca.yaml`, `.worktreeinclude` | Orca: the setup script and tabs of each new worktree; nothing ignored is copied |
+| `risk/boundary.contract.json` | optional: the owner's allowlist of paper accounts |
+| `evidence/` | scrubbed run records: one per attended run that passed, and the latest offline soak |
+| `runs/` | local run output, ignored by git; may hold account ids |
+
+- Four agent runtimes run here through Orca, one git worktree per task: Claude Code leads
+  (`claude-fable-5-2`; its workers run `claude-opus-5-5`), Codex (`gpt-6-astra`, `gpt-6.1-sol`
+  for bulk) and Antigravity work and review, DeepSeek Harness works (code and research).
+- The agent runtimes start from checksummed pins in `deploy/wsl/setup.sh` and update themselves
+  in sessions the owner starts (Orca's launches do not); `setup.sh agents-check` verifies them.
+- NautilusTrader 2.0 is a release-candidate line with breaking changes between candidates.
+  Read its release notes before moving the pin, and never answer an API question from memory:
+  read the installed package or the tagged source.
+
 ## Size budget, ADRs and this file
 
 - `size-budget.toml` sets the limits and `tests/test_size_budget.py` checks them: `AGENTS.md`
-  at most 120 lines and `CLAUDE.md` 1, this handbook at most 400, each ADR at most 60, and
+  at most 30 lines and `CLAUDE.md` 1, this handbook 400, `docs/LANES.md` 180, each ADR 60, and
   totals for agent instructions, prose, config, workflows and skills; every tracked file must be
   of a kind the file names. It is a tripwire: see the file's header for why GitHub cannot lock
   it while every push comes from the owner's account. The open-issue count is not checked:
@@ -393,5 +296,3 @@ in that turn. `codex features list` shows `goals` stable and on.
   Recheck sources; append a dated kept/replaced/re-measured line in `docs/adr/data/NNNN-revisits.md`,
   then update the index; the weekly watch reports in the GitHub issue labelled `landscape`.
   Runtime pins: the Orca automation "Meridian upkeep" turns that report into a pull request (`setup.sh drift`).
-- The IBKR lane's run commands, clean-account condition and pass criteria are in `AGENTS.md`
-  ("The IBKR paper lane (owner only)"), not in this file.
