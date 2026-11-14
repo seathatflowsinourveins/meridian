@@ -315,11 +315,10 @@ implement `entry_signal` (and `rank`, `confidence`, `reclaim_qualified` for re-e
 means wait), and supply every `TemplateParams` value from configuration: there are no defaults.
 The package holds the template (`strategy.py`, `params.py`, `actions.py`) and its offline
 simulation, `uv run python -m meridian.strategy_template.sim [--copies N]`. Not yet in a lane.
-The simulation now gates entries with the [screener universe](m4-universe.md): Alpaca movers
-intersected with most-actives, lane permission, price/volume floors and a count cap. Lists
+The simulation gates entries with the [screener universe](m4-universe.md): movers intersected
+with most-actives, lane permission, price/volume floors and a count cap. Lists
 apply strictly after receipt, replace prior membership, and expire; outside-hours freshness
-is unknown and cannot admit entries. Parameters come from the owner’s local JSON; the deploy
-template holds null placeholders. Data reads share a separate 200/minute budget, not order pacing.
+is unknown and cannot admit entries. Owner-local parameters replace deploy nulls; data reads share a separate 200/minute budget.
 
 1. Start from an upstream template: the strategy template above, a NautilusTrader example or
    built-in strategy at the pinned version, or a cited published method. Name it in the strategy file's docstring (repository,
@@ -394,6 +393,8 @@ in that turn. `codex features list` shows `goals` stable and on.
   of a kind the file names. It is a tripwire: see the file's header for why GitHub cannot lock
   it while every push comes from the owner's account. The open-issue count is not checked:
   without a token CI can read only issues and pull requests together.
-- ADRs: `docs/adr/README.md` (format and index).
+- ADRs: `docs/adr/README.md` lists last checks and revisit dates; read the Decision first.
+  Recheck sources; append a dated kept/replaced/re-measured line in `docs/adr/data/NNNN-revisits.md`,
+  then update the index; the weekly watch reports in the GitHub issue labelled `landscape`.
 - The IBKR lane's run commands, clean-account condition and pass criteria are in `AGENTS.md`
   ("The IBKR paper lane (owner only)"), not in this file.
