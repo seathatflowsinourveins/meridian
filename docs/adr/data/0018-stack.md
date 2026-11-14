@@ -15,14 +15,15 @@ Read 2026-11-13 (ET; 2026-11-14 UTC) in the `meridian` distro, Codex CLI 0.167.2
 
 `source-driven-development` (`addyosmani/agent-skills`) is left out: oh-my-codex's `best-practice-research` skill holds its job at the pin (official and upstream evidence before deciding). oh-my-codex has no test-driven skill, and for debugging and verification only roles (`debugger`, `verifier`), not skills, so the three above stay.
 
-Install: `deploy/wsl/setup.sh codex-requirements`, then `deploy/wsl/setup.sh codex`, then `deploy/wsl/setup.sh agents-check`, from `~/src/meridian` with no Codex worker running. The owner's one step: open `codex`, run `/hooks`, trust ponytail's three hooks. `check_codex` fails on any of these:
-- `config.toml`: a setting above differs, `[features] apps` is not false or `plugins` not true, MCP servers other than exactly `openaiDeveloperDocs` (its URL) and `serena` (its command, arguments, timeout and environment), an enabled plugin other than `ponytail@meridian-ponytail`, a profile that sets features, MCP servers or plugins;
+Install: `deploy/wsl/setup.sh codex-requirements`, then `deploy/wsl/setup.sh codex`, then `deploy/wsl/setup.sh agents-check`, from `~/src/meridian` with no Codex worker running. Ponytail is installed but disabled until its three hooks are trusted. The owner may review them outside Orca with `codex -c 'plugins."ponytail@meridian-ponytail".enabled=true'` and `/hooks`, then rerun `deploy/wsl/setup.sh codex` to enable the trusted plugin. `check_codex` fails on any of these:
+- `config.toml`: a setting above differs, `[features] apps` is not false or `plugins` not true, MCP servers other than exactly `openaiDeveloperDocs` (its URL) and `serena` (its command, arguments, timeout and environment), any plugin table other than `ponytail@meridian-ponytail`, `remote_plugin` or `plugin_sharing` not false, a profile that sets features, MCP servers or plugins;
+- ponytail's pinned `5.3.3` cache directory lacks its manifest, one of its six skills or its hooks file; `codex plugin list --json` does not report exactly that installed plugin/version with the same enabled state (remote plugins have no config table);
 - `hooks.json`: an entry that is neither Orca's (`orca-agent-hook-form`) nor oh-my-codex's, other than 9 and 8 of them, or one without its `[hooks.state]` trust entry (`<hooks.json>:<event>:<group>:<handler>`);
 - `.omx-config.json`: team mode or prompt triage not off;
 - serena is not 2.1.0, or `serena_config.yml` differs in a setting above or adds `excluded_tools` or `included_optional_tools`;
 - `/etc/codex/requirements.toml` is not the text in `meridian.user-data`, byte for byte;
 - oh-my-codex is not 0.22.6, or `omx doctor` does not print `Results: … 0 failed` (its exit code is 0 whatever it finds).
-Ponytail's hooks without trust entries (`ponytail@meridian-ponytail:<file>:<event>:0:0`) are reported as waiting for the owner, not as a failure.
+An enabled ponytail with any untrusted or modified hook fails: Codex workers cannot start under Orca. An installed but disabled ponytail passes with the owner's review command; setup neither manufactures trust nor approves hooks. A missing cached bundle is reinstalled even when its config marker remains. `agents-check` runs every check in sequence, preserves each check's lines and exits nonzero with all failed check names.
 
 ### What was checked at source, and how
 
@@ -67,8 +68,29 @@ One maintained, leading upstream per job:
 
 ## Always-on context (section 5)
 
-Three `codex exec` "reply OK" runs before the machine step and three after (M1 of [ab-codex.md](ab-codex.md); 16,285 tokens before in ADR 0008): `ALWAYS_ON_BEFORE` and `ALWAYS_ON_AFTER`, measured by the lead on the machine. ADR 0008 measured oh-my-codex alone at +7,611 to +8,075.
+Measured by the lead on 2026-11-14 using M1 of [ab-codex.md](ab-codex.md): three `codex exec` "reply OK" runs per arm in a fresh clone of main at `cf56628`, Codex 0.169.0, `gpt-6-astra` at effort high, hooks on in both.
+
+| Arm | Input tokens in the three runs | Median |
+|---|---|---|
+| `ALWAYS_ON_BEFORE` | 14,482; 14,482; 14,482 | 14,482 |
+| `ALWAYS_ON_AFTER` | 23,254; 23,254; 23,254 | 23,254 |
+
+Difference: **+8,772 input tokens (+60.6%)**. After: `remote_plugin` off, ponytail installed but disabled, oh-my-codex, serena and the docs server on. Ponytail's own share is therefore not in this figure. The first after measurement (22,140; 23,832; 23,832) is void: nine remote plugins and ponytail were loaded. ADR 0008's separate run measured oh-my-codex alone at +7,611 to +8,075.
+
+Known edge: in a fresh clone that is not a worktree of the main checkout, `.serena/` appears untracked after a Codex session because the exclude line lives in the main repository's shared `info/exclude`.
 
 ## Removal of the whole stack
 
 `omx uninstall --scope user` and `npm uninstall -g oh-my-codex`; `codex plugin remove ponytail@meridian-ponytail` and `codex plugin marketplace remove meridian-ponytail`; delete `~/.local/share/meridian/codex-market`, `ponytail-src` and the `[mcp_servers.openaiDeveloperDocs]` table; write back the previous requirements text (`git show 8ac888b:deploy/wsl/meridian.user-data`) and restore the previous `check_codex` from git.
+
+## Follow-up source checks, 2026-11-14
+
+The lead found nine account-catalogue plugins (46 skill files) under `openai-curated-remote`: github, superpowers, pages, sites, visualize, work-pets, plugin-management, openai-templates and an app plugin. None had a `[plugins]` entry, so the old config-only check missed them. The machine's manual `remote_plugin` disable and ponytail disable are now represented by setup; requirements and user config both pin `remote_plugin = false` and `plugin_sharing = false`.
+
+Read Codex at `rust-v0.169.0` (`d32063f96c2dff1dc96af839b3952abb6acfeda4`):
+- [features/src/lib.rs](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/features/src/lib.rs): `remote_plugin` and `plugin_sharing` are stable and default on; `recommended_plugins` defaults off, and `plugin_discovery_prefetch` is removed. Neither remote flag is exempted by [core/src/config/managed_features.rs](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/core/src/config/managed_features.rs) `parse_feature_requirements`; `normalize_candidate` applies each pin and `ManagedFeatures` validates construction and later mutation. Thus requirements enforce both pins even over a configured true.
+- [cli/src/plugin_cmd.rs](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/cli/src/plugin_cmd.rs): `JsonPluginListOutput` includes installed entries from local and remote marketplaces; `PluginListEntry` uses `pluginId`, `version`, `installed`, `enabled`. The check requires the installed array to contain ponytail alone, including disabled installations, and rejects malformed/failed inventory reads, including stderr warnings that would otherwise hide a remote-catalogue failure behind a successful exit.
+- Limit of the pins: `fetch_remote_marketplaces` retains a curated collection fallback when `remote_plugin` is false. [app-server/src/request_processors/plugins.rs](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/app-server/src/request_processors/plugins.rs) gates shared-with-me discovery with `plugin_sharing`, but retains workspace-directory inventory; upstream's `plugin_installed_includes_workspace_directory_without_plugin_sharing_when_remote_plugin_disabled` test covers it. [core-plugins/src/manager.rs](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/core-plugins/src/manager.rs) `maybe_start_remote_installed_plugin_bundle_sync` gates on `plugins_enabled`, not those two flags. There is no claim that these pins isolate all remote plugin paths: the CLI inventory is an additional check, not a startup allowlist or a complete workspace inventory. Disabling all plugins would also disable ponytail; that changes the adopted stack and remains an owner decision.
+- [tui/src/hooks_rpc.rs](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/tui/src/hooks_rpc.rs) `hook_needs_review` includes untrusted and modified hooks regardless of their enabled bit; [tui/src/startup_hooks_review.rs](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/tui/src/startup_hooks_review.rs) presents the startup review. Orca reports this as `agent-hooks-review-prompt`. Disable the plugin until trust matches; disabling individual hooks is insufficient. The installer itself enables a plugin when adding it (`core-plugins/src/manager.rs` `install_resolved_plugin`), so setup disables it immediately afterwards and only re-enables after validating trust.
+
+The three single superpowers folders remain pending: the coordinator deferred item 2 on 2026-11-14 to unblock agent startup first. No same-name OMX skill was found in the installed 0.22.6 package; its `debugger` and `verifier` are roles. The data file described 22 installed skills but did not enumerate them, contrary to the original follow-up task's reference to an installed-skills list. No skill copy or machine change was made in this follow-up.

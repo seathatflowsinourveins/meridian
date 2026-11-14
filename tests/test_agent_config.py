@@ -15,6 +15,7 @@ import json
 import os
 import re
 import runpy
+import shutil
 import signal
 import subprocess
 import sys
@@ -137,7 +138,7 @@ WRAPPER = "/home/owner/.local/bin/meridian-claude-hud"
 def claude_settings_filter(function, settings):
     # Exercise the actual jq expressions on fakes without sourcing or running setup.sh.
     script = (DEPLOY / "setup.sh").read_text()
-    body = script.split(f"{function}() {{\n", 1)[1].split("\n}", 1)[0]
+    body = script.split(f"{function}() {{\n", 1)[1].split("\n}\n\n", 1)[0]
     expression = re.search(r"jq [^\n]* '\n(.*?)\n  '", body, re.S)
     assert expression, f"no jq settings expression in {function}"
     return subprocess.run(
@@ -382,7 +383,7 @@ def test_claude_hud_config_is_written_once_with_the_account_labels_off(tmp_path)
 
 
 def setup_function_body(name):
-    return (DEPLOY / "setup.sh").read_text().split(f"{name}() {{\n", 1)[1].split("\n}", 1)[0]
+    return (DEPLOY / "setup.sh").read_text().split(f"{name}() {{\n", 1)[1].split("\n}\n\n", 1)[0]
 
 
 def setup_constant(name):
@@ -516,10 +517,33 @@ PONYTAIL_HOOKS = {
 }
 
 
-def codex_home(tmp_path, ponytail_trusted=0, orca=True):
+PONYTAIL_SKILLS = (
+    "ponytail",
+    "ponytail-audit",
+    "ponytail-debt",
+    "ponytail-gain",
+    "ponytail-help",
+    "ponytail-review",
+)
+
+
+def ponytail_bundle(plugin):
+    (plugin / ".codex-plugin").mkdir(parents=True, exist_ok=True)
+    (plugin / ".codex-plugin/plugin.json").write_text(
+        json.dumps({"name": "ponytail", "version": "5.3.3", "skills": "./skills/"})
+    )
+    for name in PONYTAIL_SKILLS:
+        folder = plugin / "skills" / name
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "SKILL.md").write_text(f"synthetic {name}\n")
+
+
+def codex_home(tmp_path, ponytail_trusted=0, orca=True, enabled=None):
     # What setup leaves in ~/.codex: Orca's 9 hooks (on a fresh distro, not yet: Orca is set up
     # after Codex), then oh-my-codex's 8 in the group after them, each with its trust entry at
     # its current hash, the ponytail plugin's installed copy, and oh-my-codex's user file.
+    if enabled is None:
+        enabled = ponytail_trusted == 3
     write_codex_config(tmp_path)
     run_config_writer("omx_config", tmp_path)
     home = tmp_path / ".codex"
@@ -540,6 +564,7 @@ def codex_home(tmp_path, ponytail_trusted=0, orca=True):
     (plugin / "hooks").mkdir(parents=True)
     (plugin / "hooks/claude-codex-hooks.json").write_text(json.dumps({"hooks": PONYTAIL_HOOKS}))
     (plugin / "README.md").write_text("ponytail\n")
+    ponytail_bundle(plugin)
     content = bundle_hash(plugin)
     for event in list(PONYTAIL_HOOKS)[:ponytail_trusted]:
         group = PONYTAIL_HOOKS[event][0]
@@ -549,7 +574,9 @@ def codex_home(tmp_path, ponytail_trusted=0, orca=True):
             f'trusted_content_hash = "{content}"\n'
         )
     with (home / "config.toml").open("a") as f:
-        f.write(f'\n[plugins."{PONYTAIL}"]\nenabled = true\n\n' + "\n".join(state))
+        f.write(
+            f'\n[plugins."{PONYTAIL}"]\nenabled = {str(enabled).lower()}\n\n' + "\n".join(state)
+        )
     return home / "config.toml"
 
 
@@ -671,12 +698,12 @@ def test_the_upkeep_prompt_lands_through_the_gate_and_names_what_a_run_must_neve
 
 
 def codex_config_check(path, mode="full"):
-    body = setup_function_body("check_codex")
+    body = setup_function_body("codex_config_check")
     program = "import" + body.split("<<'PY'", 1)[1].split("\nimport", 1)[1].split("\nPY", 1)[0]
     home = path.parent
     return subprocess.run(
         [sys.executable, "-I", "-", str(path), "model", str(home / "hooks.json")]
-        + [str(home / ".omx-config.json"), DOCS_MCP, PONYTAIL, SERENA_ARGS, mode],
+        + [str(home / ".omx-config.json"), DOCS_MCP, PONYTAIL, SERENA_ARGS, mode, "5.3.3"],
         input=program,
         capture_output=True,
         text=True,
@@ -719,11 +746,40 @@ def test_codex_check_accepts_the_stack_and_waits_for_ponytails_hooks(tmp_path):
     path = codex_home(tmp_path)
     result = codex_config_check(path)
     assert result.returncode == 0, result.stderr
-    assert "3 of ponytail's 3 hooks wait for the owner's /hooks" in result.stdout
+    assert "ponytail installed and disabled; owner: outside Orca" in result.stdout
     path = codex_home(tmp_path / "trusted", ponytail_trusted=3)
     result = codex_config_check(path)
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
+
+
+@pytest.mark.parametrize(
+    "damage", ["bundle", "manifest", "skills", "one-skill", "version", "old-cache"]
+)
+def test_codex_check_rejects_missing_or_wrong_ponytail_bundle(tmp_path, damage):
+    path = codex_home(tmp_path)
+    plugin = path.parent / "plugins/cache/meridian-ponytail/ponytail/5.3.3"
+    if damage == "bundle":
+        shutil.rmtree(plugin)
+    elif damage == "manifest":
+        (plugin / ".codex-plugin/plugin.json").unlink()
+    elif damage == "skills":
+        shutil.rmtree(plugin / "skills")
+    elif damage == "one-skill":
+        (plugin / "skills/ponytail-review/SKILL.md").unlink()
+    elif damage == "version":
+        (plugin / ".codex-plugin/plugin.json").write_text('{"name":"ponytail","version":"5.3.2"}')
+    else:
+        plugin.rename(plugin.with_name("5.3.2"))
+    result = codex_config_check(path)
+    assert result.returncode != 0
+    assert "ponytail 5.3.3 bundle missing or incomplete" in result.stderr
+
+
+def test_codex_check_rejects_enabled_ponytail_with_untrusted_hooks(tmp_path):
+    result = codex_config_check(codex_home(tmp_path, enabled=True))
+    assert result.returncode != 0
+    assert "Codex workers cannot start under Orca" in result.stderr
 
 
 ADD = "[analytics]"
@@ -828,7 +884,11 @@ def test_codex_requirements_text_is_the_definitions_and_names_each_server(tmp_pa
     ).stdout
     assert written == user_data_requirements()
     requirements = tomllib.loads(written)
-    assert requirements["features"] == {"apps": False}
+    assert requirements["features"] == {
+        "apps": False,
+        "remote_plugin": False,
+        "plugin_sharing": False,
+    }
     write_codex_config(tmp_path)
     servers = tomllib.loads((tmp_path / ".codex/config.toml").read_text())["mcp_servers"]
     # Codex compares the identity with the configured command or URL exactly.
@@ -1379,7 +1439,7 @@ def test_the_install_check_lets_a_fresh_distro_finish_before_orca_prepares_codex
     result = codex_config_check(path, "install")
     assert result.returncode == 0, result.stderr
     assert "Orca's 9 Codex hooks are not there yet" in result.stdout
-    assert "wait for the owner's /hooks" in result.stdout
+    assert "ponytail installed and disabled" in result.stdout
     # agents-check still requires them.
     assert "hooks.json entries" in codex_config_check(path).stderr
     # Installed and trusted later, both checks pass.
@@ -1412,11 +1472,8 @@ def test_the_install_check_still_rejects_what_setup_did_not_write(tmp_path, brea
     assert "hooks" in result.stderr
 
 
-def test_cmd_codex_runs_the_install_check_and_agents_check_the_full_one():
+def test_cmd_codex_runs_the_install_check():
     assert setup_function_body("cmd_codex").rstrip().endswith("check_codex install")
-    script = (DEPLOY / "setup.sh").read_text()
-    agents_check = script.split("  agents-check)\n", 1)[1].split(";;", 1)[0]
-    assert re.search(r"^\s*check_codex$", agents_check, re.M)
 
 
 def set_codex(path, name, table, value):
@@ -2027,7 +2084,7 @@ def test_a_hook_without_a_timeout_hashes_with_codexs_default_per_event(tmp_path)
 @pytest.mark.parametrize(
     "stale", ["declaration", "stored hash", "content", "content entry missing"]
 )
-def test_a_stale_ponytail_trust_entry_still_shows_the_owners_reminder(tmp_path, stale):
+def test_a_stale_ponytail_trust_entry_blocks_enabled_plugin(tmp_path, stale):
     path = codex_home(tmp_path, ponytail_trusted=3)
     assert codex_config_check(path).stdout == ""
     plugin = path.parent / "plugins/cache" / PONYTAIL.split("@")[1] / "ponytail" / "5.3.3"
@@ -2047,10 +2104,10 @@ def test_a_stale_ponytail_trust_entry_still_shows_the_owners_reminder(tmp_path, 
     else:
         path.write_text(re.sub(r'trusted_content_hash = "[^"]*"\n', "", path.read_text(), count=1))
     result = codex_config_check(path)
-    assert result.returncode == 0, result.stderr
+    assert result.returncode != 0
     # Any change to the installed copy changes its content hash, which all three entries hold.
     waiting = 1 if stale in ("stored hash", "content entry missing") else 3
-    assert f"{waiting} of ponytail's 3 hooks wait for the owner's /hooks" in result.stdout
+    assert f"ponytail enabled with {waiting} untrusted hooks" in result.stderr
 
 
 def start_shim(*command: str) -> subprocess.Popen[bytes]:
@@ -2099,3 +2156,252 @@ def test_sigterm_ends_the_shim_and_its_server():
     assert finish(shim, timeout=5) == 128 + signal.SIGTERM
     with pytest.raises(ProcessLookupError):
         os.kill(server, 0)
+
+
+def fixture_commit(folder):
+    subprocess.run(["git", "init", "-q", str(folder)], check=True)
+    subprocess.run(["git", "-C", str(folder), "add", "."], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(folder),
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-qm",
+            "fixture",
+        ],
+        check=True,
+    )
+    return subprocess.check_output(
+        ["git", "-C", str(folder), "rev-parse", "HEAD"], text=True
+    ).strip()
+
+
+def run_ponytail_install(tmp_path, commit):
+    names = ("codex_ponytail", "codex_config_check", "codex_setting")
+    program = "\n".join(f"{name}() {{\n{setup_function_body(name)}\n}}" for name in names)
+    program += '\nfail() { echo "$*" >&2; exit 1; }\n'
+    program += (
+        f"PONYTAIL_COMMIT={commit}\nPONYTAIL_VERSION=5.3.3\nPONYTAIL_MARKET=meridian-ponytail\n"
+    )
+    program += f"CODEX_MODEL=model\nCODEX_DOCS_MCP={DOCS_MCP}\nSERENA_MCP_ARGS='{SERENA_ARGS}'\n"
+    program += "codex_ponytail\n"
+    return subprocess.run(
+        ["bash", "-euc", program],
+        text=True,
+        capture_output=True,
+        env=dict(os.environ, HOME=str(tmp_path), CODEX_HOME=str(tmp_path / ".codex")),
+    )
+
+
+@pytest.mark.parametrize("damage", ["none", "bundle", "manifest", "one-skill"])
+def test_ponytail_install_repairs_cache_despite_config_marker(tmp_path, damage):
+    config = codex_home(tmp_path)
+    plugin = config.parent / "plugins/cache/meridian-ponytail/ponytail/5.3.3"
+    src = tmp_path / ".local/share/meridian/ponytail-src"
+    shutil.copytree(plugin, src)
+    commit = fixture_commit(src)
+    market = src.parent / "codex-market"
+    shutil.copytree(plugin, market / "plugins/ponytail")
+    (market / ".agents/plugins").mkdir(parents=True)
+    with config.open("a") as f:
+        f.write('\n[marketplaces.meridian-ponytail]\nsource = "fixture"\n')
+    binary = tmp_path / ".local/bin/codex"
+    binary.parent.mkdir(parents=True)
+    binary.write_text(
+        f"#!{sys.executable}\n"
+        "import os, pathlib, shutil, sys\n"
+        "assert sys.argv[1:] == ['plugin', 'add', 'ponytail@meridian-ponytail']\n"
+        "home = pathlib.Path(os.environ['HOME'])\n"
+        "with (home / 'add-calls').open('a') as f: f.write('add\\n')\n"
+        "shutil.copytree(home / '.local/share/meridian/codex-market/plugins/ponytail', "
+        "home / '.codex/plugins/cache/meridian-ponytail/ponytail/5.3.3', dirs_exist_ok=True)\n"
+    )
+    binary.chmod(0o755)
+    if damage == "bundle":
+        shutil.rmtree(plugin)
+    elif damage == "manifest":
+        (plugin / ".codex-plugin/plugin.json").unlink()
+    elif damage == "one-skill":
+        (plugin / "skills/ponytail/SKILL.md").unlink()
+    result = run_ponytail_install(tmp_path, commit)
+    assert result.returncode == 0, result.stderr
+    assert (plugin / ".codex-plugin/plugin.json").is_file()
+    assert (plugin / "skills/ponytail/SKILL.md").is_file()
+    assert tomllib.loads(config.read_text())["plugins"][PONYTAIL]["enabled"] is False
+    calls = tmp_path / "add-calls"
+    assert (calls.read_text() if calls.exists() else "") == ("" if damage == "none" else "add\n")
+    again = run_ponytail_install(tmp_path, commit)
+    assert again.returncode == 0, again.stderr
+    assert (calls.read_text() if calls.exists() else "") == ("" if damage == "none" else "add\n")
+
+
+def test_ponytail_install_enables_only_after_all_hooks_are_trusted(tmp_path):
+    config = codex_home(tmp_path, ponytail_trusted=3, enabled=False)
+    plugin = config.parent / "plugins/cache/meridian-ponytail/ponytail/5.3.3"
+    src = tmp_path / ".local/share/meridian/ponytail-src"
+    shutil.copytree(plugin, src)
+    commit = fixture_commit(src)
+    market = src.parent / "codex-market"
+    shutil.copytree(plugin, market / "plugins/ponytail")
+    (market / ".agents/plugins").mkdir(parents=True)
+    with config.open("a") as f:
+        f.write('\n[marketplaces.meridian-ponytail]\nsource = "fixture"\n')
+    result = run_ponytail_install(tmp_path, commit)
+    assert result.returncode == 0, result.stderr
+    assert tomllib.loads(config.read_text())["plugins"][PONYTAIL]["enabled"] is True
+    assert codex_config_check(config).returncode == 0
+
+
+def run_codex_inventory_check(tmp_path, installed, *, output=None, exit_code=0, warning=""):
+    codex_home(tmp_path)
+    binary = tmp_path / ".local/bin/codex"
+    binary.parent.mkdir(parents=True)
+    payload = json.dumps({"installed": installed, "available": []}) if output is None else output
+    binary.write_text(
+        f"#!{sys.executable}\nimport sys\n"
+        "assert sys.argv[1:] == ['plugin', 'list', '--json']\n"
+        f"sys.stderr.write({warning!r})\nprint({payload!r})\nsys.exit({exit_code})\n"
+    )
+    binary.chmod(0o755)
+    omx = binary.with_name("omx")
+    omx.write_text("#!/bin/sh\necho 'Results: 18 passed, 1 warnings, 0 failed'\n")
+    omx.chmod(0o755)
+    names = ["check_codex", "codex_config_check"]
+    if "codex_plugins_check() {" in (DEPLOY / "setup.sh").read_text():
+        names.append("codex_plugins_check")
+    program = "\n".join(f"{name}() {{\n{setup_function_body(name)}\n}}" for name in names)
+    program += '\nfail() { echo "$*" >&2; exit 1; }\nok() { echo "$*"; }\n'
+    program += "version_ge() { return 0; }\ncodex_version() { echo 0.169.0; }\n"
+    program += "omx_version() { echo 0.22.6; }\nserena_version() { echo 2.1.0; }\n"
+    program += "serena_python() { echo python3; }\nserena_config_check() { return 0; }\n"
+    program += "check_codex_requirements() { return 0; }\ndsh_skills_check() { return 0; }\n"
+    program += "CODEX_VERSION=0.169.0\nOMX_VERSION=0.22.6\nSERENA_VERSION=2.1.0\n"
+    program += "PONYTAIL_VERSION=5.3.3\nPONYTAIL_MARKET=meridian-ponytail\n"
+    program += f"CODEX_MODEL=model\nCODEX_DOCS_MCP={DOCS_MCP}\n"
+    program += f"SERENA_MCP_ARGS='{SERENA_ARGS}'\ncheck_codex\n"
+    return subprocess.run(
+        ["bash", "-euc", program],
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, HOME=str(tmp_path), CODEX_HOME=str(tmp_path / ".codex")),
+    )
+
+
+def listed_plugin(name="ponytail", market="meridian-ponytail", enabled=False):
+    return {
+        "pluginId": f"{name}@{market}",
+        "name": name,
+        "marketplaceName": market,
+        "version": "5.3.3",
+        "installed": True,
+        "enabled": enabled,
+        "source": {"source": "local", "path": "./plugins/ponytail"},
+        "installPolicy": "AVAILABLE",
+        "authPolicy": "ON_INSTALL",
+    }
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_codex_check_rejects_remote_plugin_absent_from_config(tmp_path, enabled):
+    result = run_codex_inventory_check(
+        tmp_path, [listed_plugin(), listed_plugin("extra", "openai-curated-remote", enabled)]
+    )
+    assert result.returncode != 0
+    assert "plugin inventory" in result.stderr
+
+
+@pytest.mark.parametrize("output,exit_code", [("{}", 0), ("not json", 0), ("", 1)])
+def test_codex_check_fails_when_plugin_inventory_is_unavailable(tmp_path, output, exit_code):
+    result = run_codex_inventory_check(tmp_path, [], output=output, exit_code=exit_code)
+    assert result.returncode != 0
+    assert "plugin inventory" in result.stderr
+
+
+def test_codex_check_accepts_only_pinned_ponytail_in_inventory(tmp_path):
+    result = run_codex_inventory_check(tmp_path, [listed_plugin()])
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("feature", ["remote_plugin", "plugin_sharing"])
+def test_codex_config_disables_remote_plugin_routes(tmp_path, feature):
+    write_codex_config(tmp_path)
+    config = tmp_path / ".codex/config.toml"
+    assert tomllib.loads(config.read_text())["features"].get(feature) is False
+    config.write_text(config.read_text().replace(f"{feature} = false", f"{feature} = true"))
+    write_codex_config(tmp_path)
+    assert tomllib.loads(config.read_text())["features"][feature] is False
+    path = codex_home(tmp_path / "check")
+    path.write_text(path.read_text().replace(f"{feature} = false", f"{feature} = true"))
+    assert feature in codex_config_check(path).stderr
+
+
+@pytest.mark.parametrize("broken", [True, False])
+def test_agents_check_runs_every_check_and_collects_failures(tmp_path, broken):
+    setup = (DEPLOY / "setup.sh").read_text()
+    branch = setup.split("  agents-check)\n", 1)[1].split("    ;;", 1)[0]
+    checks = [
+        "check_gh",
+        "check_gitleaks",
+        "check_ocr",
+        "check_claude",
+        "check_omc",
+        "check_codex",
+        "check_agy",
+        "check_dsh",
+        "check_orca",
+        "check_codex_bridge",
+        "check_claude_hud",
+        "check_orca_automation",
+    ]
+    program = 'fail() { echo "$*" >&2; exit 1; }\n'
+    for name in checks:
+        program += f'{name}() {{ echo "{name} $*"; }}\n'
+    if broken:
+        program += 'check_codex() { fail "Codex fixture failed"; }\n'
+        program += 'check_dsh() { echo "dsh fixture failed" >&2; false; echo "errexit lost"; }\n'
+    if "agents_check() {" in setup:
+        program += f"agents_check() {{\n{setup_function_body('agents_check')}\n}}\n"
+    result = subprocess.run(
+        ["bash", "-euc", program + branch],
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, HOME=str(tmp_path), CODEX_HOME=str(tmp_path / ".codex")),
+    )
+    assert result.returncode == (1 if broken else 0)
+    assert "check_omc --require-orca" in result.stdout
+    assert "check_orca_automation" in result.stdout
+    assert "errexit lost" not in result.stdout
+    if not broken:
+        assert "check_codex " in result.stdout.splitlines()
+    if broken:
+        assert "Codex fixture failed" in result.stderr and "dsh fixture failed" in result.stderr
+        assert "agent checks failed: check_codex check_dsh" in result.stderr
+
+
+@pytest.mark.parametrize("damage", ["missing", "version", "enabled"])
+def test_codex_check_rejects_wrong_ponytail_inventory(tmp_path, damage):
+    installed = [listed_plugin()]
+    if damage == "missing":
+        installed = []
+    elif damage == "version":
+        installed[0]["version"] = "5.3.2"
+    else:
+        installed[0]["enabled"] = True
+    result = run_codex_inventory_check(tmp_path, installed)
+    assert result.returncode != 0
+    assert "plugin inventory" in result.stderr
+
+
+def test_codex_check_rejects_incomplete_inventory_after_remote_warning(tmp_path):
+    result = run_codex_inventory_check(
+        tmp_path,
+        [listed_plugin()],
+        warning="Warning: failed to list remote marketplace plugins: fixture unavailable\n",
+    )
+    assert result.returncode != 0
+    assert "plugin inventory" in result.stderr

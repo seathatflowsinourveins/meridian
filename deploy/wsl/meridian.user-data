@@ -70,6 +70,8 @@ write_files:
     content: |
       [features]
       apps = false
+      remote_plugin = false
+      plugin_sharing = false
 
       [mcp_servers.openaiDeveloperDocs.identity]
       url = "https://developers.openai.com/mcp"

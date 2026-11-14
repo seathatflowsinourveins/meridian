@@ -86,6 +86,7 @@ CODEX_MODEL=gpt-6-astra
 # Codex's own openai-docs skill uses. /etc/codex/requirements.toml allows that server by name.
 OMX_VERSION=0.22.6
 OMX_INTEGRITY=sha512-ZpMHipwnaiHV/T8rp/czmF5U+ugqVdUOb28obL5U61q9WQwvfKAmzP4k1V82EnUXYMvsBgZIzFl0I3HADBbFEQ==
+PONYTAIL_VERSION=5.3.3
 PONYTAIL_COMMIT=7801d061243d7b753bad0e0b3c057cd250b11755
 PONYTAIL_MARKET=meridian-ponytail
 CODEX_DOCS_MCP=https://developers.openai.com/mcp
@@ -601,9 +602,18 @@ import sys
 import tomllib
 
 path, name, table, value = sys.argv[1:]
-parts = table.split(".") if table else []
-if not all(re.fullmatch(r"[A-Za-z0-9_-]+", part) for part in [*parts, name]):
-    sys.exit(f"{table}.{name} is not a dotted name of bare keys")
+def table_parts(header):
+    value = tomllib.loads(f"[{header}]\n") if header else {}
+    parts = []
+    while value:
+        ((key, value),) = value.items()
+        parts.append(key)
+    return tuple(parts)
+
+
+parts = table_parts(table)
+if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+    sys.exit(f"{name} is not a bare key")
 want = tomllib.loads(f"v = {value}")["v"]
 
 
@@ -620,15 +630,15 @@ def scan(lines):
     # Table headers by line, and statements as (table, first line, line after the value, key,
     # value): a value may span lines (a multi-line array or string), and a line inside one is
     # never read as a header.
-    headers, found, under, i = {}, [], "", 0
+    headers, found, under, i = {}, [], (), 0
     while i < len(lines):
         stripped = lines[i].strip()
         if not stripped or stripped.startswith("#"):
             i += 1
             continue
         if stripped.startswith("["):
-            m = re.fullmatch(r"\[\s*([^\[\]\"']+?)\s*\]\s*(#.*)?", stripped)
-            under = re.sub(r"\s*\.\s*", ".", m[1]) if m else None
+            m = re.fullmatch(r"\[(.*?)\]\s*(#.*)?", stripped)
+            under = table_parts(m[1]) if m and not stripped.startswith("[[") else None
             headers[i] = under
             i += 1
             continue
@@ -670,22 +680,22 @@ if current(tomllib.loads(text)) == (type(want), want):
 lines = text.splitlines(keepends=True)
 headers, found = scan(lines)
 line = f"{name} = {value}\n"
-header = -1 if not table else next((i for i, t in headers.items() if t == table), None)
+header = -1 if not table else next((i for i, t in headers.items() if t == parts), None)
 # The table written in its parent, inline (`env = { ... }`) or as dotted keys (`env.X = ...`).
 inline = [
-    s for s in found if parts and s[0] == ".".join(parts[:-1]) and s[3] == parts[-1] and isinstance(s[4], dict)
+    s for s in found if parts and s[0] == parts[:-1] and s[3] == parts[-1] and isinstance(s[4], dict)
 ]
 if header is None and inline:
     merged = {k: v for s in inline for k, v in s[4].items()} | {name: want}
     for _, start, stop, _, _ in reversed(inline[1:]):
         del lines[start:stop]
-    lines[inline[0][1] : inline[0][2]] = [f"{parts[-1]} = {dump(merged)}\n"]
+    lines[inline[0][1] : inline[0][2]] = [f"{json.dumps(parts[-1])} = {dump(merged)}\n"]
 elif header is None:
     if lines and not lines[-1].endswith("\n"):
         lines[-1] += "\n"
     lines += ["\n", f"[{table}]\n", line]
 else:
-    hits = [(start, stop) for under, start, stop, key, _ in found if under == table and key == name]
+    hits = [(start, stop) for under, start, stop, key, _ in found if under == parts and key == name]
     for start, stop in reversed(hits):
         del lines[start:stop]
     lines.insert(hits[0][0] if hits else header + 1, line)
@@ -714,7 +724,7 @@ codex_config() {
   # The startup menu is independent of --no-daemon; tasks typed later do not skip it.
   codex_setting "${file}" check_for_update_on_startup "" false
   codex_setting "${file}" model_reasoning_effort "" '"high"'
-  for feature in apps skill_mcp_dependency_install memories; do
+  for feature in apps remote_plugin plugin_sharing skill_mcp_dependency_install memories; do
     codex_setting "${file}" "${feature}" features false
   done
   codex_setting "${file}" plugins features true
@@ -743,6 +753,8 @@ check_for_update_on_startup = false
 # account-linked tool (a broker connector among them) reaches an agent here. Plugins are on for
 # the one plugin of ADR 0018; the MCP servers a skill can ask for and Codex's own memory stay off.
 apps = false
+remote_plugin = false
+plugin_sharing = false
 plugins = true
 skill_mcp_dependency_install = false
 memories = false
@@ -800,7 +812,7 @@ omx_config() {
 # them in /hooks.
 codex_ponytail() {
   local src="${HOME}/.local/share/meridian/ponytail-src" market="${HOME}/.local/share/meridian/codex-market"
-  local codex="${HOME}/.local/bin/codex" tmp changed=0
+  local codex="${HOME}/.local/bin/codex" tmp changed=0 trusted
   if [ "$(git -C "${src}" rev-parse HEAD 2>/dev/null)" != "${PONYTAIL_COMMIT}" ]; then
     rm -rf "${src}"
     git init -q "${src}"
@@ -829,9 +841,17 @@ codex_ponytail() {
 JSON
   grep -qxF "[marketplaces.${PONYTAIL_MARKET}]" "${HOME}/.codex/config.toml" \
     || "${codex}" plugin marketplace add "${market}" </dev/null
-  if [ "${changed}" = 1 ] || ! grep -qxF "[plugins.\"ponytail@${PONYTAIL_MARKET}\"]" "${HOME}/.codex/config.toml"; then
-    "${codex}" plugin add "ponytail@${PONYTAIL_MARKET}" </dev/null
+  if [ "${changed}" = 1 ] || ! grep -qxF "[plugins.\"ponytail@${PONYTAIL_MARKET}\"]" "${HOME}/.codex/config.toml" \
+    || ! codex_config_check ponytail >/dev/null 2>&1; then
+    # plugin add enables the plugin, even on a reinstall. Disable it on failure as well.
+    if ! "${codex}" plugin add "ponytail@${PONYTAIL_MARKET}" </dev/null; then
+      codex_setting "${HOME}/.codex/config.toml" enabled "plugins.\"ponytail@${PONYTAIL_MARKET}\"" false
+      fail "ponytail installation failed; left disabled"
+    fi
   fi
+  codex_setting "${HOME}/.codex/config.toml" enabled "plugins.\"ponytail@${PONYTAIL_MARKET}\"" false
+  trusted="$(codex_config_check ponytail)" || fail "ponytail bundle check failed; left disabled"
+  codex_setting "${HOME}/.codex/config.toml" enabled "plugins.\"ponytail@${PONYTAIL_MARKET}\"" "${trusted}"
 }
 
 serena_version() { "${HOME}/.local/bin/serena" --version 2>/dev/null </dev/null | sed -n 's/^Serena //p' | tail -n 1; }
@@ -899,15 +919,11 @@ sys.exit(f"serena_config.yml: {', '.join(problems)}" if problems else 0)
 PY
 }
 
-# check_codex [install]: the state setup writes. With `install`, Orca's hooks may be missing
-# still (agents-check, without it, requires them).
-check_codex() {
-  version_ge "$(codex_version)" "${CODEX_VERSION}" \
-    || fail "Codex CLI is older than ${CODEX_VERSION} or missing (run: deploy/wsl/setup.sh codex)"
+# Shared config/bundle check. `ponytail` returns only whether its three hooks are trusted;
+# `install` permits missing Orca hooks until Orca prepares a fresh distro.
+codex_config_check() {
   python3 -I - "${HOME}/.codex/config.toml" "${CODEX_MODEL}" "${HOME}/.codex/hooks.json" \
-    "${HOME}/.codex/.omx-config.json" "${CODEX_DOCS_MCP}" "ponytail@${PONYTAIL_MARKET}" "${SERENA_MCP_ARGS}" "${1:-full}" <<'PY' \
-    || fail "~/.codex is not what deploy/wsl/setup.sh codex writes"
-import glob
+    "${HOME}/.codex/.omx-config.json" "${CODEX_DOCS_MCP}" "ponytail@${PONYTAIL_MARKET}" "${SERENA_MCP_ARGS}" "${1:-full}" "${PONYTAIL_VERSION}" <<'PY'
 import hashlib
 import json
 import os
@@ -915,7 +931,7 @@ import re
 import sys
 import tomllib
 
-config, model, hooks_file, omx_file, docs_url, plugin, serena_args, mode = sys.argv[1:]
+config, model, hooks_file, omx_file, docs_url, plugin, serena_args, mode, version = sys.argv[1:]
 serena = dict(
     command="serena",
     args=tomllib.loads(f"v = {serena_args}")["v"],
@@ -927,7 +943,8 @@ with open(config, "rb") as f:
 features = cfg.get("features", {})
 profiles = cfg.get("profiles", {})
 servers = cfg.get("mcp_servers", {})
-plugins = {name for name, p in cfg.get("plugins", {}).items() if p.get("enabled", True) is not False}
+plugins = set(cfg.get("plugins", {}))
+plugin_enabled = cfg.get("plugins", {}).get(plugin, {}).get("enabled", True) is not False
 state = cfg.get("hooks", {}).get("state", {})
 
 
@@ -1020,7 +1037,7 @@ problems = [
         ("approval_policy", cfg.get("approval_policy") != "never"),
         ("sandbox_mode", cfg.get("sandbox_mode") != "danger-full-access"),
         ("check_for_update_on_startup", cfg.get("check_for_update_on_startup") is not False),
-        *[(f"[features] {name}", features.get(name) is not False) for name in ("apps", "skill_mcp_dependency_install", "memories")],
+        *[(f"[features] {name}", features.get(name) is not False) for name in ("apps", "remote_plugin", "plugin_sharing", "skill_mcp_dependency_install", "memories")],
         ("[features] plugins", features.get("plugins") is not True),
         ("[features] connectors (the old name of apps)", "connectors" in features),
         (f"MCP servers {sorted(servers)}", set(servers) != {"openaiDeveloperDocs", "serena"}),
@@ -1047,32 +1064,54 @@ problems = [
     ]
     if bad
 ]
-if problems:
+if problems and mode != "ponytail":
     sys.exit(f"Codex config: {', '.join(problems)}")
-if count["orca"] == 0:
+if count["orca"] == 0 and mode != "ponytail":
     print("note: Orca's 9 Codex hooks are not there yet; Orca adds them, and agents-check requires them")
 # Ponytail's hooks: each trust entry (`<plugin>:<file>:<event>:<group>:<handler>`) must hold the
 # current hash of its declaration in the installed copy, and of that copy's files.
 market, name = plugin.split("@")[1], plugin.split("@")[0]
-roots = glob.glob(os.path.join(os.path.dirname(hooks_file), "plugins", "cache", market, name, "*", ""))
-root = roots[0].rstrip("/") if len(roots) == 1 else None
-content = plugin_content_hash(root) if root else None
+root = os.path.join(os.path.dirname(config), "plugins", "cache", market, name, version)
+try:
+    with open(os.path.join(root, ".codex-plugin", "plugin.json"), encoding="utf-8") as f:
+        manifest = json.load(f)
+    assert manifest["name"] == name and manifest["version"] == version
+    assert manifest["skills"] == "./skills/"
+    for skill in ("ponytail", "ponytail-audit", "ponytail-debt", "ponytail-gain", "ponytail-help", "ponytail-review"):
+        assert os.path.isfile(os.path.join(root, "skills", skill, "SKILL.md"))
+    with open(os.path.join(root, "hooks/claude-codex-hooks.json"), encoding="utf-8") as f:
+        plugin_hooks = json.load(f)["hooks"]
+    assert set(plugin_hooks) == {"SessionStart", "SubagentStart", "UserPromptSubmit"}
+except (OSError, ValueError, KeyError, TypeError, AssertionError):
+    sys.exit(f"ponytail {version} bundle missing or incomplete in Codex's plugin cache; run: deploy/wsl/setup.sh codex")
+content = plugin_content_hash(root)
 current_plugin = 0
-for key, entry in state.items():
-    if not key.startswith(f"{plugin}:") or root is None or entry.get("trusted_content_hash") != content:
-        continue
-    file, label, g, h = key[len(plugin) + 1 :].rsplit(":", 3)
-    event = "".join(part.capitalize() for part in label.split("_"))
+for event in ("SessionStart", "SubagentStart", "UserPromptSubmit"):
+    key = f"{plugin}:hooks/claude-codex-hooks.json:{re.sub(r'(?<!^)(?=[A-Z])', '_', event).lower()}:0:0"
     try:
-        with open(os.path.join(root, file), encoding="utf-8") as f:
-            group = json.load(f)["hooks"][event][int(g)]
-        current_plugin += trusted(key, hook_hash(event, group, group["hooks"][int(h)]))
-    except (OSError, ValueError, KeyError, IndexError):
+        group = plugin_hooks[event][0]
+        current_plugin += (len(plugin_hooks[event]) == len(group["hooks"]) == 1
+            and state.get(key, {}).get("trusted_content_hash") == content
+            and trusted(key, hook_hash(event, group, group["hooks"][0])))
+    except (KeyError, IndexError, TypeError):
         continue
 waiting = 3 - current_plugin
-if waiting > 0:
-    print(f"note: {waiting} of ponytail's 3 hooks wait for the owner's /hooks in codex; its skills work meanwhile")
+if mode == "ponytail":
+    print("true" if waiting == 0 else "false")
+    sys.exit(0)
+if waiting and plugin_enabled:
+    sys.exit(f"ponytail enabled with {waiting} untrusted hooks: Codex workers cannot start under Orca; run: deploy/wsl/setup.sh codex to disable it")
+if not plugin_enabled:
+    print(f"note: ponytail installed and disabled; owner: outside Orca, run codex -c 'plugins.\"{plugin}\".enabled=true', "
+          "review its three hooks in /hooks, then rerun deploy/wsl/setup.sh codex after trusting them")
 PY
+}
+
+check_codex() {
+  version_ge "$(codex_version)" "${CODEX_VERSION}" \
+    || fail "Codex CLI is older than ${CODEX_VERSION} or missing (run: deploy/wsl/setup.sh codex)"
+  codex_config_check "${1:-full}" || fail "~/.codex is not what deploy/wsl/setup.sh codex writes"
+  codex_plugins_check
   check_codex_requirements
   [ "$(omx_version)" = "${OMX_VERSION}" ] || fail "oh-my-codex is not ${OMX_VERSION} (run: deploy/wsl/setup.sh codex)"
   [ "$(serena_version)" = "${SERENA_VERSION}" ] || fail "serena is not ${SERENA_VERSION} (run: deploy/wsl/setup.sh codex)"
@@ -1085,6 +1124,31 @@ PY
   grep -qE '^Results: [0-9]+ passed, [0-9]+ warnings, 0 failed$' <<<"${doctor}" \
     || fail "omx doctor: $(grep -E '^ *\[XX\]|^Results:' <<<"${doctor}" | tr -s ' ' | tr '\n' ';')"
   ok "Codex CLI $(codex_version): ${CODEX_MODEL} at high effort, no ChatGPT apps or memories; oh-my-codex ${OMX_VERSION} (omx doctor: 0 failed), the ponytail plugin, serena ${SERENA_VERSION} (navigation and diagnostics only) and OpenAI's docs server"
+}
+
+# Config tables omit account-catalogue plugins. Ask Codex for its installed inventory too.
+codex_plugins_check() {
+  local inventory
+  inventory="$("${HOME}/.local/bin/codex" plugin list --json </dev/null 2>&1)" \
+    || fail "Codex plugin inventory unavailable"
+  python3 -I - "${inventory}" "ponytail@${PONYTAIL_MARKET}" "${PONYTAIL_VERSION}" "${HOME}/.codex/config.toml" <<'PY' \
+    || fail "Codex plugin inventory is not the pinned ponytail alone"
+import json
+import sys
+import tomllib
+
+inventory, plugin, version, config = sys.argv[1:]
+try:
+    installed = json.loads(inventory)["installed"]
+    assert isinstance(installed, list) and len(installed) == 1
+    assert installed[0]["pluginId"] == plugin and installed[0]["installed"] is True
+    assert installed[0]["version"] == version
+    with open(config, "rb") as f:
+        enabled = tomllib.load(f)["plugins"][plugin].get("enabled", True)
+    assert installed[0]["enabled"] is enabled
+except (OSError, ValueError, KeyError, TypeError, AssertionError):
+    sys.exit("Codex plugin inventory: missing, malformed, wrong version or unapproved installed plugins")
+PY
 }
 
 # /etc/codex/requirements.toml: the text in deploy/wsl/meridian.user-data, byte for byte. It pins
@@ -2011,6 +2075,20 @@ check_orca_automation() {
   ok "Orca automation \"${UPKEEP_NAME}\": weekly, behind the drift precheck; it lands and applies its own change"
 }
 
+# Keep each check's errexit and fail() local, and collect every status in sequence.
+# Putting a function directly in `if` would disable errexit throughout that function.
+agents_check() {
+  local check
+  local -a command failed=()
+  for check in check_gh check_gitleaks check_ocr check_claude "check_omc --require-orca" \
+    check_codex check_agy check_dsh check_orca check_codex_bridge check_claude_hud check_orca_automation; do
+    read -r -a command <<<"${check}"
+    ( "${command[@]}" ) &
+    if ! wait "$!"; then failed+=("${command[0]}"); fi
+  done
+  [ "${#failed[@]}" = 0 ] || fail "agent checks failed: ${failed[*]}"
+}
+
 case "${1:-}" in
   check) cmd_check ;;
   uv) cmd_uv ;;
@@ -2042,18 +2120,7 @@ case "${1:-}" in
   signins) cmd_signins ;;
   orca-pair) cmd_orca_pair ;;
   agents-check)
-    check_gh
-    check_gitleaks
-    check_ocr
-    check_claude
-    check_omc --require-orca
-    check_codex
-    check_agy
-    check_dsh
-    check_orca
-    check_codex_bridge
-    check_claude_hud
-    check_orca_automation
+    agents_check
     ;;
   repo) cmd_repo ;;
   gateway) cmd_gateway ;;
