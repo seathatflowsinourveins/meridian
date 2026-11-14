@@ -369,37 +369,38 @@ cmd_codex() {
   check_codex
 }
 
-# codex_feature_off FILE NAME: `NAME = false` in the file's [features] table. A line that sets
-# NAME there is rewritten, a missing one is added under the header, and the result is parsed
-# before it replaces the file. A file without a [features] table is an error.
-codex_feature_off() {
-  python3 -I - "$1" "$2" <<'PY' || fail "cannot set $2 = false in the [features] table of $1"
+# codex_setting_off FILE NAME TABLE: `NAME = false` in TABLE (empty means the root).
+# Preserve other tables, parse before replacing, and refuse a missing named table.
+codex_setting_off() {
+  python3 -I - "$1" "$2" "$3" <<'PY' || fail "cannot set $2 = false in table '$3' of $1"
 import os
 import re
 import sys
 import tomllib
 
-path, name = sys.argv[1], sys.argv[2]
+path, name, table = sys.argv[1:]
 with open(path, encoding="utf-8") as f:
     text = f.read()
-if tomllib.loads(text).get("features", {}).get(name) is False:
+cfg = tomllib.loads(text)
+if (cfg.get(table, {}) if table else cfg).get(name) is False:
     sys.exit(0)
 lines = text.splitlines(keepends=True)
 header = next(
-    (i for i, line in enumerate(lines) if re.fullmatch(r"\s*\[\s*features\s*\]\s*(#.*)?\n?", line)),
+    (i for i, line in enumerate(lines) if re.fullmatch(rf"\s*\[\s*{re.escape(table)}\s*\]\s*(#.*)?\n?", line)),
     None,
-)
+) if table else -1
 if header is None:
-    sys.exit(f"{path} has no [features] table")
+    sys.exit(f"{path} has no [{table}] table")
 end = next((i for i in range(header + 1, len(lines)) if re.match(r"\s*\[", lines[i])), len(lines))
-key = re.compile(rf"\s*{re.escape(name)}\s*=")
+key = re.compile(rf"\s*(?:{re.escape(name)}|\"{re.escape(name)}\"|'{re.escape(name)}')\s*=")
 hits = [i for i in range(header + 1, end) if key.match(lines[i])]
 for i in reversed(hits):
     del lines[i]
 lines.insert(hits[0] if hits else header + 1, f"{name} = false\n")
 new = "".join(lines)
-if tomllib.loads(new).get("features", {}).get(name) is not False:
-    sys.exit(f"{path}: {name} is set outside the [features] table")
+cfg = tomllib.loads(new)
+if (cfg.get(table, {}) if table else cfg).get(name) is not False:
+    sys.exit(f"{path}: {name} is set outside table '{table}'")
 with open(f"{path}.new", "w", encoding="utf-8") as f:
     f.write(new)
 os.chmod(f"{path}.new", 0o600)
@@ -415,8 +416,10 @@ codex_config() {
   if [ ! -e "${file}" ]; then
     codex_config_file
   fi
+  # The startup menu is independent of --no-daemon; tasks typed later do not skip it.
+  codex_setting_off "${file}" check_for_update_on_startup ""
   for feature in apps plugins skill_mcp_dependency_install memories; do
-    codex_feature_off "${file}" "${feature}"
+    codex_setting_off "${file}" "${feature}" features
   done
 }
 
@@ -430,6 +433,7 @@ model_reasoning_effort = "high"
 # Bypass mode, the owner's choice for this distro (what --dangerously-bypass-approvals-and-sandbox sets).
 approval_policy = "never"
 sandbox_mode = "danger-full-access"
+check_for_update_on_startup = false
 
 [features]
 # ChatGPT apps (account connectors) stay off, as claude.ai connectors do for Claude Code, so no
@@ -472,6 +476,7 @@ problems = [
         ("model_reasoning_effort", cfg.get("model_reasoning_effort") != "high"),
         ("approval_policy", cfg.get("approval_policy") != "never"),
         ("sandbox_mode", cfg.get("sandbox_mode") != "danger-full-access"),
+        ("check_for_update_on_startup", cfg.get("check_for_update_on_startup") is not False),
         *[(f"[features] {name}", features.get(name) is not False) for name in off],
         ("[features] connectors (the old name of apps)", "connectors" in features),
         ("MCP servers configured", bool(cfg.get("mcp_servers"))),
@@ -707,6 +712,16 @@ os.chmod(f"{path}.new", 0o600)
 os.replace(f"{path}.new", path)
 PY
   fi
+  # dsh-tui 0.20.0's guide is home-wide UI state, outside the Cordis patch layer.
+  # Escape skips without recording completion. Keep unrelated prefs and newer revisions.
+  local guide="${HOME}/.dsh-tui/onboarding.json"
+  install -d -m 0700 "${HOME}/.dsh-tui"
+  { if [ -e "${guide}" ]; then cat "${guide}"; else echo '{}'; fi; } | jq '
+    .completed = true |
+    .version = (if (.version | type) == "number" and .version >= 1 then .version else 1 end)
+  ' > "${guide}.new"
+  chmod 0600 "${guide}.new"
+  mv "${guide}.new" "${guide}"
 }
 
 # dsh_row CONFIG ID: the lines of one row of `dsh --dump-config`, up to the next row.
@@ -717,6 +732,9 @@ check_dsh() {
     || fail "DeepSeek Harness is older than ${DSH_VERSION} or missing (run: deploy/wsl/setup.sh dsh)"
   version_ge "$(dsh_tui_version)" "${DSH_TUI_VERSION}" \
     || fail "dsh-tui is older than ${DSH_TUI_VERSION} or not installed in its profile"
+  jq -e '.completed == true and (.version | type) == "number" and .version >= 1' \
+    "${HOME}/.dsh-tui/onboarding.json" >/dev/null \
+    || fail "dsh-tui's first-run guide is not completed (run: deploy/wsl/setup.sh dsh)"
   local config row
   config="$("${HOME}/.local/bin/dsh" --profile dsh-tui --dump-config </dev/null 2>/dev/null)" \
     || fail "dsh cannot build its configuration for the dsh-tui profile"

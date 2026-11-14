@@ -106,7 +106,7 @@ flows with it ticked has not been checked.
 
 ### Alpaca paper lane (M3, owner only)
 
-`meridian.alpaca_lane` wires the execution adapter, session quotes and the owner's order budget.
+`meridian.alpaca_lane` wires session quotes and the [execution adapter](m3-alpaca.md#3-current-adapter-carried-changed-and-omitted) with the [order budget](#rate-budgets).
 Quotes carry prices only: Alpaca documents round-lot sizes but its Asset model has no
 per-symbol shares-per-lot field ([Asset](https://alpaca.markets/sdks/python/api_reference/trading/models.html#asset),
 [quotes](https://docs.alpaca.markets/us/docs/real-time-stock-pricing-data), read 2026-11-13).
@@ -117,11 +117,20 @@ Before a run: stop the previous writer and confirm it is stopped;
 check that AAPL has no open order or position, across every entry route on the paper account.
 AAPL is the same equity as upstream's IBKR stock example. Reconciliation claims AAPL.ALPACA;
 working orders outside that universe or from another writer refuse. No agent starts either mode.
-Copy `deploy/alpaca-lane.template.json` to ignored `local/alpaca-lane.json` and fill its two
-null fields: `order_budget_rows_path` (relative to the settings file or absolute) and
-`quote_max_age_ns` (a positive integer, with no code default). Both files belong outside the
-tree or under `local/`; the rows must pass the production loader. Missing or invalid values
-refuse without printing paths or values. The settings path is selected with `--settings`.
+Copy `deploy/alpaca-lane.template.json` to ignored `local/alpaca-lane.json`; fill its two null fields: `order_budget_rows_path`
+(relative to that file or absolute) and `quote_max_age_ns` (positive integer; no code default).
+Both files belong outside the tree or under `local/` (backups there are ignored too); [rows must pass the production loader](#rate-budgets).
+Missing/invalid values refuse without printing paths or values; `--settings` selects the settings file.
+
+#### Alpaca credentials
+
+The owner creates the two encrypted files in a distro terminal (no TPM, so the host key):
+```bash
+sudo systemd-creds setup
+systemd-ask-password -n "Alpaca paper key id:" | sudo systemd-creds encrypt --with-key=host --name=alpaca-paper-key-id - /etc/credstore.encrypted/alpaca-paper-key-id
+systemd-ask-password -n "Alpaca paper secret key:" | sudo systemd-creds encrypt --with-key=host --name=alpaca-paper-secret-key - /etc/credstore.encrypted/alpaca-paper-secret-key
+```
+`deploy/systemd/meridian-alpaca-paper.service` is prepared, not installed/enabled, and has no `[Install]` section. It runs as `paper`, loads both credentials by absolute path (missing files prevent startup), and runs only `python -m meridian.alpaca.credentials`: presence/format checks, no socket. M7 installs `/opt/meridian`. The loader refuses missing credentials; key values come only from their files, whose directory is named by `CREDENTIALS_DIRECTORY`.
 
 From the repository root, in a distro terminal the owner started outside Orca, use the system
 manager (the existing encrypted credentials target it, not the per-user manager):
@@ -147,12 +156,9 @@ paper connection remain untested; only the owner may perform that attended check
 and execution coverage complete. `order` asks for PAPER, repeats all local checks, then buys
 one share with a DAY LIMIT 2% below a fresh bid, rounded down to the venue tick. It checks
 `quote_age_ns` before pricing and again at paced submission; missing/stale quotes place nothing.
-[24/5](https://docs.alpaca.markets/us/docs/245-trading-for-trading-api) (read 2026-11-13):
-Sunday 20:00–Friday 20:00 New York, with holiday/early-close checks from the paper calendar.
-Regular uses IEX, overnight uses free real-time indicative `overnight`, pre/after uses delayed SIP.
-SIP age includes its 15-minute delay: a limit of 15 minutes or less refuses those quotes.
-DAY LIMIT sends `extended_hours=true`; overnight needs eligible, unhalted asset flags.
-Records name session/feed; boundaries discard cached quotes (sources in `UPSTREAM.md`).
+[24/5](https://docs.alpaca.markets/us/docs/245-trading-for-trading-api) (read 2026-11-13): Sunday 20:00–Friday 20:00 New York; paper-calendar rows check holidays and early closes.
+Regular uses IEX; overnight uses free real-time indicative `overnight`; pre/after uses delayed SIP, whose age includes 15 minutes (an owner limit of 15 minutes or less refuses it).
+DAY LIMIT sends `extended_hours=true`; overnight requires eligible, unhalted asset flags. Boundaries discard cached quotes and refuse queued submissions across sessions (sources in `UPSTREAM.md`).
 It cancels after venue `new` proves routing; queued `accepted` alone cannot pass. A pass is routed, cancelled, nothing filled,
 flat with no open or in-flight order at stop. Any fill fails and sends no second order; the
 owner inspects and closes any share by hand. An unresolved order also fails: inspect it before
@@ -160,12 +166,10 @@ acting; there is no stop-time cancel or close. The M1 time limits apply (25 s re
 All local checks run again after the run. Engine output and failures stay in `runs/`; passing
 records go to `evidence/M3-alpaca-paper-<stamp>-<mode>.json`. Public records contain no broker
 text or identifiers, include commission citations and counts of paper-default/reviewed budget
-rows (also shown at the terminal), and record only the quote-age limit's presence. No real run has been performed.
+rows (also shown at the terminal), session/feed used to price the order, and only the quote-age limit's presence. No real run has been performed.
 
-`uv run python -m meridian.alpaca_sim` is a simulation, not a lane; no typed word.
-It exercises the lane's unchanged one-order strategy and the native engine's order flow.
-It does not exercise the Alpaca adapter, order budget, credentials, streams or venue.
-All quotes are synthetic, generated in process: no market or recorded data, no real price.
+`uv run python -m meridian.alpaca_sim` is a simulation, not a lane; no typed word. It exercises the unchanged one-order strategy and native engine order flow, excluding the Alpaca adapter, order budget, credentials, streams and venue.
+Quotes are synthetic, generated in process: no market or recorded data, no real price.
 PASS means accepted, then cancelled, nothing filled and flat at stop; any fill means FAIL.
 Records go only to `runs/*-simulation.json`, never `evidence/`; it is offline and keyless.
 
@@ -240,12 +244,12 @@ replay, not a walk-forward validation.
 
 | Venue | Its limit | The budget here | Held by |
 |---|---|---|---|
-| Alpaca (M3) | 200 requests per minute per account, every request counted; 429 past it | 180 paced requests in any 60 s window, burst 18, CANCEL > REDUCE > MODIFY > QUERY > SUBMIT | `meridian/order_budget/` |
+| Alpaca (M3) | 200 requests per minute per account, every request counted; 429 past it | documented fixture: 180 paced requests in any 60 s window, burst 18; production uses owner rows below; CANCEL > REDUCE > MODIFY > QUERY > SUBMIT | `meridian/order_budget/` |
 | IBKR | 50 messages per second from all clients of one Gateway together; error 100 past it, and a likely disconnect | none yet: a run of the M1 or the sandbox lane sends a few messages | n/a |
 | Sandbox | none: the venue is simulated inside the engine | none needed | n/a |
 
 The order budget is the owner's account pacer, harvested from Sextant (see `UPSTREAM.md`).
-Every request takes a token; the bucket holds a burst of 18 and refills one token every
+Every request takes a token; with the fixture rows, the bucket holds 18 and refills one token every
 370,370,371 ns. A request past the budget waits in the pacer's queue, most urgent kind first;
 its caller can withdraw it, and then it is dropped without being sent. An entry also waits
 until the bucket holds more tokens than its protection reserve, so protective orders keep room;
@@ -257,7 +261,12 @@ answers 429 past 200 a minute, with quiet spells in which the bucket fills up ag
 at most 179 in any window, before and after each quiet spell, 161 to 163 a minute under steady
 overload, no 429, no withdrawn entry sent, and every cancel and reduce sent. The budget holds
 within one pacer: a new one starts with a full burst, so a lane that restarts within a minute
-of its last request can add up to 18 to that window unless it starts its pacer empty (M3).
+of its last request can add up to 18 to that window; Alpaca starts each new pacer empty, including after reconnect.
+
+For Alpaca, copy `deploy/alpaca-order-budget.template.json` to the owner-held `order_budget_rows_path`; fill all fields of its 16 rows
+with truthful sources and `REVIEWED` or unreviewed `PAPER_DEFAULT` scopes; optional null reserves may use `UNAVAILABLE`.
+`meridian/alpaca/pacing.py` maps `PAPER_DEFAULT` for M2's unchanged validation and returns separate scope counts; missing/invalid or `FIXTURE_ONLY` rows refuse without values.
+The venue limit must be 200 per 60 s; this repo supplies no production values. Fixture 429 backoff starts at 1 s and doubles to 30 s; production uses its rows.
 
 The engine's own limits are only a backstop: its risk engine throttles submits and modifies
 (100 a second each by default) and denies the excess, but a strategy's cancels and queries
