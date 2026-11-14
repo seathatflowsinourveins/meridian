@@ -19,8 +19,8 @@
 #     claude-hud    the claude-hud status line for Claude Code, beside Orca's usage reporter
 #   deploy/wsl/setup.sh agents-check  verify the agent runtimes and their settings
 #   deploy/wsl/setup.sh drift         installed against pinned; exit 0 when upkeep is due (changes nothing)
-#   deploy/wsl/setup.sh upkeep        bring this machine to the pins (not Orca's server: the owner's step)
-#   deploy/wsl/setup.sh orca-automation  once: the weekly Orca automation that opens upkeep pull requests
+#   deploy/wsl/setup.sh upkeep        bring this machine to the pins, Orca's server last
+#   deploy/wsl/setup.sh orca-automation  the weekly Orca automation that moves the pins, lands and applies them
 #   deploy/wsl/setup.sh signins       list the sign-ins left for the owner, with their commands
 #   deploy/wsl/setup.sh orca-pair     owner, once, in Windows Terminal: pair the Windows Orca app
 #
@@ -70,9 +70,9 @@ CLAUDE_RELEASE_SIGNER=31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE
 CLAUDE_RELEASES=https://downloads.claude.ai/claude-code-releases
 CLAUDE_MODEL=claude-fable-5-2
 # Codex CLI: OpenAI's npm package and its linux-x64 build, by their registry integrity values.
-CODEX_VERSION=0.167.2
-CODEX_INTEGRITY=sha512-6OFkr2ndzTdFb32OEiUlM9BgpeY8+wnMe8vRhuvt+22TnxVR39KnJ22Ghay98IY9OmEltoNgFN4GALUkxFQCOw==
-CODEX_LINUX_INTEGRITY=sha512-2Rw3VkWonMxwCSgOw+NkiKLOuOzyoQNWmxU7x8GniesdMfhKc4asNqOzTgQwJLKCrSlPc4/6fYTaH7fYcuGWGQ==
+CODEX_VERSION=0.169.0
+CODEX_INTEGRITY=sha512-KhzYlkKPxoNssR8CEm45IjqnFWn7UtlF4CiD3tOJPea51xBs7MaHy0UQG9GSbCqk6Lrjn5QdJDV0QD1/FgWlGw==
+CODEX_LINUX_INTEGRITY=sha512-o05NyAOCDygSPRo1yinzxvkRSdmsZyBD9E7mbpmjRanSfM8lypqWtQgEo4XfNkwhuCR2aFu8mlGOsQGFXVbVww==
 CODEX_MODEL=gpt-6-astra
 # DeepSeek Harness: the engine (`dsh`), pnpm (dsh installs its profiles with it, and pins the
 # 11.x line), the community terminal UI that Orca launches for it (`dsh-tui`), and the two hook
@@ -92,8 +92,8 @@ DSH_MODEL=deepseek-flash
 DSH_ALLOW_SCRIPTS=node-pty,koffi,@deepseek-ai/dsh-subprocess-local,@google/genai,protobufjs
 # Orca server: the server-only release tarball (orcad, its own Node, the orca-ide CLI), by the
 # SHA-256 in the release's checksum file. It does not update itself; a new pin here updates it.
-ORCA_VERSION=1.4.257
-ORCA_SHA256=72f42c1f5e66d828375d70a54fda5a5f910b90471948d93eedbc3a9ed19bc840
+ORCA_VERSION=1.4.258
+ORCA_SHA256=fd7f23f5fb6fe43fb2982d17438d772fac7cc65c8208a212d0ffb224b504e311
 ORCA_ROOT=/opt/orca-server
 # Loopback only, on a port of its own: with mirrored networking a listener on every interface
 # is reachable from the network, and 6768 is the Windows app's default port.
@@ -121,8 +121,8 @@ CLAUDE_HUD_COMMIT=b86e1c3e5255880578de4b7cc87dc383228c2a18
 # Antigravity CLI (`agy`): the GitHub release asset of this version, by the SHA-256 digest
 # GitHub shows for it. (Google's install.sh and agy's own updater take the build named in their
 # updater service's manifest instead, checked against the SHA-512 in that manifest.)
-AGY_VERSION=1.5.7
-AGY_SHA256=d6150a8d2a9e29a3d171b2325d6f66b6e7059628f4799a20c069b8ed8f78fdbb
+AGY_VERSION=1.5.8
+AGY_SHA256=905d4accfbd61bc00bee84bfaf24c59b85d334cabd786cf99237b66cfe06ab98
 AGY_URL="https://github.com/google-antigravity/antigravity-cli/releases/download/${AGY_VERSION}/agy_cli_linux_x64.tar.gz"
 # agy's default model, by the label `agy models` prints (plan 8.8: Gemini 4 Carbon, at its
 # highest effort). A label agy no longer offers falls back to its own default, with a warning.
@@ -1098,8 +1098,9 @@ cmd_gateway() {
 # reports new releases in the GitHub issue labelled `landscape`):
 #   drift            installed against pinned and upstream's newest; exit 0 when something is due
 #   upkeep           this machine to the pins, and Claude Code to its newest release
-#   orca-automation  a weekly Orca automation: when drift says so, a worker moves the pins and
-#                    opens one pull request, which lands through review like any other
+#   orca-automation  a weekly Orca automation: when drift says so, a worker moves the pins, has
+#                    another model family review the change, lands it through the lead's merge
+#                    gate under the shared landing lock, and applies it with upkeep
 drift_report() {
   # stdin: one "name installed pinned newest" line per runtime; "-" stands for "not installed"
   # or "not read". Returns 0 when a runtime is off its pin or upstream has a newer release.
@@ -1167,8 +1168,9 @@ EOF
 cmd_upkeep() {
   # Claude Code's own updater first (it checks its download itself, as in a session the owner
   # starts); then each installer, which does nothing when its runtime is at or ahead of the pin
-  # and otherwise installs the pinned release with its checksum check. Orca is left out: a new
-  # server restarts every session, so that step stays the owner's.
+  # and otherwise installs the pinned release with its checksum check. Orca's server goes last:
+  # its service restarts for a few seconds, and the terminals stay, because they run in the
+  # terminal daemon, whose scope outlives the service (cmd_orca; UPSTREAM.md, Weekly upkeep).
   "${HOME}/.local/bin/claude" update </dev/null || echo "note: claude update did not complete"
   cmd_gh
   cmd_ocr
@@ -1178,23 +1180,24 @@ cmd_upkeep() {
   cmd_dsh
   cmd_codex_bridge
   cmd_claude_hud
-  version_ge "$(orca_version)" "${ORCA_VERSION}" \
-    || echo "owner: Orca $(orca_version) is behind its pin ${ORCA_VERSION}; run deploy/wsl/setup.sh orca when no session is working"
+  version_ge "$(orca_version)" "${ORCA_VERSION}" || cmd_orca
 }
 
 UPKEEP_NAME="Meridian upkeep"
 UPKEEP_PRECHECK="${REPO_DIR}/deploy/wsl/setup.sh drift --pull"
-UPKEEP_PROMPT='Weekly upkeep of the agent runtimes of this repository. Read AGENTS.md first: its boundaries hold here.
+UPKEEP_PROMPT='Weekly upkeep of the agent runtimes of this repository, from the report to the merged and applied change. You are the lead for this one change: read AGENTS.md and the `lead` skill first; their boundaries hold here.
 
 Do this, in order:
-1. Run `deploy/wsl/setup.sh upkeep`, then `deploy/wsl/setup.sh drift`. Read the open GitHub issue labelled `landscape`, if there is one.
+1. Run `deploy/wsl/setup.sh upkeep`, then `deploy/wsl/setup.sh drift`. Read the open GitHub issue labelled `landscape`, if there is one. If nothing is due, say so and stop.
 2. For each runtime that drift shows ahead of its pin or with a newer release upstream (Claude Code, Codex, Antigravity, DeepSeek Harness, dsh-tui, Orca, gh, open-code-review, claude-hud): read its release notes at the source, then move its pin in deploy/wsl/setup.sh with the checksum, integrity value or signed manifest its installer already checks, and bring its UPSTREAM.md row up to date in place. claude-hud moves only to a tag whose commit GitHub marks verified.
 3. Claude Code: read its changelog between the old pin and the new one. For each setting or feature that is new, off by default and useful to this setup, either add it to claude_settings and check_claude with a test, or name it in the pull request as considered and left out, with the reason.
-4. If the installed Orca is newer than the version named in .agents/skills/NOTICE.md, refresh the two copied skills the way that file describes.
+4. If Orca'"'"'s pin moves, the two copied skills move with it: after step 8 has installed the new server, refresh them the way .agents/skills/NOTICE.md describes, in a second small change landed the same way.
 5. If a model newer than the lead or worker model ids in deploy/wsl/setup.sh is listed on its vendor'"'"'s models page, say so in the pull request. Do not change a model id.
-6. Run `uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest`. Open one pull request with what changed and what you read. If nothing was due, say so and open none.
+6. Commit on this branch. Have another model family review it: `codex review --base origin/main`, run in this worktree. Fix each finding or answer it with a reason, and write the review, its findings and what you did into the review record for the pull request.
+7. Land it yourself through the merge gate. Take the shared lock for the whole landing (`flock ~/.cache/meridian/landing.lock`) and, inside it, from the main checkout `~/src/meridian` after `git pull --ff-only`, run the gate'"'"'s `trial`, `open` and `land` for this branch as the `lead` skill describes. If the gate refuses or a check fails, fix the cause and run `trial` again; never go around it.
+8. After the merge, fast-forward the main checkout (`git -C ~/src/meridian pull --ff-only`) and confirm it holds the merged pins. From there run `~/src/meridian/deploy/wsl/setup.sh upkeep`: it installs the moved pins, Orca'"'"'s server last (its service restarts for a few seconds; the terminals stay). Then run `~/src/meridian/deploy/wsl/setup.sh agents-check` and `~/src/meridian/deploy/wsl/setup.sh drift`, and put the three outputs in a closing comment on the pull request; a runtime that drift still shows behind its pin is a failure to report, not a success.
 
-Never: merge a pull request; run `deploy/wsl/setup.sh orca`, `orca-ide open` or `orca-ide serve`, or stop or restart the orca-serve service; start a lane (any `python -m meridian.` command); read or print a key or credential; edit anything under risk/ or a *.contract.json; add a plugin, skill or MCP server. Everything else a working session needs is allowed.'
+Never: merge or close any pull request but your own upkeep changes; start a lane (any `python -m meridian.` command); read or print a key or credential; edit anything under risk/ or a *.contract.json; add a plugin, skill or MCP server; change a model id; stop a process you did not start. Everything else a working session needs is allowed.'
 
 upkeep_automation() {
   orca_cli automations list --json \
@@ -1202,24 +1205,32 @@ upkeep_automation() {
 }
 
 cmd_orca_automation() {
-  # Created once and then left alone: its schedule and prompt are the owner's to edit in Orca.
-  if [ -z "$(upkeep_automation)" ]; then
+  # Created once; afterwards its prompt and precheck follow this script, and its schedule is the
+  # owner's to edit in Orca.
+  local now id
+  now="$(upkeep_automation)"
+  if [ -z "${now}" ]; then
     orca_cli automations create --name "${UPKEEP_NAME}" \
       --trigger weekly --day 1 --time 07:00 --timezone America/New_York \
       --provider claude --extra-agent-args="--model claude-opus-5-5" \
       --repo "path:${REPO_DIR}" --setup run \
       --precheck "${UPKEEP_PRECHECK}" --precheck-timeout 120 \
       --prompt "${UPKEEP_PROMPT}" --enabled --json >/dev/null
+  elif ! jq -e --arg prompt "${UPKEEP_PROMPT}" --arg precheck "${UPKEEP_PRECHECK}" \
+      '.prompt == $prompt and .precheck.command == $precheck' <<<"${now}" >/dev/null; then
+    id="$(jq -r '.id' <<<"${now}")"
+    orca_cli automations edit "${id}" --precheck "${UPKEEP_PRECHECK}" --precheck-timeout 120 \
+      --prompt "${UPKEEP_PROMPT}" --json >/dev/null
   fi
   check_orca_automation
 }
 
 check_orca_automation() {
-  upkeep_automation | jq -e --arg precheck "${UPKEEP_PRECHECK}" '
-    .enabled == true and .precheck.command == $precheck
+  upkeep_automation | jq -e --arg prompt "${UPKEEP_PROMPT}" --arg precheck "${UPKEEP_PRECHECK}" '
+    .enabled == true and .precheck.command == $precheck and .prompt == $prompt
   ' >/dev/null \
-    || fail "the Orca automation \"${UPKEEP_NAME}\" is missing, disabled or without its drift precheck (run: deploy/wsl/setup.sh orca-automation)"
-  ok "Orca automation \"${UPKEEP_NAME}\": weekly, behind the drift precheck"
+    || fail "the Orca automation \"${UPKEEP_NAME}\" is missing, disabled or not what this script sets (run: deploy/wsl/setup.sh orca-automation)"
+  ok "Orca automation \"${UPKEEP_NAME}\": weekly, behind the drift precheck; it lands and applies its own change"
 }
 
 case "${1:-}" in
