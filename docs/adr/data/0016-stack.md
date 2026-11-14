@@ -98,7 +98,7 @@ Jobs left to built-ins or with no pick:
 Verdicts from the skills and tools research of 2026-11-13, each repository once, as stars and last push (2026). Picked or placed here: see above.
 
 - **Instruction file sources:** `anthropics/claude-plugins-official` 47,212, 11-14: skill-creator refused (above); `mattpocock/skills` 323,891, 11-13: picked; `walkinglabs/learn-harness-engineering` 24,565, 10-22: guide; `Piebald-AI/claude-code-system-prompts` 13,161, 11-13: reference text.
-- **Layer 7:** `agentskills/agentskills` 27,271, 11-04: the format, in use; `rtk-ai/rtk` 86,515, 11-13: deferred; `ccusage/ccusage` 19,429, 11-14: no dsh source, replaced by agentsview; `DietrichGebert/ponytail` 190,418, 10-29: only `.openclaw` skill paths, no job.
+- **Layer 7:** `agentskills/agentskills` 27,271, 11-04: the format, in use; `rtk-ai/rtk` 86,515, 11-13: deferred; `ccusage/ccusage` 19,429, 11-14: not installed; claude-hud holds token and cost accounting for Claude Code (ADR 0015) and ccusage reads no dsh logs, so `kenn-io/agentsview` reports DeepSeek Harness's sessions; `DietrichGebert/ponytail` 190,418, 10-29: only `.openclaw` skill paths, no job.
 - **Measured here and not adopted:** `obra/superpowers` 317,285, 11-03: three folders picked; compound-engineering-plugin 26,078, 11-13: ADR 0006 stands; `openai/plugins` 7,936, 11-14: Codex format; oh-my-codex 33,783, 11-10: Codex only; `trailofbits/skills` 8,178, 11-12: `ty` conflicts with pyright; awesome-dsh-plugin 24,590, 11-13: catalogue (ranked below); semble 6,417, 11-08: ADR 0001 stands; context-mode 34,060, 11-14 and headroom 79,614, 11-14: duplicates of rtk.
 - **Skill packs and frameworks:**
   - Picked: `addyosmani/agent-skills` 117,194, 11-01.
