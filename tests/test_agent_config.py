@@ -301,14 +301,28 @@ def test_the_wrapper_is_executable_in_git():
 def test_claude_hud_config_is_written_once_with_the_account_labels_off(tmp_path):
     file = tmp_path / ".claude" / "plugins" / "claude-hud" / "config.json"
     run_config_writer("claude_hud_config", tmp_path)
-    display = json.loads(file.read_text())["display"]
-    assert display == {
-        "showTools": True,
-        "showAgents": True,
-        "showTodos": True,
-        "showAuth": False,
-        "showAuthUser": False,
-    }
+    config = json.loads(file.read_text())
+    display = config["display"]
+    # The two options that read the account block of ~/.claude.json, and the usage file paths.
+    assert display["showAuth"] is False and display["showAuthUser"] is False
+    assert not any(key.startswith("externalUsage") for key in display)
+    switched_on = {key for key, value in display.items() if value is True}
+    for key in (
+        "showTools",
+        "showSkills",
+        "showMcp",
+        "showAgents",
+        "showTodos",
+        "showEffortLevel",
+        "showAgentEffort",
+        "showSpeed",
+        "showPromptCache",
+        "showCacheHitRate",
+        "showSessionTokens",
+    ):
+        assert key in switched_on, key
+    assert display["sevenDayThreshold"] == 0 and display["contextValue"] == "both"
+    assert config["gitStatus"] == {"showAheadBehind": True, "showFileStats": True}
     file.write_text('{"display": {"showTools": false}}')
     run_config_writer("claude_hud_config", tmp_path)
     assert json.loads(file.read_text()) == {"display": {"showTools": False}}

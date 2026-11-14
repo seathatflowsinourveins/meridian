@@ -586,13 +586,24 @@ check_codex_bridge() {
 CLAUDE_HUD_WRAPPER="${HOME}/.local/bin/meridian-claude-hud"
 
 claude_hud_config() {
-  # Written once; afterwards the file is the owner's (`/hud`, `hud set`). The account labels
-  # stay off: they are the two display options that read ~/.claude.json.
+  # Written once; afterwards the file is the owner's (`/hud`, `hud set`). The owner's choice of
+  # 2026-11-13 is every informative display: activity (tools, skills, MCP, agents with their
+  # effort, todos), the model's effort, output speed, the prompt cache (expiry, hit rate),
+  # tokens, cost, compactions, both usage windows with their pace. The account labels stay off:
+  # they are the two display options that read ~/.claude.json.
   local file="${HOME}/.claude/plugins/claude-hud/config.json"
   [ ! -e "${file}" ] || return 0
   mkdir -p "$(dirname "${file}")"
-  printf '%s\n' '{"display":{"showTools":true,"showAgents":true,"showTodos":true,"showAuth":false,"showAuthUser":false}}' \
-    | jq . > "${file}"
+  jq -n '
+    [ "showTools", "showSkills", "showMcp", "showAgents", "showAgentEffort", "showTodos",
+      "showEffortLevel", "showSpeed", "showPromptCache", "showCacheHitRate", "showSessionTokens",
+      "showCompactions", "showConfigCounts", "showDuration", "usagePace", "showCost",
+      "showDailyCost", "showWeeklyCost", "showClaudeCodeVersion", "showSessionName",
+      "showLastResponseAt", "showMemoryUsage", "showAdvisor" ] as $on
+    | { gitStatus: {showAheadBehind: true, showFileStats: true},
+        display: (($on | map({(.): true}) | add)
+          + {showAuth: false, showAuthUser: false, sevenDayThreshold: 0, contextValue: "both"}) }
+  ' > "${file}"
 }
 
 claude_statusline() {
