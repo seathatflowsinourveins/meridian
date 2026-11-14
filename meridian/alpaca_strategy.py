@@ -54,6 +54,8 @@ class OnePaperOrder(OneDayLimit):
         self._ready = False
         self.quote_usable: Callable[[], bool] = lambda: False
         self.execution_healthy: Callable[[], bool] = lambda: False
+        # Offline simulation has no venue distinction; the paper node supplies this predicate.
+        self.venue_working: Callable[[ClientOrderId], bool] = lambda _: True
 
     def on_start(self) -> None:
         counts = self._open_counts()
@@ -125,13 +127,21 @@ class OnePaperOrder(OneDayLimit):
         self._record.order_refused("order lists are not part of this lane")
 
     def on_order_accepted(self, event: Any) -> None:
+        self.on_venue_working(event.client_order_id)
+
+    def on_venue_working(self, client_order_id: ClientOrderId) -> None:
+        # `accepted` can merely be queued at Alpaca. A later `new` report may not
+        # generate another engine acceptance event, so the adapter also calls here.
         if (
             self._mode() == "order"
-            and event.client_order_id == self._order_id
+            and client_order_id == self._order_id
             and not self._cancel_sent
+            and self.venue_working(client_order_id)
         ):
-            self._cancel_sent = True
-            self.cancel_order(self._order_id, client_id=CLIENT_ID)
+            order = self.cache.order(client_order_id)
+            if order is not None and order.status.name == "ACCEPTED":
+                self._cancel_sent = True
+                self.cancel_order(client_order_id, client_id=CLIENT_ID)
 
     def on_order_event(self, event: Any) -> None:
         if event.client_order_id != self._order_id:

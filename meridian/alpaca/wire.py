@@ -2,7 +2,7 @@
 The account gateway: every REST request to the paper account, paced, and the exact wire values.
 
 Own design, ported from `sextant-paper@a991b73a:src/sextant/alpaca/wire.py` and trimmed to
-M3 (plain DAY LIMIT orders: no replace, no trailing stop, no extended hours). The SDK is
+M3 (plain DAY LIMIT orders: no replace, no trailing stop; extended-hours eligible). The SDK is
 alpaca-py 0.45.0 (`alpaca/common/rest.py`, `alpaca/trading/client.py`); its low-level
 `get`/`post`/`delete` are used so that prices and quantities stay decimal strings (its typed
 request and response models turn them into floats).
@@ -35,7 +35,14 @@ from .constants import PAPER_HOST, PAPER_TRADE_STREAM_URL, PAPER_TRADING_URL
 
 # The REST calls this lane makes. Nothing account-wide (cancel all, close all), no replace.
 _READ_PATHS = frozenset(
-    {"/account", "/positions", "/orders", "/orders:by_client_order_id", "/account/activities/FILL"}
+    {
+        "/calendar",
+        "/account",
+        "/positions",
+        "/orders",
+        "/orders:by_client_order_id",
+        "/account/activities/FILL",
+    }
 )
 _ASSET_PATH = re.compile(r"/assets/[A-Z][A-Z0-9.]{0,15}")
 _ORDER_PATH = re.compile(r"/orders/(?P<id>[^/]+)")
@@ -185,7 +192,7 @@ def submit_payload(order: Any, prefix: str) -> dict[str, Any]:
         "time_in_force": "day",
         "limit_price": price_text(order.price),
         "order_class": "simple",
-        "extended_hours": False,
+        "extended_hours": True,
     }
 
 
