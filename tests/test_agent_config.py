@@ -432,7 +432,9 @@ def test_the_upkeep_prompt_lands_through_the_gate_and_names_what_a_run_must_neve
         "flock ~/.cache/meridian/landing.lock",
         "`trial`, `open` and `land`",
         "never go around it",
-        "deploy/wsl/setup.sh agents-check",
+        "git -C ~/src/meridian pull --ff-only",
+        "~/src/meridian/deploy/wsl/setup.sh upkeep",
+        "~/src/meridian/deploy/wsl/setup.sh agents-check",
     ):
         assert phrase in steps, phrase
     for phrase in (
