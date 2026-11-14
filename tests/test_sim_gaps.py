@@ -10,7 +10,7 @@ from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
-from nautilus_trader.model import OrderSide, Price, Quantity, QuoteTick, TimeInForce
+from nautilus_trader.model import InstrumentId, OrderSide, Price, Quantity, QuoteTick, TimeInForce
 from test_sim import BASE, MarketAndLimit, run
 
 from meridian.alpaca.pacing import load_controls
@@ -19,6 +19,7 @@ from meridian.order_budget.pacer import ActionKind
 from meridian.sim import budget, catalog, runner
 from meridian.sim.fills import ALPACA_PAPER_PARTIAL_RATE, PaperFillModel
 from meridian.sim.strategies import GatedBreakout
+from meridian.strategy_template.sim import SCENARIOS
 from research.xnys_calendar_rows import rows as xnys_rows
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -99,21 +100,69 @@ class RestingDayAndGtc(GatedBreakout):
             )
 
 
-def test_a_resting_day_order_is_cancelled_at_the_days_end_and_gtc_is_not(tmp_path):
+def test_a_resting_day_order_expires_at_the_days_end_and_gtc_does_not(tmp_path):
     # Wednesday 19:59:50 New York: the after-hours session ends at 20:00, inside the data.
+    deadline = ny_ns("2024-01-03T20:00:00")
     store = runner.write_catalog(tmp_path, start_ns=ny_ns("2024-01-03T19:59:50"))
     data, seen = run(BASE, store, template_type=RestingDayAndGtc)
     by_tif = {o.time_in_force: o for o in template_orders(seen)}
     day, gtc = by_tif[TimeInForce.DAY], by_tif[TimeInForce.GTC]
-    assert day.status.name == "CANCELED" and gtc.status.name == "ACCEPTED"
+    assert day.status.name == "EXPIRED" and gtc.status.name == "ACCEPTED"
+    assert day.expire_time == deadline and gtc.expire_time is None  # still a DAY order
     assert data["day_expiries"] == [str(day.client_order_id)]
-    cancelled = next(e for e in day.events() if type(e).__name__ == "OrderCanceled")
-    assert cancelled.ts_event == ny_ns("2024-01-03T20:00:00")
-    # Before the day's end nothing is cancelled: the same orders at 19:00 both rest.
+    expired = next(e for e in day.events() if type(e).__name__ == "OrderExpired")
+    # The venue expires it at the deadline's quote, before it matches that quote.
+    assert deadline <= expired.ts_event <= deadline + catalog.STEP_NS
+    # Before the day's end nothing expires: the same orders at 19:00 both rest.
     store = runner.write_catalog(tmp_path / "early", start_ns=ny_ns("2024-01-03T19:00:00"))
     data, seen = run(BASE, store, template_type=RestingDayAndGtc)
     assert {o.status.name for o in template_orders(seen)} == {"ACCEPTED"}
     assert data["day_expiries"] == []
+
+
+QUIET = catalog.quotes(
+    InstrumentId.from_str("QUIET.SIM"), SCENARIOS["QUIET"][0], 0
+)  # offsets from the start: the ask path the tests place orders against
+NEW_LOW = next(
+    i
+    for i in range(2, len(QUIET))
+    if QUIET[i].ask_price.as_decimal() < min(q.ask_price.as_decimal() for q in QUIET[:i])
+)
+
+
+class DayAtTheNextLow(GatedBreakout):
+    """On its first QUIET quote, one DAY buy at the ask of the path's next new low."""
+
+    def on_quote(self, quote: QuoteTick) -> None:
+        if getattr(self, "_sent", False) or "QUIET" not in str(quote.instrument_id):
+            return
+        self._sent = True
+        self.submit_order(
+            self.order_factory.limit(
+                quote.instrument_id,
+                OrderSide.BUY,
+                Quantity.from_int(1),
+                QUIET[NEW_LOW].ask_price,
+                TimeInForce.DAY,
+            )
+        )
+
+
+def test_day_expiry_does_not_wait_for_the_clients_cancel_latency(tmp_path):
+    # The deadline falls between two quotes; the next one is the first that would fill the
+    # order. On a weekday the overnight session opens at once, so the market stays open.
+    deadline = ny_ns("2024-01-03T20:00:00")
+    start = deadline - NEW_LOW * catalog.STEP_NS + catalog.STEP_NS // 2
+    store = runner.write_catalog(tmp_path, start_ns=start)
+    models = replace(BASE, cancel_latency_ns=1_000_000_000, order_budget=False)
+    data, seen = run(models, store, template_type=DayAtTheNextLow)
+    (order,) = template_orders(seen)
+    assert order.status.name == "EXPIRED" and order.filled_qty == 0
+    assert len(seen["fills"]) == 0 or "QUIET.SIM" not in set(seen["fills"]["instrument_id"])
+    # Without the deadline it fills at that quote: the test would see a late fill.
+    store = runner.write_catalog(tmp_path / "earlier", start_ns=start - 60 * 10**9)
+    _, seen = run(models, store, template_type=DayAtTheNextLow)
+    assert [o.status.name for o in template_orders(seen)] == ["FILLED"]
 
 
 # 3. Holidays and early closes from calendar rows.
@@ -234,3 +283,53 @@ def test_a_burst_beyond_the_budget_is_deferred_as_the_lane_defers_it(tmp_path):
     data, seen = run(replace(BASE, order_budget=False), store, template_type=Burst)
     assert data["budget"] == {"paced": 0, "deferred": 0, "refusals": []}
     assert len({o.ts_init for o in template_orders(seen)}) == 1
+
+
+class BudgetFullThenFree(GatedBreakout):
+    """The template entering QUIET only, while the account looks full for its first seconds:
+    17 open positions make an entry's reserve (1 each, plus its own) equal the burst of 18."""
+
+    full_until_ns = catalog.START_NS + 3 * 10**9
+
+    def entry_signal(self, book, quote) -> bool:
+        return book.symbol.startswith("QUIET")
+
+    def _position_counts(self) -> tuple[int, int]:
+        full = self.clock.timestamp_ns() < self.full_until_ns
+        return (17, 0) if full else super()._position_counts()
+
+
+def test_an_entry_the_budget_refuses_ends_and_the_symbol_enters_when_capacity_returns(
+    tmp_path,
+):
+    data, seen = run(BASE, runner.write_catalog(tmp_path), template_type=BudgetFullThenFree)
+    template = seen["template"]
+    refused = {coid for coid, reason in data["budget"]["refusals"]}
+    assert refused and {r for _, r in data["budget"]["refusals"]} == {"entry-reserve-exceeds-burst"}
+    book = next(b for b in template.books.values() if b.symbol.startswith("QUIET"))
+    assert book.refusals["refused before the venue"] == len(refused)
+    assert "entry-unfilled" in book.events  # the template's own terminal path
+    # Capacity returns: a new entry on the same symbol reaches the venue and fills.
+    sent = [o for o in template_orders(seen) if o.instrument_id == book.instrument_id]
+    assert sent and all(str(o.client_order_id) not in refused for o in sent)
+    entry = min((o for o in sent if o.side == OrderSide.BUY), key=lambda o: o.ts_init)
+    assert entry.status.name == "FILLED"
+    asked = {c: a for c, a, _ in template.paced}
+    assert asked[str(entry.client_order_id)] >= BudgetFullThenFree.full_until_ns
+    assert book.phase.name != "ENTERING" or template._order(book) is not None
+
+
+def test_a_queued_market_order_is_refused_once_the_pacer_holds_it_past_the_close(tmp_path):
+    # 15:59:59.75: both orders are asked for in the regular session; the pacer, starting
+    # without a burst, can send the first only two token intervals later, after 16:00.
+    store = runner.write_catalog(tmp_path, start_ns=ny_ns("2024-01-03T15:59:59") + 750 * 10**6)
+    data, seen = run(BASE, store, template_type=MarketAndLimit)
+    orders = template_orders(seen)
+    assert [(o.order_type.name, o.status.name) for o in orders] == [("LIMIT", "FILLED")]
+    template = seen["template"]
+    (market,) = [c for c, r in template.session_refusals]
+    assert dict(template.session_refusals)[market] == (
+        "after_hours: only LIMIT orders with DAY or GTC"
+    )
+    (sent,) = [(c, a, s) for c, a, s in template.paced]
+    assert sent[2] >= ny_ns("2024-01-03T16:00:00") and sent[0] != market

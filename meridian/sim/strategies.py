@@ -15,16 +15,27 @@ emulated LIMIT as a MARKET (rc9 `docs/concepts/orders/emulated.md:37-38`). The p
 not send a bracket: their wire refuses contingent orders (`meridian/alpaca/wire.py`). It is
 here to exercise rc9's contingent path.
 
-`PaperVenue`, mixed into both, adds two own rules where rc9 has none. DAY expiry: rc9's
-simulated venue expires only GTD orders (`crates/execution/src/matching_engine/mod.rs:4714`);
-Alpaca cancels a DAY order left unfilled after the close, and one marked extended-hours
-eligible, as the lane sends them, "remains an active order until it is executed or the market
-closes at 8:00 PM ET" (https://docs.alpaca.markets/us/docs/245-trading-for-trading-api, read
-2026-11-14; the orders page, "Time in Force", the same day). So each DAY order the venue
-accepts gets a time alert at the end of its trade date's last session (20:00 New York, or
-the calendar row's `session_close`), which cancels it if it still rests. The order budget:
-each venue order passes the lane's account pacer (`budget.py`); emulated orders stay in the
-engine, as in the lane, and so does an emulator's release, which this loop does not pace.
+`PaperVenue`, mixed into both, adds two own rules where rc9 has none.
+
+DAY expiry. Alpaca cancels a DAY order left unfilled after the close, and one marked
+extended-hours eligible, as the lane sends them, "remains an active order until it is
+executed or the market closes at 8:00 PM ET" (https://docs.alpaca.markets/us/docs/245-trading-
+for-trading-api, read 2026-11-14; the orders page, "Time in Force", the same day). rc9's
+venue has no DAY rule, but its GTD expiry keys on the order's `expire_time`, not on its time
+in force (`crates/execution/src/matching_engine/mod.rs:4714-4745`, `expire_gtd_orders`, run
+first in each `iterate`), and the model requires an expire time only for GTD
+(`crates/model/src/orders/mod.rs:194`). So a DAY LIMIT goes to the venue still DAY, with its
+trade date's last session end as `expire_time` (20:00 New York, or the calendar row's
+`session_close`): the venue expires it before it matches the first quote after that, with no
+client cancel latency. A DAY order that reaches the venue without one (an emulator's release,
+a bracket leg) is cancelled by a time alert instead, which does carry the cancel latency.
+
+The order budget: each venue order passes the lane's account pacer (`budget.py`); emulated
+orders stay in the engine, as in the lane, and so does an emulator's release, which this
+loop does not pace. The session rule is checked when the order is asked for and again when
+the pacer sends it, as the lane's gateway checks its admission at the send
+(`meridian/alpaca/wire.py`, `allowed`); an order refused at either point, or by the budget,
+ends through the template's own terminal path (`_resolve` with nothing filled).
 """
 
 from __future__ import annotations
@@ -40,6 +51,7 @@ from nautilus_trader.model import (
     ClientOrderId,
     InstrumentId,
     OrderAccepted,
+    OrderExpired,
     OrderSide,
     OrderType,
     Price,
@@ -114,30 +126,75 @@ class PaperVenue(Strategy):
         super().on_start()
 
     def submit_paced(self, order: Any, submit: Any) -> None:
-        reason = refusal(order, self.clock.timestamp_ns(), self.calendar)
-        if reason is not None:
-            self.session_refusals.append((str(order.client_order_id), reason))
+        """Admit `order` now and again at its send; `submit(order)` sends it to the venue."""
+        if not self._admitted(order):
             return
         if self.pacer is None or is_emulated(order):
-            submit()
+            submit(self._with_day_end(order))
             return
         coid, asked = order.client_order_id, self.clock.timestamp_ns()
         self._pending[coid] = order
+
+        def admission() -> bool:
+            # Rechecked when the pacer would send: a queue can outlast a session.
+            return coid in self._pending and self._admitted(order)
 
         def send(mark: Any) -> None:
             mark()
             del self._pending[coid]
             self.paced.append((str(coid), asked, self.clock.timestamp_ns()))
-            submit()
+            submit(self._with_day_end(order))
 
         def refuse(reason: str) -> None:
-            self._pending.pop(coid, None)
             self.budget_refusals.append((str(coid), reason))
+            self._unsent(order)
 
         kind = ActionKind.REDUCE if order.side == OrderSide.SELL else ActionKind.SUBMIT
         with suppress(PacerRefused):  # refuse() has recorded it; nothing was sent
-            self.pacer.request(kind, send, position_counts=self._position_counts, refuse=refuse)
+            self.pacer.request(
+                kind,
+                send,
+                admission=admission,
+                position_counts=self._position_counts,
+                refuse=refuse,
+            )
         self._schedule_drain()
+
+    def _admitted(self, order: Any) -> bool:
+        reason = refusal(order, self.clock.timestamp_ns(), self.calendar)
+        if reason is None:
+            return True
+        self.session_refusals.append((str(order.client_order_id), reason))
+        self._unsent(order)
+        return False
+
+    def _unsent(self, order: Any) -> None:
+        """An order refused before the venue saw it: end it as an unfilled order."""
+        self._pending.pop(order.client_order_id, None)
+
+    def _with_day_end(self, order: Any) -> Any:
+        """A DAY LIMIT, still DAY, with its trade date's end as the venue's `expire_time`."""
+        if (
+            order.order_type != OrderType.LIMIT
+            or order.time_in_force != TimeInForce.DAY
+            or is_emulated(order)
+            or order.expire_time is not None
+        ):
+            return order
+        end = day_end_ns(self.clock.timestamp_ns(), self.calendar)
+        if end is None:
+            return order  # closed: the venue rejects it from its status
+        return self.order_factory.limit(
+            order.instrument_id,
+            order.side,
+            order.quantity,
+            order.price,
+            time_in_force=TimeInForce.DAY,
+            expire_time=end,
+            post_only=order.is_post_only,
+            reduce_only=order.is_reduce_only,
+            client_order_id=order.client_order_id,
+        )
 
     def _position_counts(self) -> tuple[int, int]:
         """The lane's counts (`AlpacaExecutionClient._position_counts`) from this cache."""
@@ -163,15 +220,23 @@ class PaperVenue(Strategy):
 
     # DAY expiry at the trade date's end.
     def on_order_event(self, event: Any) -> None:
-        if isinstance(event, OrderAccepted):
+        if isinstance(event, OrderExpired):
+            self.day_expiries.append(str(event.client_order_id))  # the venue's own expiry
+        elif isinstance(event, OrderAccepted):
             order = self.cache.order(event.client_order_id)
             end = day_end_ns(event.ts_event, self.calendar)
-            if order is not None and order.time_in_force == TimeInForce.DAY and end is not None:
+            if (
+                order is not None
+                and order.time_in_force == TimeInForce.DAY
+                and order.expire_time is None
+                and end is not None
+            ):
                 coid = event.client_order_id
                 self._alert(max(end, event.ts_event), lambda _e: self._expire(coid))
         super().on_order_event(event)
 
     def _expire(self, coid: ClientOrderId) -> None:
+        """The fallback for a DAY order the venue holds without an expire time."""
         order = self.cache.order(coid)
         if order is not None and order.is_open and not is_emulated(order):
             self.day_expiries.append(str(coid))
@@ -182,9 +247,10 @@ class GatedBreakout(PaperVenue, SyntheticBreakout):
     """The template's synthetic breakout with the session rule and the pacer before a submit.
 
     The template sends only DAY LIMIT entries and exits and an emulated trailing stop, so the
-    rule never refuses it; a refusal would leave its symbol waiting, and is counted. While
+    session rule refuses it only when the budget holds an order past a session's end. While
     the pacer holds an order, the template sees it as its unresolved order, as in the lane,
-    where the order is in flight until the pacer sends it.
+    where the order is in flight until the pacer sends it; a refusal is counted and ends the
+    order as unfilled, so the symbol goes on.
     """
 
     def __init__(
@@ -199,7 +265,16 @@ class GatedBreakout(PaperVenue, SyntheticBreakout):
 
     def submit_order(self, order: Any, *args: Any, **kwargs: Any) -> None:
         submit = SyntheticBreakout.submit_order
-        self.submit_paced(order, lambda: submit(self, order, *args, **kwargs))
+        self.submit_paced(order, lambda sent: submit(self, sent, *args, **kwargs))
+
+    def _unsent(self, order: Any) -> None:
+        """The template's terminal path for an order that never reached the venue: `_resolve`
+        with nothing filled leaves an entry FLAT and an exit EXITING, to be sent again."""
+        super()._unsent(order)
+        book = self._by_order.get(order.client_order_id)
+        if book is not None and book.order_id == order.client_order_id:
+            book.refusals["refused before the venue"] += 1
+            self._resolve(book, order, self.clock.timestamp_ns())
 
     def _order(self, book: Any) -> Any:
         pending = self._pending.get(book.order_id) if book.order_id is not None else None
