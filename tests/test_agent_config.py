@@ -922,12 +922,16 @@ def serena_config_check(tmp_path):
         ("agent_interface: tools", "agent_interface: REPL"),
         ("web_dashboard: false", "web_dashboard: true"),
         ("web_dashboard_open_on_launch: false", "web_dashboard_open_on_launch: true"),
+        ("initial_instructions, ", ""),
         ("fixed_tools: [", "fixed_tools: [execute_shell_command, "),
+        ("fixed_tools: [", "fixed_tools: [replace_symbol_body, "),
+        ("fixed_tools: [", "fixed_tools: [read_memory, "),
+        ("fixed_tools: [", "fixed_tools: [write_memory, "),
         ("projects: []", "projects: []\nincluded_optional_tools: [open_dashboard]"),
         ("ls_path: .venv/bin/pyright-langserver", "ls_path: pyright-langserver"),
     ],
 )
-def test_serena_config_serves_only_navigation_and_diagnostics(tmp_path, old, new):
+def test_serena_config_serves_only_manual_navigation_and_diagnostics(tmp_path, old, new):
     pytest.importorskip("yaml")
     run_config_writer("serena_config", tmp_path)
     path = tmp_path / ".serena/serena_config.yml"
@@ -935,10 +939,20 @@ def test_serena_config_serves_only_navigation_and_diagnostics(tmp_path, old, new
     assert (serena_config_check(tmp_path).returncode == 0) == (old == new)
 
 
-def test_serena_tools_hold_no_shell_edit_or_memory_tool():
-    tools = SERENA_TOOLS.split(", ")
-    assert len(tools) == 7
-    assert all(t.startswith(("get_", "find_")) for t in tools), tools
+def test_serena_tools_hold_no_shell_edit_or_memory_tool(tmp_path):
+    yaml = pytest.importorskip("yaml")
+    run_config_writer("serena_config", tmp_path)
+    cfg = yaml.safe_load((tmp_path / ".serena/serena_config.yml").read_text())
+    assert cfg["fixed_tools"] == [
+        "initial_instructions",
+        "get_symbols_overview",
+        "find_symbol",
+        "find_referencing_symbols",
+        "find_implementations",
+        "find_declaration",
+        "get_diagnostics_for_file",
+        "get_diagnostics_for_symbol",
+    ]
 
 
 def test_dsh_writes_home_wide_guide_completion_and_preserves_other_state(tmp_path):

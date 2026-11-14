@@ -96,7 +96,7 @@ CODEX_DOCS_MCP=https://developers.openai.com/mcp
 SERENA_VERSION=2.1.0
 SERENA_FILE=serena_agent-2.1.0-py3-none-any.whl
 SERENA_SHA256=cc6ae542c39b4de5d98cdf35a4ceb0b551f316c5f22e9d0f0b0c5f35d6b95d87
-SERENA_TOOLS="get_symbols_overview, find_symbol, find_referencing_symbols, find_implementations, find_declaration, get_diagnostics_for_file, get_diagnostics_for_symbol"
+SERENA_TOOLS="initial_instructions, get_symbols_overview, find_symbol, find_referencing_symbols, find_implementations, find_declaration, get_diagnostics_for_file, get_diagnostics_for_symbol"
 SERENA_MCP_ARGS='["start-mcp-server", "--project-from-cwd", "--context=codex"]'
 # DeepSeek Harness: the engine (`dsh`), pnpm (dsh installs its profiles with it, and pins the
 # 11.x line), the community terminal UI that Orca launches for it (`dsh-tui`), and the two hook
