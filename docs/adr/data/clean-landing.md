@@ -10,8 +10,10 @@ The gate writes `<sha256(branch)>.review.json` beside its trial state in the com
 folder's `meridian-gate/`; raw final output and the reviewer log stay there too. The JSON
 fields are `version`, `builder`, `reviewer`, `model`, `tested`, `summary`, `findings`.
 Each finding has `text` and `status`. Generated findings start `open`, which refuses review
-completion and publication. Accepted dispositions are exactly `fixed` or `closed: reason`;
-fixed code needs another trial and review of the new commit. `open` validates explicit files
+completion and publication. The final record contains only the current review round:
+its findings must be empty or `closed: reason`; `fixed` is rejected on that same commit.
+Fixed code needs another trial and review of the new commit, replacing the old round.
+Earlier findings are not carried forward as purported fixes on the current commit. `open` validates explicit files
 and the default record identically before any push. Unknown output remains unresolved.
 
 This example wraps the actual Codex final message observed on this branch at
@@ -144,3 +146,31 @@ worker did not reproduce them against real GitHub. Each has an offline regressio
    `gh pr edit --help` confirms those flags; the regression asserts the edited file's text.
 4. Gitleaks' stderr summary and local check log have ANSI colour escapes removed. The
    regression emits actual escapes and checks the stored summary/log are plain text.
+
+## Review follow-up
+
+Dispatch registration now wins over trial/auto/review arguments; attempts to change its
+builder are refused before any merge/check/model call. The selector-based holder continues
+accepting handshakes during a command and refuses contenders immediately; malformed JSON
+values cannot drop its flock. Auto has one catch site: code/check defects go to the worker,
+while contention, registration and infrastructure/landing conditions stay with the lead.
+
+Current-round `fixed` is rejected both before publication and before landing; a new code
+commit requires a new trial/review and replaces the current record. All unresolved findings
+are returned together. Claude's task prompt names `git diff origin/main...HEAD`, forbids
+local-main/upstream/HEAD~1 fallbacks and specifies that an empty diff has no findings.
+Review citations become repository-relative while building the record; other home paths
+are scrubbed. Pending exits 0 for work, 1 for idle, and 2 for query/fetch failure.
+
+After a successful merge the reservation is released even if the post-merge fetch fails;
+state records that the merge happened, retries cannot merge it again, and the failure names
+the tested tree for recovery. The provenance row is now inside the runtime table with the
+correct number of columns. The upstream gate's area schema only admits meridian/ and
+deploy/ files; adding an area for .agents/ fails its unused-area check, so no such entry is
+invented for this branch.
+
+A flock must have a living open file description, so an owner record or separate short-lived
+commands cannot exclude another session's plain flock between commands. A persistent shell
+holding an inherited descriptor would require a different hand-run interface and the same
+lifetime coordination; the small detached holder is retained as the simpler solution for
+the required independent commands.

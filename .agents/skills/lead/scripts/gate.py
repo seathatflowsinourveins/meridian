@@ -37,6 +37,7 @@ import hashlib
 import json
 import os
 import re
+import select
 import socket
 import subprocess
 import sys
@@ -63,6 +64,10 @@ class Refused(Exception):
     """The gate will not go on; the message says why."""
 
 
+class WorkerFailure(Refused):
+    """A concrete code/check defect for the worker to fix."""
+
+
 def git(repo: Path, *args: str) -> str:
     out = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
     if out.returncode != 0:
@@ -82,81 +87,94 @@ def real_gh(args: Sequence[str]) -> str:
     return out.stdout.strip()
 
 
-def guarded(method):
-    """One connection serializes commands; nested auto steps reuse it."""
+def guarded(*, create: bool = False):
+    """Reserve explicitly; auto owns its one error-handling site."""
 
-    @wraps(method)
-    def call(self, branch, *args, **kwargs):
-        try:
-            with self.reservation(branch, create=method.__name__ in {"trial", "auto"}):
+    def decorate(method):
+        @wraps(method)
+        def call(self, branch, *args, **kwargs):
+            with self.reservation(branch, create=create):
                 return method(self, branch, *args, **kwargs)
-        except (Refused, OSError, ValueError) as exc:
-            if method.__name__ != "auto":
-                raise
-            self.say(f"SEND TO WORKER: {branch}: landing failed: {exc}")
-            return False
 
-    return call
+        return call
+
+    return decorate
 
 
 def lock_server(path: Path, owner: dict) -> int:
-    """Hold the shared flock until land/release, even between separate CLI processes.
-
-    The socket accepts only reservation operations, never shell commands. An interrupted
-    caller leaves the reservation held for a retry or explicit release. No PID killing.
-    """
+    """Retain flock between commands; serve contenders while a command is active."""
     path.parent.mkdir(parents=True, exist_ok=True)
     sock_path = path.with_suffix(".sock")
     record = path.with_suffix(".owner.json")
+    active = stream = None
+    released = False
     with path.open("a+") as lock, socket.socket(socket.AF_UNIX) as server:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             print("another process holds landing.lock", flush=True)
             return 1
-        sock_path.unlink(missing_ok=True)  # only the flock owner can remove a stale socket
+        sock_path.unlink(missing_ok=True)
         server.bind(str(sock_path))
         os.chmod(sock_path, 0o600)
         server.listen()
         record.write_text(json.dumps(owner) + "\n")
         print("ready", flush=True)
-        released = False
         try:
             while True:
-                conn, _ = server.accept()
-                with conn, conn.makefile("rw") as stream:
+                ready, _, _ = select.select([server, active] if active else [server], [], [])
+                if active is not None and active in ready and stream is not None:
                     try:
-                        # Bound unauthenticated handshakes; accepted commands can run for hours.
-                        conn.settimeout(5)
-                        request = json.loads(stream.readline(8192))
+                        finish = stream.readline(32).strip() == b"release"
+                    except OSError:
+                        finish = False
+                    if finish:
+                        record.unlink(missing_ok=True)
+                        sock_path.unlink(missing_ok=True)
+                        fcntl.flock(lock, fcntl.LOCK_UN)
+                        released = True
+                        return 0
+                    stream.close()
+                    active.close()
+                    active = stream = None
+                if server not in ready:
+                    continue
+                conn, _ = server.accept()
+                # Unbuffered reads prevent a pipelined finish being hidden from select.
+                incoming = conn.makefile("rb", buffering=0)
+                try:
+                    conn.settimeout(1)
+                    request = json.loads(incoming.readline(8192))
+                    if not isinstance(request, dict):
+                        error = "landing handshake must be an object"
+                    elif request != owner:
+                        error = (
+                            f"{owner['branch']} is landing; the landing lock does not name "
+                            f"{request.get('branch')} in this repository"
+                        )
+                    elif active is not None:
+                        error = f"{owner['branch']} is landing; a command is already running"
+                    else:
+                        error = None
+                    conn.sendall(
+                        (json.dumps({"error": error} if error else {"ok": True}) + "\n").encode()
+                    )
+                    if error is None:
                         conn.settimeout(None)
-                        if request != owner:
-                            stream.write(
-                                json.dumps(
-                                    {
-                                        "error": f"{owner['branch']} is landing; "
-                                        f"the landing lock does not name {request.get('branch')} "
-                                        "in this repository"
-                                    }
-                                )
-                                + "\n"
-                            )
-                            stream.flush()
-                            continue
-                        stream.write('{"ok": true}\n')
-                        stream.flush()
-                        if stream.readline(32).strip() == "release":
-                            record.unlink(missing_ok=True)
-                            sock_path.unlink(missing_ok=True)
-                            fcntl.flock(lock, fcntl.LOCK_UN)
-                            released = True
-                            return 0
-                    except OSError, ValueError:
+                        active, stream = conn, incoming
                         continue
+                except OSError, ValueError:
+                    pass
+                incoming.close()
+                conn.close()
         finally:
             if not released:
                 record.unlink(missing_ok=True)
                 sock_path.unlink(missing_ok=True)
+            if stream is not None:
+                stream.close()
+            if active is not None:
+                active.close()
     return 0
 
 
@@ -196,6 +214,7 @@ class Gate:
             yield
             return
         conn = socket.socket(socket.AF_UNIX)
+        conn.settimeout(2)
         try:
             try:
                 conn.connect(str(self.lock_path.with_suffix(".sock")))
@@ -225,9 +244,13 @@ class Gate:
             with conn.makefile("rw") as stream:
                 stream.write(json.dumps(self._identity(branch)) + "\n")
                 stream.flush()
-                reply = json.loads(stream.readline())
+                try:
+                    reply = json.loads(stream.readline())
+                except TimeoutError as exc:
+                    raise Refused(f"{self.holder()} is landing; lock handshake timed out") from exc
                 if "error" in reply:
                     raise Refused(reply["error"])
+                conn.settimeout(None)
                 self._connection = conn
                 self._finish = False
                 try:
@@ -270,19 +293,22 @@ class Gate:
                 return Path(lines[0].removeprefix("worktree "))
         raise Refused(f"{branch} is not checked out in any worktree")
 
-    @guarded
+    @guarded(create=True)
     def trial(self, branch: str, builder: str | None = None) -> bool:
+        builder = self.builder(branch, builder)
         main = self._main()
         wt = self.worktree(branch)
         if git(wt, "status", "--porcelain"):
-            raise Refused(f"{branch}'s worktree {wt} has uncommitted changes; the worker commits")
+            raise WorkerFailure(
+                f"{branch}'s worktree {wt} has uncommitted changes; the worker commits"
+            )
         if subprocess.run(
             ["git", "-C", str(wt), "merge-base", "--is-ancestor", main, "HEAD"]
         ).returncode:
             merge = ["git", "-C", str(wt), "merge", "-q", "--no-edit", main]
             if subprocess.run(merge, capture_output=True).returncode:
                 subprocess.run(["git", "-C", str(wt), "merge", "--abort"], capture_output=True)
-                raise Refused(f"origin/main conflicts with {branch}; the worker resolves it")
+                raise WorkerFailure(f"origin/main conflicts with {branch}; the worker resolves it")
         tested = git(wt, "rev-parse", "HEAD")
         results = self._run_checks(wt, branch)
         # The checks read the worktree: it must still be exactly the commit being certified.
@@ -295,9 +321,6 @@ class Gate:
             results.append({"check": "worktree unchanged", "passed": False, "last": last})
         ok = all(r["passed"] for r in results)
         tree = git(self.repo, "rev-parse", f"{tested}^{{tree}}")
-        registration = self.registration(branch)
-        if builder is None:
-            builder = registration.get("builder")
         state = {
             "main": main,
             "tested": tested,
@@ -310,9 +333,11 @@ class Gate:
         self.say(f"{'PASS' if ok else 'FAIL'} {branch}: tested {tested[:12]} on main {main[:12]}")
         return ok
 
-    def public_text(self, text: str) -> str:
+    def public_text(self, text: str, worktree: Path | None = None) -> str:
         """Remove terminal controls and home paths before anything becomes PR text."""
         plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
+        for root in sorted({str(self.repo), str(worktree or self.repo)}, key=len, reverse=True):
+            plain = plain.replace(root + "/", "")
         homes = rf"(?:{re.escape(str(Path.home()))}|/home/[^/\s]+|/Users/[^/\s]+|~)"
         return re.sub(homes + r"(?:/[^\s`\"'<>]*)+", "[local path]", plain)
 
@@ -358,9 +383,16 @@ class Gate:
         path = self._state_file(branch).with_suffix(".dispatch.json")
         return json.loads(path.read_text()) if path.exists() else {}
 
+    def builder(self, branch: str, requested: str | None) -> str | None:
+        registered = self.registration(branch).get("builder")
+        if registered and requested not in {None, registered}:
+            raise Refused(f"builder differs from dispatch registration: {registered}")
+        return registered or requested
+
     def register(self, branch: str, builder: str, task: str) -> None:
         if builder not in {"codex", "claude"}:
             raise Refused("builder must be codex or claude")
+        self.builder(branch, builder)
         git(self.repo, "check-ref-format", "--branch", branch)
         self._state_file(branch).with_suffix(".dispatch.json").write_text(
             json.dumps({"branch": branch, "builder": builder, "task": task}) + "\n"
@@ -371,6 +403,7 @@ class Gate:
 
     def _tested(self, branch: str) -> dict:
         st = self.state(branch)
+        self.builder(branch, st.get("builder"))
         if not st["passed"]:
             raise Refused("a check failed on the trial; fix and run trial")
         wt = self.worktree(branch)
@@ -427,6 +460,9 @@ class Gate:
             record = json.loads(path.read_text())
         except (OSError, ValueError) as exc:
             raise Refused(f"readable JSON review record required: {path}") from exc
+        return self.validate_record(st, record)
+
+    def validate_record(self, st: dict, record: dict) -> dict:
         if not isinstance(record, dict) or record.get("tested") != st["tested"]:
             raise Refused("review commit is not the tested commit; run review again")
         builder = st.get("builder")
@@ -442,22 +478,28 @@ class Gate:
         findings = record.get("findings")
         if not isinstance(findings, list) or not isinstance(record.get("summary"), str):
             raise Refused("review needs a summary and a findings array")
+        unresolved = []
         for finding in findings:
             if not isinstance(finding, dict) or not finding.get("text"):
                 raise Refused("each finding needs text and a disposition")
             status = finding.get("status", "")
             if not isinstance(status, str) or not (
-                status == "fixed" or (status.startswith("closed:") and status[7:].strip())
+                status.startswith("closed:") and status[7:].strip()
             ):
-                raise Refused(
-                    f"unresolved review finding: {finding['text']}; fix and re-trial "
-                    "or set its status to 'closed: reason'"
-                )
+                unresolved.append(str(finding["text"]))
+        if unresolved:
+            raise WorkerFailure(
+                "unresolved review findings:\n"
+                + "\n".join(f"- {text}" for text in unresolved)
+                + "\nFix code, then run a new trial and review, or use 'closed: reason'. "
+                "Current-round findings cannot be marked fixed."
+            )
         return record
 
-    @guarded
+    @guarded()
     def review(self, branch: str, builder: str) -> Path:
         st = self._tested(branch)
+        self.builder(branch, builder)
         if builder not in {"codex", "claude"}:
             raise Refused("builder must be codex or claude")
         if st.get("builder") not in {None, builder}:
@@ -491,7 +533,10 @@ class Gate:
             cmd = [
                 "claude",
                 "-p",
-                f"/code-review high {branch}",
+                f"/code-review high {branch}\n"
+                "Use origin/main as the base, exactly git diff origin/main...HEAD. "
+                "Do not use local main, an upstream branch, or HEAD~1 as a fallback. "
+                "An empty diff has no findings.",
                 "--model",
                 model,
                 "--output-format",
@@ -526,6 +571,7 @@ class Gate:
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
             raise Refused("review has no successful final message; see review log") from exc
         self._tested(branch)  # no review certifies edits made during the model call
+        final = self.public_text(final, self.worktree(branch))
         record = {
             "version": 1,
             "builder": builder,
@@ -541,25 +587,27 @@ class Gate:
         self.validate_review(st, path)
         return path
 
-    @guarded
     def auto(self, branch: str, builder: str, title: str, body: Path) -> bool:
-        step = "trial"
+        step = "reservation"
         try:
-            if not self.trial(branch, builder):
-                failures = [
-                    r["check"] + ": " + r["last"]
-                    for r in self.state(branch)["checks"]
-                    if not r["passed"]
-                ]
-                raise Refused("; ".join(failures))
-            step = "review"
-            self.review(branch, builder)
-            step = "open"
-            self.open(branch, title, body)
-            step = "land"
-            self.land(branch)
-        except Refused as exc:
-            self.say(f"SEND TO WORKER: {branch}: {step} failed: {exc}")
+            with self.reservation(branch, create=True):
+                step = "trial"
+                if not self.trial(branch, builder):
+                    failures = [
+                        r["check"] + ": " + r["last"]
+                        for r in self.state(branch)["checks"]
+                        if not r["passed"]
+                    ]
+                    raise WorkerFailure("; ".join(failures))
+                step = "review"
+                self.review(branch, builder)
+                step = "open"
+                self.open(branch, title, body)
+                step = "land"
+                self.land(branch)
+        except (Refused, OSError, ValueError) as exc:
+            audience = "SEND TO WORKER" if isinstance(exc, WorkerFailure) else "LEAD ACTION"
+            self.say(f"{audience}: {branch}: {step} failed: {exc}")
             return False
         return True
 
@@ -628,11 +676,12 @@ class Gate:
         return found
 
     # --- (b) open ------------------------------------------------------------------------------
-    @guarded
+    @guarded()
     def open(
         self, branch: str, title: str, body: Path, review: Path | None = None, wait: bool = True
     ) -> int:
         st = self.state(branch)
+        self.builder(branch, st.get("builder"))
         if not st["passed"]:
             failed = [r["check"] for r in st["checks"] if not r["passed"]]
             raise Refused(f"a check failed on the trial ({', '.join(failed)}); fix and run trial")
@@ -686,15 +735,20 @@ class Gate:
         return pr
 
     # --- (c) land ------------------------------------------------------------------------------
-    @guarded
+    @guarded()
     def land(self, branch: str, squash: Path | None = None) -> None:
         st = self.state(branch)
+        self.builder(branch, st.get("builder"))
         if not st["passed"]:
             raise Refused("the trial failed; nothing lands")
         if "pr" not in st:
             raise Refused("no pull request recorded; run open first")
+        if st.get("merged"):
+            self._finish = True
+            raise Refused(f"PR #{st['pr']} already merged; fetch main and verify tree {st['tree']}")
         if "review" not in st:
             raise Refused("no validated review recorded; run open first")
+        self.validate_record(st, st["review"])
         checks = self.wait_checks(st["pr"])
         red = [c["name"] for c in checks if c["bucket"] not in GREEN]
         if not checks or red:
@@ -711,9 +765,18 @@ class Gate:
                 "differs from the tested one; run trial again"
             )
         self.gh(args)
-        after = self._main()
-        landed = git(self.repo, "rev-parse", f"{after}^{{tree}}")
+        # A successful remote merge is irreversible, even if the verification fetch fails.
         self._finish = True
+        st["merged"] = True
+        self._save(branch, st)
+        try:
+            after = self._main()
+            landed = git(self.repo, "rev-parse", f"{after}^{{tree}}")
+        except (Refused, OSError, ValueError) as exc:
+            raise Refused(
+                f"PR #{st['pr']} merged but post-merge verification failed; "
+                f"do not merge again; fetch main and verify tree {st['tree']}: {exc}"
+            ) from exc
         if landed != st["tree"]:
             raise Refused(
                 f"FAIL: main {after[:12]} has tree {landed}, not the tested tree {st['tree']}; "
@@ -763,9 +826,9 @@ def main(argv: list[str]) -> int:
                 gate.land(args.branch, args.squash)
             case "release":
                 gate.release()
-    except (Refused, OSError, ValueError) as why:
+    except (Refused, OSError, ValueError, KeyError, TypeError) as why:
         print(f"REFUSED: {why}")
-        return 1
+        return 2 if args.command == "pending" else 1
     return 0
 
 

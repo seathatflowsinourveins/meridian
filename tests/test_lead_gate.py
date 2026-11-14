@@ -115,7 +115,11 @@ def second_branch(repo: Path) -> None:
 
 
 def make(
-    repo: Path, ci: list[str], passing: bool = True, check: list[str] | None = None
+    repo: Path,
+    ci: list[str],
+    passing: bool = True,
+    check: list[str] | None = None,
+    builder: str = "codex",
 ) -> tuple[Any, FakeGh]:
     fake = FakeGh(repo.parent / "origin.git", ci)
     if check is None:
@@ -124,7 +128,7 @@ def make(
     g.say = lambda _line: None
     g.check_timeout = 0
     g.check_interval = 0
-    g.register("feature", "codex", "task-1")
+    g.register("feature", builder, "task-1")
     return g, fake
 
 
@@ -370,7 +374,7 @@ def test_review_records_final_message_and_opposite_family(
     reviewer: str,
     model: str,
 ):
-    g, fake = make(repo, ["pass"])
+    g, fake = make(repo, ["pass"], builder=builder)
     g.register("feature", builder, "task-1")
     assert g.trial("feature")
     calls = fake_reviewer(monkeypatch)
@@ -386,7 +390,10 @@ def test_review_records_final_message_and_opposite_family(
         assert "--ignore-user-config" in cmd and "model_reasoning_effort=high" in cmd
         assert "--output-schema" not in cmd
     else:
-        assert cmd[:3] == ["claude", "-p", "/code-review high feature"]
+        assert cmd[:2] == ["claude", "-p"]
+        assert cmd[2].startswith("/code-review high feature\n")
+        assert "git diff origin/main...HEAD" in cmd[2]
+        assert "An empty diff has no findings" in cmd[2]
         assert cmd[cmd.index("--output-format") + 1] == "json"
     (tmp_path / "body.md").write_text("body")
     g.open("feature", "title", tmp_path / "body.md", wait=False)
@@ -428,7 +435,7 @@ def test_open_refuses_invalid_records_before_push(
     assert sh(repo.parent / "origin.git", "branch", "--list", "feature") == ""
 
 
-@pytest.mark.parametrize("status", ["fixed", "closed: already covered by the existing guard"])
+@pytest.mark.parametrize("status", ["closed: already covered by the existing guard"])
 def test_manual_review_dispositions_are_accepted(repo: Path, tmp_path: Path, status: str):
     g, _ = make(repo, ["pass"])
     assert g.trial("feature")
@@ -493,7 +500,7 @@ def test_auto_stops_at_first_failure_and_prints_worker_reply(
         def invoke(*_args, **_kwargs):
             calls.append(name)
             if name == stop:
-                raise gate.Refused("specific failure")
+                raise gate.WorkerFailure("specific failure")
             return True
 
         return invoke
@@ -807,3 +814,227 @@ def test_every_posted_text_is_free_of_home_paths(repo: Path, tmp_path: Path):
             assert "/home/" not in text and "/Users/" not in text and "~/" not in text
             assert str(Path.home()) not in text
     assert json.loads(path.read_text())["summary"] == record["summary"]  # local evidence preserved
+
+
+@pytest.mark.parametrize("command", ["trial", "auto"])
+def test_dispatch_builder_cannot_be_overridden(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command: str,
+):
+    g, _ = make(repo, ["pass"])
+    output = []
+    g.say = output.append
+    monkeypatch.setattr(g, "_main", lambda: pytest.fail("must refuse before merging or checks"))
+    if command == "trial":
+        with pytest.raises(gate.Refused, match="dispatch registration: codex"):
+            g.trial("feature", "claude")
+    else:
+        assert not g.auto("feature", "claude", "title", tmp_path / "body")
+        assert output[0].startswith("LEAD ACTION:")
+    assert not g._state_file("feature").exists()
+    with pytest.raises(gate.Refused, match="dispatch registration"):
+        g.register("feature", "claude", "task-1")
+
+
+def test_contending_commands_refuse_while_owner_is_running(repo: Path):
+    import time
+
+    first, _ = make(repo, ["pass"])
+    second, _ = make(repo, ["pass"])
+    assert first.trial("feature")
+    with first.reservation("feature"):
+        started = time.monotonic()
+        for invoke in (
+            lambda: second.trial("other"),
+            lambda: second.trial("feature"),
+            second.release,
+        ):
+            with pytest.raises(gate.Refused, match="feature is landing"):
+                invoke()
+        assert time.monotonic() - started < 1.5
+        assert not flock_available(first)
+
+
+@pytest.mark.parametrize("payload", ["null", "[]", '"text"', "42", "true"])
+@pytest.mark.parametrize("busy", [False, True])
+def test_nonobject_handshake_keeps_reservation(repo: Path, payload: str, busy: bool):
+    import socket
+    from contextlib import nullcontext
+
+    g, _ = make(repo, ["pass"])
+    assert g.trial("feature")
+    with g.reservation("feature") if busy else nullcontext():
+        with socket.socket(socket.AF_UNIX) as conn:
+            conn.settimeout(1)
+            conn.connect(str(g.lock_path.with_suffix(".sock")))
+            conn.sendall((payload + "\n").encode())
+            assert "must be an object" in json.loads(conn.recv(8192))["error"]
+        assert not flock_available(g)
+    assert g.trial("feature")
+
+
+def test_fixed_on_current_commit_is_refused_and_new_round_is_required(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    g, fake = make(repo, ["pass"])
+    assert g.trial("feature")
+    path = review_record(g, tmp_path)
+    record = json.loads(path.read_text())
+    record["findings"] = [{"text": "a real defect", "status": "fixed"}]
+    path.write_text(json.dumps(record))
+    with pytest.raises(gate.WorkerFailure, match="cannot be marked fixed"):
+        g.open("feature", "title", path, path, wait=False)
+    assert not fake.calls
+    commit(wt(repo, "feature"), "fix.txt", "fixed code", "fix defect")
+    assert g.trial("feature")
+    with pytest.raises(gate.Refused, match="review commit"):
+        g.open("feature", "title", path, path, wait=False)
+    fake_reviewer(monkeypatch)
+    fresh = g.review("feature", "codex")
+    assert json.loads(fresh.read_text())["findings"] == []
+    assert g.open("feature", "title", path, wait=False) == 7
+
+
+def test_post_merge_fetch_failure_releases_and_reports_recovery(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    g, fake = make(repo, ["pass"])
+    assert g.trial("feature")
+    opened(g, tmp_path)
+    original = g._main
+    calls = []
+
+    def fetch():
+        calls.append(True)
+        if len(calls) == 2:
+            raise gate.Refused("fetch unavailable")
+        return original()
+
+    monkeypatch.setattr(g, "_main", fetch)
+    with pytest.raises(
+        gate.Refused, match="merged but post-merge verification failed.*do not merge again"
+    ):
+        g.land("feature")
+    assert g.state("feature")["merged"]
+    assert g.holder() is None and flock_available(g)
+    with (
+        g.reservation("feature", create=True),
+        pytest.raises(gate.Refused, match="already merged"),
+    ):
+        g.land("feature")
+    assert g.holder() is None and flock_available(g)
+    assert len([call for call in fake.calls if call[:2] == ["pr", "merge"]]) == 1
+
+
+@pytest.mark.parametrize(
+    "result,code", [(True, 0), (False, 1), ("Orca", 2), ("gh", 2), ("fetch", 2)]
+)
+def test_pending_cli_distinguishes_idle_from_outage(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    result: Any,
+    code: int,
+):
+    g, _ = make(repo, ["pass"])
+
+    def pending(_run):
+        if isinstance(result, str):
+            raise gate.Refused(result + " failed")
+        return result
+
+    with monkeypatch.context() as patch:
+        patch.setattr(g, "pending", pending)
+        patch.setattr(gate, "Gate", lambda _path: g)
+        assert gate.main(["pending"]) == code
+
+
+def test_auto_sends_all_current_review_findings_together(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    g, fake = make(repo, ["pass"])
+    output = []
+    g.say = output.append
+    fake_reviewer(monkeypatch, '{"findings": ["first defect", "second defect", "third defect"]}')
+    assert not g.auto("feature", "codex", "title", tmp_path / "body")
+    messages = [text for text in output if text.startswith("SEND TO WORKER:")]
+    assert len(messages) == 1
+    assert all(text in messages[0] for text in ("first defect", "second defect", "third defect"))
+    assert not fake.calls
+
+
+def test_auto_contention_stays_with_lead(repo: Path, tmp_path: Path):
+    owner, _ = make(repo, ["pass"])
+    contender, _ = make(repo, ["pass"])
+    assert owner.trial("feature")
+    output = []
+    contender.say = output.append
+    with owner.reservation("feature"):
+        assert not contender.auto("other", "codex", "title", tmp_path / "body")
+    assert len(output) == 1 and output[0].startswith("LEAD ACTION:")
+    assert "feature is landing" in output[0]
+
+
+def test_review_citations_are_relative_when_record_is_built(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    g, _ = make(repo, ["pass"])
+    assert g.trial("feature")
+    final = json.dumps(
+        {"findings": [f"See {wt(repo, 'feature')}/b.txt:1 and /home/example/private.txt"]}
+    )
+    fake_reviewer(monkeypatch, final)
+    with pytest.raises(gate.WorkerFailure):
+        g.review("feature", "codex")
+    text = g.review_file("feature").read_text()
+    assert "b.txt:1" in text and str(wt(repo, "feature")) not in text
+    assert "/home/" not in text and "[local path]" in text
+
+
+def test_land_revalidates_stored_review_dispositions(repo: Path, tmp_path: Path):
+    g, fake = make(repo, ["pass"])
+    assert g.trial("feature")
+    opened(g, tmp_path)
+    state = g.state("feature")
+    state["review"]["findings"] = [{"text": "still broken", "status": "fixed"}]
+    g._save("feature", state)
+    with pytest.raises(gate.WorkerFailure, match="cannot be marked fixed"):
+        g.land("feature")
+    assert not any(call[:2] == ["pr", "merge"] for call in fake.calls)
+
+
+def test_clean_landing_provenance_is_a_runtime_table_row():
+    text = (REPO_ROOT / "UPSTREAM.md").read_text()
+    runtime = text.split("## Agent runtimes", 1)[1].split("## Assessed", 1)[0]
+    row = next(line for line in runtime.splitlines() if line.startswith("| Clean landing"))
+    preceding = runtime[: runtime.index(row)].rstrip().splitlines()[-1]
+    assert preceding.startswith("| `lead` skill")
+    assert len(row.split("|")) == len(preceding.split("|")) == 9
+    assert text.count("| Clean landing") == 1
+
+
+def test_claude_review_base_excludes_commits_on_origin_with_stale_local_main(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import re
+
+    g, _ = make(repo, ["pass"])
+    move_main(repo)
+    assert g.trial("feature")
+    assert sh(repo, "rev-parse", "main") != sh(repo, "rev-parse", "origin/main")
+    calls = fake_reviewer(monkeypatch)
+    g.review("feature", "codex")
+    command, options = calls[0]
+    base = re.search(r"git diff (\S+)\.\.\.HEAD", command[2])
+    assert base is not None
+    assert sh(options["cwd"], "diff", f"{base[1]}...HEAD", "--name-only") == "b.txt"
+    assert "c.txt" in sh(options["cwd"], "diff", "main...HEAD", "--name-only")
