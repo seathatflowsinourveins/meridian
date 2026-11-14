@@ -57,7 +57,7 @@ this table; the row's first cell links the file by name, as in `[NNNN](NNNN-shor
 | [0005](0005-claude-code-superpowers.md) | obra/superpowers for Claude Code (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0006](0006-claude-compound-engineering.md) | compound-engineering plugin for Claude Code (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0007](0007-codex-openai-plugins.md) | openai/plugins, the official Codex plugins (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
-| [0008](0008-codex-oh-my-codex.md) | oh-my-codex for Codex CLI (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0008](0008-codex-oh-my-codex.md) | oh-my-codex for Codex CLI (plan 8.6) | superseded by 0018, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0009](0009-dsh-codex-peer.md) | dsh-codex-peer, Codex as a peer of DeepSeek Harness (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0010](0010-dsh-gungnir.md) | dsh-gungnir goal verification for DeepSeek Harness (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0011](0011-dsh-goalloop-agentteams.md) | dsh-goalloop-agentteams completion gate for DeepSeek Harness (plan 8.6) | deferred, 2026-11-13 | 2026-11-13 | 2027-02-11 |
@@ -67,4 +67,6 @@ this table; the row's first cell links the file by name, as in `[NNNN](NNNN-shor
 | [0015](0015-claude-hud.md) | claude-hud status line for Claude Code (plan 8.6) | adopted, 2026-11-13 | 2026-11-14 | 2027-02-12 |
 | [0016](0016-dsh-worker-stack.md) | DeepSeek Harness worker stack: eight skills, the lsp tool, ast-grep, agentsview, a completion gate (stack ADR) | adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0017](0017-rtk-shell-output.md) | rtk shell-output compression for agents | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0018](0018-codex-worker-stack.md) | Codex worker stack: oh-my-codex, ponytail, OpenAI's docs server (stack ADR) | adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
+| [0019](0019-claude-omc-stack.md) | Claude lifecycle stack | adopted by selection, 2026-11-13 | 2026-11-14 | 2027-02-12 |
 | [0020](0020-open-code-review.md) | open-code-review as a second reviewer, in delegation mode (plan 8.6) | adopted, 2026-11-14 | 2026-11-14 | 2027-02-12 |
