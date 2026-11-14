@@ -83,15 +83,22 @@ run per item (`docs/adr/README.md`).
 | Skill format | `agentskills/agentskills`, Orca's two skills, the built-in "You should know" | in use |
 | The few-line instruction file | the four maintained sources named in section 1 | add |
 | Shell-output compression | `rtk-ai/rtk` | measure |
-| Token and cost accounting | `kenn-io/agentsview` (reads dsh's sessions) | in use for DeepSeek Harness (ADR 0016) |
+| Status line: context, plan limits, activity, and token and cost accounting | `jarrodwatts/claude-hud` (ADR 0015) | in use |
+| Token and cost accounting for DeepSeek Harness | `kenn-io/agentsview` (reads dsh's sessions) | in use for DeepSeek Harness (ADR 0016) |
 | Write-less-code skill | `DietrichGebert/ponytail` | measure |
 | DeepSeek Harness skills: spec, self-review, source reading, test first, root cause, proof before "done", research, the pull request body | `addyosmani/agent-skills`, `obra/superpowers`, `mattpocock/skills` (single folders at a pin) | in use for DeepSeek Harness (ADR 0016) |
 | Structural search | `ast-grep/ast-grep` | in use for DeepSeek Harness (ADR 0016) |
 
 2026-11-13: ADR 0016 (a stack ADR) adds the skills, structural-search and accounting rows for
-DeepSeek Harness. `kenn-io/agentsview` replaces `ccusage/ccusage`, which reads no dsh logs.
+DeepSeek Harness. `kenn-io/agentsview` holds accounting for dsh, whose sessions claude-hud
+and `ccusage/ccusage` do not read.
 `anthropics/claude-plugins-official`'s skill-creator was refused: its scripts call another
 model service.
+
+2026-11-14: token and cost accounting is held by claude-hud, adopted on 2026-11-13 (ADR 0015): the
+session's cost, a daily and weekly ledger, session tokens and both usage windows, all from
+Claude Code's own status payload. `ccusage/ccusage` is not installed: one upstream per job. It
+would add per-model reports over past transcripts, which nothing here needs yet.
 
 ### Layer 8, memory and retrieval
 | Job | Rests on | State |
@@ -112,11 +119,11 @@ The owner's starred list was read on 2026-11-13 with `gh api user/starred --pagi
 
 - Starred repositories returned by the command: 393
 - Rows with `starred` = yes: 393
-- Rows with `starred` = no: 17
+- Rows with `starred` = no: 18
 
 2026-11-13 (ADR 0016): `addyosmani/agent-skills`, `obra/superpowers` and `kenn-io/agentsview`
-move into Layer 7 and `oraios/serena` into Layer 8. `ast-grep/ast-grep` (not starred) is added
-and `ccusage/ccusage` (not starred) leaves the architecture, so both counts are unchanged.
+move into Layer 7 and `oraios/serena` into Layer 8. `ast-grep/ast-grep` (not starred) is added,
+so the rows with `starred` = no go from 17 to 18.
 
 | repository | group | in architecture | starred |
 |---|---|---|---|
@@ -173,6 +180,7 @@ and `ccusage/ccusage` (not starred) leaves the architecture, so both counts are 
 | `agentskills/agentskills` | Layer 7, skills and context | yes | yes |
 | `rtk-ai/rtk` | Layer 7, skills and context | yes | yes |
 | `ast-grep/ast-grep` | Layer 7, skills and context | yes | no |
+| `ccusage/ccusage` | Context and status tools | no | no |
 | `DietrichGebert/ponytail` | Layer 7, skills and context | yes | yes |
 | `gastownhall/beads` | Layer 8, memory and retrieval | yes | yes |
 | `microsoft/markitdown` | Layer 8, memory and retrieval | yes | yes |
@@ -347,7 +355,7 @@ and `ccusage/ccusage` (not starred) leaves the architecture, so both counts are 
 | `kenn-io/agentsview` | Layer 7, skills and context | yes | yes |
 | `getagentseal/codeburn` | Context and status tools | no | yes |
 | `graykode/abtop` | Context and status tools | no | yes |
-| `jarrodwatts/claude-hud` | Context and status tools | no | yes |
+| `jarrodwatts/claude-hud` | Layer 7, skills and context | yes | yes |
 | `sirmalloc/ccstatusline` | Context and status tools | no | yes |
 | `Maciek-roboblog/Claude-Code-Usage-Monitor` | Context and status tools | no | yes |
 | `drona23/claude-token-efficient` | Guides and catalogues, read but not installed | no | yes |
