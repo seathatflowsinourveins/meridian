@@ -192,6 +192,9 @@ implement `entry_signal` (and `rank`, `confidence`, `reclaim_qualified` for re-e
 means wait), and supply every `TemplateParams` value from configuration: there are no defaults.
 The package holds the template (`strategy.py`, `params.py`, `actions.py`) and its offline
 simulation, `uv run python -m meridian.strategy_template.sim [--copies N]`. Not yet in a lane.
+Add `--report` for the engine's statistics, order/fill/position CSVs and standalone HTML under
+`runs/`; first `uv sync --locked`. Inputs remain synthetic and uncalibrated; undefined statistics are null.
+[Pinned analysis evidence](adr/data/m5-engine-stats.md) explains the engine's cash-PnL semantics.
 
 1. Start from an upstream template: the strategy template above, a NautilusTrader example or
    built-in strategy at the pinned version, or a cited published method. Name it in the strategy file's docstring (repository,
@@ -266,7 +269,7 @@ in that turn. `codex features list` shows `goals` stable and on.
 | `meridian/boundary.py`, `meridian/ib_probe.py` | the paper checks (Gateway login mode, ports, account form, optional allowlist) and the probe that asks the Gateway which accounts it manages (own design) |
 | `meridian/ibkr_paper.py`, `meridian/ibkr_node.py` | IBKR paper lane: gate, owner confirmation, run record; the engine side, built on upstream's example |
 | `meridian/order_budget/`, `meridian/sandbox_*.py` | M2: the order budget (the owner's pacer, from Sextant) and the sandbox lane (no broker) |
-| `meridian/alpaca/` | Alpaca paper execution adapter (M3 groundwork, own design); study in `docs/m3-alpaca.md` |
+| `meridian/alpaca/` | Alpaca paper execution adapter (M3 groundwork, own design); study in `docs/adr/data/m3-alpaca.md` |
 | `deploy/systemd/` | the Alpaca lane's unit for `paper`, prepared and not enabled; keys only as systemd credentials |
 | `upstream/` | upstream example files, unmodified |
 | `.agents/skills/` | skills every agent reads; each has a link in `.claude/skills/` for Claude Code |
@@ -295,4 +298,4 @@ in that turn. `codex features list` shows `goals` stable and on.
 - ADRs: `docs/adr/README.md` lists last checks and revisit dates; read the Decision first.
   Recheck sources; append a dated kept/replaced/re-measured line in `docs/adr/data/NNNN-revisits.md`,
   then update the index; the weekly watch reports in the GitHub issue labelled `landscape`.
-  Runtime pins: the Orca automation "Meridian upkeep" turns that report into a pull request (`setup.sh drift`).
+  Runtime pins: the Orca automation "Meridian upkeep" moves them, lands and applies the change (`setup.sh drift`).

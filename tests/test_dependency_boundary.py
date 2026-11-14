@@ -10,6 +10,7 @@ RESEARCH_MODULES = {
     "hypothesis",
     "time_machine",
     "polars",
+    "plotly",
     "openbb",
     "edgar",
     "financedatabase",
