@@ -74,7 +74,7 @@ run per item (`docs/adr/README.md`).
 |---|---|---|
 | Fleet, one worktree per task | `stablyai/orca` | in use |
 | Cross-family review | `openai/codex-plugin-cc` and `codex review` | in use (the plugin has been quiet since July: watched) |
-| A second reviewer with a published benchmark | `alibaba/open-code-review` | measure |
+| A second reviewer with a published benchmark | `alibaba/open-code-review` | in use, delegation mode only (ADR 0020, 2026-11-14) |
 | Named fallbacks, not installed | `max-sixty/worktrunk` (if Orca is dropped), `coleam00/Archon` (if command-ended gates are needed) | watch |
 
 ### Layer 7, skills and context
