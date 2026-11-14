@@ -12,7 +12,7 @@ Upstream interface: `nautilus_trader.live.clients.ExecutionClient` and
 `examples/live/_template/`. Commands run as supervised tasks (`create_task`) so that a paced
 wire call never blocks the client's command queue.
 
-Rules carried from the earlier line, each with a test (docs/m3-alpaca.md, section 3):
+Rules carried from the earlier line, each with a test (docs/adr/data/m3-alpaca.md, section 3):
 - The send boundary: `_mark_sent` (the pacer's on-wire hook) is the one place a command
   becomes "sent". Before it, any refusal is "not sent"; after it, only a documented venue
   refusal or a later read settles the command, and the order is never rejected locally. A

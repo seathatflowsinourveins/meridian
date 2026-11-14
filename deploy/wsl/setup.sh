@@ -92,8 +92,8 @@ DSH_MODEL=deepseek-flash
 DSH_ALLOW_SCRIPTS=node-pty,koffi,@deepseek-ai/dsh-subprocess-local,@google/genai,protobufjs
 # Orca server: the server-only release tarball (orcad, its own Node, the orca-ide CLI), by the
 # SHA-256 in the release's checksum file. It does not update itself; a new pin here updates it.
-ORCA_VERSION=1.4.257
-ORCA_SHA256=72f42c1f5e66d828375d70a54fda5a5f910b90471948d93eedbc3a9ed19bc840
+ORCA_VERSION=1.4.258
+ORCA_SHA256=fd7f23f5fb6fe43fb2982d17438d772fac7cc65c8208a212d0ffb224b504e311
 ORCA_ROOT=/opt/orca-server
 # Loopback only, on a port of its own: with mirrored networking a listener on every interface
 # is reachable from the network, and 6768 is the Windows app's default port.
