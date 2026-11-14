@@ -3,8 +3,8 @@
 # meridian-alpaca-{restart,order}.timer. No [Install] section: `deploy/wsl/setup.sh unattended`
 # installs the units and the owner alone enables the timers (docs/HANDBOOK.md, "Unattended").
 # Keys arrive only as the two encrypted credentials (systemd.exec(5), systemd 259; made as in
-# docs/m3-alpaca.md section 6); a missing file stops the unit before it starts. No key, no value,
-# no endpoint here: the paper endpoint is hard-coded in meridian/alpaca/constants.py.
+# docs/adr/data/m3-alpaca.md section 6); a missing file stops the unit before it starts. No key,
+# no value, no endpoint here: the paper endpoint is hard-coded in meridian/alpaca/constants.py.
 # Settings and rows: /etc/meridian-alpaca-paper, root-owned and only read by `paper`. State, the
 # hold file and run records: /var/lib/meridian-alpaca-paper. The release: /opt/meridian/current.
 

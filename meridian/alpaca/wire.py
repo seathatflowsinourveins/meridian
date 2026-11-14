@@ -7,7 +7,7 @@ alpaca-py 0.45.0 (`alpaca/common/rest.py`, `alpaca/trading/client.py`); its low-
 `get`/`post`/`delete` are used so that prices and quantities stay decimal strings (its typed
 request and response models turn them into floats).
 
-Rules carried from the earlier line (docs/m3-alpaca.md):
+Rules carried from the earlier line (docs/adr/data/m3-alpaca.md):
 - Every REST request, reads included, passes through the one account pacer; the SDK's own
   retries are switched off, so a 429 is seen and paced instead of resent invisibly.
 - The pacer's on-wire hook runs once, on the loop, before the request leaves. Afterwards the

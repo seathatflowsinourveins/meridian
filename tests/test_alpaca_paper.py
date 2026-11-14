@@ -39,6 +39,9 @@ SYNTHETIC = PaperKeys("synthetic-key-id", "synthetic-secret")
 # Documentation hosts, if needed by another module, get their own explicit row.
 MODULE_EXTRA_HOSTS = {
     "data.py": {"stream.data.alpaca.markets"},
+    # GET /v1beta1/screener/stocks/{movers,most-actives}; read 2026-11-13:
+    # https://docs.alpaca.markets/us/reference/movers-1 and /mostactives-1
+    "screener.py": {"data.alpaca.markets"},
     "commission.py": {"docs.alpaca.markets", "alpaca.markets"},
 }
 
@@ -83,6 +86,8 @@ def test_the_paper_host_is_the_only_trading_host_this_package_names():
         ("data.py", "data.alpaca.markets"),
         ("data.py", "api." + "alpaca.markets"),
         ("wire.py", "stream.data.alpaca.markets"),
+        ("screener.py", "stream.data.alpaca.markets"),
+        ("screener.py", "api." + "alpaca.markets"),
         ("wire.py", "https://docs.alpaca.markets/us/docs/paper-trading"),
         ("wire.py", "https://alpaca.markets/support/commission-clearing-fees"),
         ("commission.py", "wss://paper-api.alpaca.markets/stream"),

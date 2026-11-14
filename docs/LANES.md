@@ -107,7 +107,7 @@ flows with it ticked has not been checked.
 
 ## Alpaca paper lane (M3, owner only)
 
-`meridian.alpaca_lane` wires session quotes and the [execution adapter](m3-alpaca.md#3-current-adapter-carried-changed-and-omitted) with the [order budget](HANDBOOK.md#rate-budgets).
+`meridian.alpaca_lane` wires session quotes and the [execution adapter](adr/data/m3-alpaca.md#3-current-adapter-carried-changed-and-omitted) with the [order budget](HANDBOOK.md#rate-budgets).
 Quotes carry prices only: Alpaca documents round-lot sizes but its Asset model has no
 per-symbol shares-per-lot field ([Asset](https://alpaca.markets/sdks/python/api_reference/trading/models.html#asset),
 [quotes](https://docs.alpaca.markets/us/docs/real-time-stock-pricing-data), read 2026-11-13).

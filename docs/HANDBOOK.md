@@ -52,7 +52,7 @@ Milestones (plan 9.2); each ends in a committed, scrubbed run record:
 | The size budget | `size-budget.toml`, `tests/test_size_budget.py` | CI tripwire |
 | The owner sets goals; a goal never names a lane run, an order, the IB Gateway, port 4002 or a step only the owner takes | "Goals" below | rule |
 | Work is reviewed by a different model family before it merges (`/codex:review` in Claude Code); findings are fixed in the pull request or closed with a reason; nothing auto-files issues | plan 9.5 | rule |
-| MCP servers are off machine-wide for Claude Code and Codex; a skill, plugin or MCP server is added only by an ADR (`docs/adr/README.md`), and none gets an order tool or broker connector | `deploy/wsl/setup.sh agents-check` | check |
+| Claude Code's MCP servers stay off; Codex's are the named set in `deploy/wsl/setup.sh` and `/etc/codex/requirements.toml` (ADR 0018); a skill, plugin or MCP server is added only by an ADR (`docs/adr/README.md`), and none gets an order tool or broker connector | `deploy/wsl/setup.sh agents-check` | check |
 | Ask the owner before adding a paid service or an account; no licence is chosen for this repo's own code: that is the owner's decision | the owner | rule |
 | One writer per account; plain DAY LIMIT entries, no brackets | plan 9.1 | rule; the M1 record fails an order that is not a DAY LIMIT |
 
@@ -192,6 +192,13 @@ implement `entry_signal` (and `rank`, `confidence`, `reclaim_qualified` for re-e
 means wait), and supply every `TemplateParams` value from configuration: there are no defaults.
 The package holds the template (`strategy.py`, `params.py`, `actions.py`) and its offline
 simulation, `uv run python -m meridian.strategy_template.sim [--copies N]`. Not yet in a lane.
+Add `--report` for the engine's statistics, order/fill/position CSVs and standalone HTML under
+`runs/`; first `uv sync --locked`. Inputs remain synthetic and uncalibrated; undefined statistics are null.
+[Pinned analysis evidence](adr/data/m5-engine-stats.md) explains the engine's cash-PnL semantics.
+The simulation uses the [screener universe](adr/data/m4-universe.md): movers intersected with
+most-actives, lane permission and owner-local price/volume floors and count cap.
+Lists apply only after receipt and expire; unknown outside-hours freshness refuses entries.
+Deployment parameters are null placeholders; data reads share a separate 200/minute budget.
 
 1. Start from an upstream template: the strategy template above, a NautilusTrader example or
    built-in strategy at the pinned version, or a cited published method. Name it in the strategy file's docstring (repository,
@@ -205,6 +212,9 @@ simulation, `uv run python -m meridian.strategy_template.sim [--copies N]`. Not 
    adds an execution client.
 6. Sandbox first, then paper (plan 9.2). Every paper run is the owner's, attended, and ends in
    a run record.
+
+Claude lead/workers use `/autopilot --workflow meridian-full <task>` ([ADR 0019](adr/0019-claude-omc-stack.md)): cite upstream first; the upstream gate and owner boundaries apply inside every stage. QA runs `uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest`; Orca keeps the fleet and cross-family merge review.
+At a required owner decision use `[MERIDIAN_WAIT]`; a worker uses Orca `ask` and ends its turn.
 
 ## Goals
 
@@ -266,7 +276,7 @@ in that turn. `codex features list` shows `goals` stable and on.
 | `meridian/boundary.py`, `meridian/ib_probe.py` | the paper checks (Gateway login mode, ports, account form, optional allowlist) and the probe that asks the Gateway which accounts it manages (own design) |
 | `meridian/ibkr_paper.py`, `meridian/ibkr_node.py` | IBKR paper lane: gate, owner confirmation, run record; the engine side, built on upstream's example |
 | `meridian/order_budget/`, `meridian/sandbox_*.py` | M2: the order budget (the owner's pacer, from Sextant) and the sandbox lane (no broker) |
-| `meridian/alpaca/` | Alpaca paper execution adapter (M3 groundwork, own design); study in `docs/m3-alpaca.md` |
+| `meridian/alpaca/` | Alpaca paper execution adapter (M3 groundwork, own design); study in `docs/adr/data/m3-alpaca.md` |
 | `deploy/systemd/` | the unattended Alpaca lane's units for `paper` ([runbook](LANES.md#unattended-alpaca-lane-m7)); keys only as systemd credentials |
 | `upstream/` | upstream example files, unmodified |
 | `.agents/skills/` | skills every agent reads; each has a link in `.claude/skills/` for Claude Code |
@@ -278,6 +288,8 @@ in that turn. `codex features list` shows `goals` stable and on.
 - Four agent runtimes run here through Orca, one git worktree per task: Claude Code leads
   (`claude-fable-5-2`; its workers run `claude-opus-5-5`), Codex (`gpt-6-astra`, `gpt-6.1-sol`
   for bulk) and Antigravity work and review, DeepSeek Harness works (code and research).
+- DeepSeek Harness from Orca: `orca-ide orchestration worker-start --agent dsh --spec-file <path> --worktree new-child --name <n>`. Headless: `dsh headless --permission-mode workspace-write --approval-policy never --add-dir <git common dir> --json - < task.txt`; a pass is exit 0 and `final.reason.kind` `completed`.
+- Its skills, `lsp` tool, ast-grep, agentsview and completion gate (`dsh-tui` profile only): [ADR 0016](adr/0016-dsh-worker-stack.md).
 - The agent runtimes start from checksummed pins in `deploy/wsl/setup.sh` and update themselves
   in sessions the owner starts (Orca's launches do not); `setup.sh agents-check` verifies them.
 - NautilusTrader 2.0 is a release-candidate line with breaking changes between candidates.
@@ -295,4 +307,4 @@ in that turn. `codex features list` shows `goals` stable and on.
 - ADRs: `docs/adr/README.md` lists last checks and revisit dates; read the Decision first.
   Recheck sources; append a dated kept/replaced/re-measured line in `docs/adr/data/NNNN-revisits.md`,
   then update the index; the weekly watch reports in the GitHub issue labelled `landscape`.
-  Runtime pins: the Orca automation "Meridian upkeep" turns that report into a pull request (`setup.sh drift`).
+  Runtime pins: the Orca automation "Meridian upkeep" moves them, lands and applies the change (`setup.sh drift`).

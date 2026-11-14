@@ -62,3 +62,16 @@ def test_claude_skills_holds_only_links_to_shared_skills():
 def test_each_skill_names_itself(name):
     head = (SHARED / name / "SKILL.md").read_text(encoding="utf-8").split("---")[1]
     assert f"name: {name}" in head.splitlines()
+
+
+# Skills written here (UPSTREAM.md, "own design"). A third-party skill is installed on the
+# machine for the one runtime that uses it, never vendored into this public repository (ADR 0016).
+OWN_DESIGN_SKILLS = {"lead"}
+
+
+def test_the_shared_skills_are_orcas_two_and_named_own_designs():
+    assert set(shared_skills()) == set(UPSTREAM_SKILLS) | OWN_DESIGN_SKILLS
+    entries = {p.name for p in SHARED.iterdir()}
+    assert entries == set(UPSTREAM_SKILLS) | OWN_DESIGN_SKILLS | {"NOTICE.md"}, (
+        f"unexpected entries in .agents/skills: {sorted(entries)}"
+    )

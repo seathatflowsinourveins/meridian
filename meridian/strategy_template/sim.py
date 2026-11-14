@@ -1,7 +1,7 @@
 """Offline simulation of the strategy template on the engine's native BacktestEngine.
 
-`uv run python -m meridian.strategy_template.sim [--copies N]`. Like `meridian.alpaca_sim`
-(engine, cash venue, in-process data, strategy, run, dispose: NautilusTrader v2.0.0rc9
+`uv run python -m meridian.strategy_template.sim [--copies N] [--report]`.
+Like `meridian.alpaca_sim` (engine, cash venue, in-process data, strategy, run, dispose: v2.0.0rc9
 `examples/backtest/synthetic_data_pnl_test.py:189-253`). No adapter, no lane, no socket.
 
 Everything here is synthetic and uncalibrated: the quote paths are generated in this process
@@ -16,6 +16,7 @@ import argparse
 import json
 from collections import deque
 from collections.abc import Callable
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 from uuid import uuid4
@@ -40,14 +41,17 @@ from nautilus_trader.model import (
 )
 
 from meridian import boundary
+from meridian.alpaca.screener_models import parse_screeners
+from meridian.alpaca.universe import UniverseParams, UniverseTimeline, select_universe
 
 from .params import TemplateParams
+from .report import ReportUnavailable, require_research, write_report
 from .strategy import SymbolBook, TrailingTemplate
 
 DATA_SOURCE = "synthetic quotes generated in process; no market or recorded data"
 SYNTHETIC = "synthetic, uncalibrated: simulation fixture values, not tuned"
 VENUE = "SIM"
-START_NS, STEP_NS = 1_600_000_000_000_000_000, 250_000_000  # four quotes a second
+START_NS, STEP_NS = 1_794_582_000_000_000_000, 250_000_000  # four quotes a second
 TICK, SPREAD, SIZE, CASH = Decimal("0.01"), Decimal("0.01"), 10_000, 10_000_000
 
 # Synthetic, uncalibrated values, chosen so that every scenario below happens.
@@ -119,6 +123,7 @@ class SyntheticBreakout(TrailingTemplate):
     def __init__(self, params: TemplateParams, ids: list[InstrumentId], inputs: dict[str, Any]):
         super().__init__(params, ids, strategy_id="MERIDIAN-M4SIM")
         self._inputs = inputs
+        self.universe = UniverseTimeline(())
         self._windows: dict[InstrumentId, deque[Decimal]] = {}
         self._prior_high: dict[InstrumentId, Decimal | None] = {}
 
@@ -129,6 +134,10 @@ class SyntheticBreakout(TrailingTemplate):
         window.append(quote.bid_price.as_decimal())
 
     def entry_signal(self, book: SymbolBook, quote: QuoteTick) -> bool:
+        if book.instrument_id.symbol.value not in {
+            candidate.symbol for candidate in self.universe.at(quote.ts_event)
+        }:
+            return False
         high = self._prior_high.get(book.instrument_id)
         return high is not None and quote.bid_price.as_decimal() > high
 
@@ -163,14 +172,71 @@ def instrument_ids(scenarios: dict[str, Any], copies: int) -> dict[InstrumentId,
     return ids
 
 
+def synthetic_universe(ids: list[InstrumentId]) -> UniverseTimeline:
+    """SDK-shaped synthetic lists; the same parser/selector as the read-only client.
+
+    Endpoint bounds permit at most 50 gainers + 50 losers and 100 actives. Both
+    directions are candidates; breakout/re-entry inputs remain scenario fixtures.
+    """
+    if len(ids) > 100:
+        raise ValueError("synthetic screener supports at most 100 symbols")
+    names = sorted(i.symbol.value for i in ids)
+    when = datetime.fromtimestamp(START_NS // 1_000_000_000, UTC)
+    movers = {
+        "market_type": "stocks",
+        "last_updated": when,
+        "gainers": [
+            {"symbol": s, "price": 10, "change": 1, "percent_change": 10} for s in names[:50]
+        ],
+        "losers": [
+            {"symbol": s, "price": 10, "change": -1, "percent_change": -10} for s in names[50:]
+        ],
+    }
+    actives = {
+        "last_updated": when,
+        "most_actives": [{"symbol": s, "volume": 1000, "trade_count": 10} for s in names],
+    }
+    read = parse_screeners(movers, actives, movers_read_at_ns=START_NS, actives_read_at_ns=START_NS)
+    # Synthetic policy, not defaults or tuned values; synthetic calendar, no service read.
+    params = UniverseParams(
+        provenance=SYNTHETIC,
+        min_price=Decimal(0),
+        min_volume=0,
+        max_symbols=len(ids),
+        max_age_ns=3_600_000_000_000,
+    )
+    assets = {
+        s: {"symbol": s, "class": "us_equity", "status": "active", "tradable": True} for s in names
+    }
+    calendar = {
+        when.date(): {
+            "session_open": "0400",
+            "open": "09:30",
+            "close": "16:00",
+            "session_close": "2000",
+        }
+    }
+    return UniverseTimeline(
+        (
+            select_universe(
+                read, params, allowed_symbols=frozenset(names), assets=assets, calendar=calendar
+            ),
+        )
+    )
+
+
 def run(
     *,
     params: TemplateParams | None = None,
     scenarios: dict[str, tuple[list[Decimal], int | None, Decimal | None]] | None = None,
     copies: int = 1,
+    universe: UniverseTimeline | None = None,
     strategy_type: type[SyntheticBreakout] = SyntheticBreakout,
     inspect: Callable[[BacktestEngine, SyntheticBreakout], None] | None = None,
+    report: bool = False,
 ) -> dict[str, Any]:
+    if report:
+        require_research()
     params = params or TemplateParams.from_config(SIM_PARAMS)
     scenarios = scenarios or SCENARIOS
     ids = instrument_ids(scenarios, copies)
@@ -209,6 +275,7 @@ def run(
         engine.add_data(sorted(ticks, key=lambda q: q.ts_init))
         inputs = {name: spec[1:] for name, spec in scenarios.items()}
         strategy = strategy_type(params, list(ids), inputs)
+        strategy.universe = universe if universe is not None else synthetic_universe(list(ids))
         engine.add_strategy(strategy)
         engine.run()
         venue_orders = [o for o in engine.cache.orders() if not o.is_emulated]
@@ -227,6 +294,8 @@ def run(
         }
         if inspect is not None:
             inspect(engine, strategy)
+        if report:
+            data["report"] = write_report(engine)
     finally:
         engine.dispose()
     return data
@@ -260,9 +329,15 @@ def problems(data: dict[str, Any], copies: int = 1) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Offline simulation of the strategy template.")
     parser.add_argument("--copies", type=int, default=1, help="copies of each scenario")
-    copies = max(parser.parse_args(argv).copies, 1)
+    parser.add_argument("--report", action="store_true", help="engine statistics, CSVs and HTML")
+    args = parser.parse_args(argv)
+    copies = max(args.copies, 1)
     print("SIMULATION; not a lane; synthetic quotes and uncalibrated parameters only.")
-    data = run(copies=copies)
+    try:
+        data = run(copies=copies, report=args.report)
+    except ReportUnavailable as exc:
+        print(str(exc))
+        return 2
     found = problems(data, copies)
     record = {
         "schema": "meridian.simulation-record/1",
@@ -296,6 +371,11 @@ def main(argv: list[str] | None = None) -> int:
     out.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print("PASS" if not found else "FAIL: " + "; ".join(found))
     print(f"Simulation record: runs/{out.name}")
+    if args.report:
+        print("Engine statistics (null = undefined):")
+        print(json.dumps(data["report"]["statistics"], indent=2, sort_keys=True, allow_nan=False))
+        print(f"Engine reports: {data['report']['directory']}/")
+        print(f"Tearsheet: {data['report']['directory']}/tearsheet.html")
     return 0 if not found else 1
 
 
