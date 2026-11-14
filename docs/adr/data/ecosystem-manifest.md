@@ -68,14 +68,14 @@ run per item (`docs/adr/README.md`).
 |---|---|---|---|---|---|
 | Offline one-order practice on the engine's native simulated exchange | `nautechsystems/nautilus_trader` | `2.0.0rc9` | in use (PR #22) | meridian/alpaca_sim.py; tests/test_alpaca_sim.py; UPSTREAM.md | 2026-11-14 |
 | Strategy-template simulation on the engine's native `BacktestEngine` | `nautechsystems/nautilus_trader` | `2.0.0rc9` | in use (PR #31) | meridian/strategy_template/sim.py; tests/test_strategy_template.py; UPSTREAM.md | 2026-11-14 |
-| Engine statistics and tearsheet export | `nautechsystems/nautilus_trader` | `2.0.0rc9` | in build (branch seathatflowsinourveins/m5-engine-stats) | branch seathatflowsinourveins/m5-engine-stats:meridian/strategy_template/report.py; branch seathatflowsinourveins/m5-engine-stats:docs/adr/data/m5-engine-stats.md | 2026-11-14 |
+| Engine statistics and tearsheet export | `nautechsystems/nautilus_trader` | `2.0.0rc9` | in use (PR #52) | meridian/strategy_template/report.py; docs/adr/data/m5-engine-stats.md; UPSTREAM.md | 2026-11-14 |
 | Native simulation end to end | `nautechsystems/nautilus_trader` | `2.0.0rc9` | in build (branch seathatflowsinourveins/m5-native-sim) | pyproject.toml; docs/adr/data/m5-native-sim.md (in build) | 2026-11-14 |
 
 ### Layer 4, display
 | Job | Rests on | Pin | State | Where | Checked |
 |---|---|---|---|---|---|
 | Owner-built page: candles, trail lines, fill markers | `tradingview/lightweight-charts` | not pinned | planned (M6) | none | 2026-11-14 |
-| Results views: the engine's own tearsheet | `plotly/plotly.py` | `7.1.0` | in build (branch seathatflowsinourveins/m5-engine-stats) | uv.lock; branch seathatflowsinourveins/m5-engine-stats:pyproject.toml; branch seathatflowsinourveins/m5-engine-stats:docs/adr/data/m5-engine-stats.md | 2026-11-14 |
+| Results views: the engine's own tearsheet | `plotly/plotly.py` | `7.1.0` | in use (PR #52; research group) | pyproject.toml; uv.lock; docs/adr/data/m5-engine-stats.md; UPSTREAM.md | 2026-11-14 |
 | Live order and fill blotter | `perspective-dev/perspective` | not pinned | planned (M6, if a static page is not enough) | none | 2026-11-14 |
 | TradingView Desktop, attended | `tradesdontlie/tradingview-mcp` (inside the kit) | not pinned | not established on main (the 22:02 plan records in use on the Windows side; no file here records it) | none | 2026-11-14 |
 | Building and testing the page | `bigskysoftware/htmx`, `microsoft/playwright` | not pinned | planned (M6) | none | 2026-11-14 |
@@ -106,14 +106,14 @@ run per item (`docs/adr/README.md`).
 | Shell-output compression | `rtk-ai/rtk` | `1.2.0` | measured, not adopted (ADR 0017, on branch seathatflowsinourveins/adr-0015-rtk) | branch seathatflowsinourveins/adr-0015-rtk:docs/adr/0017-rtk-shell-output.md | 2026-11-14 |
 | Status line: context, plan limits, activity, and token and cost accounting | `jarrodwatts/claude-hud` (holds it; ccusage is not installed: one upstream per job) | `0.15.0`, `b86e1c3e5255880578de4b7cc87dc383228c2a18` | in use (PR #40; ADR 0015) | deploy/wsl/setup.sh; UPSTREAM.md; docs/adr/0015-claude-hud.md | 2026-11-14 |
 | Token and cost accounting for DeepSeek Harness | `kenn-io/agentsview` (reads dsh's sessions) | `0.47.0` | in build (PR #44; ADR 0016) | branch seathatflowsinourveins/dsh-stack:docs/adr/data/0016-stack.md | 2026-11-14 |
-| Write-less-code skill | `DietrichGebert/ponytail` (holds it on Codex); `Yeachan-Heo/oh-my-claudecode`'s ai-slop-cleaner (holding it on Claude Code) | `5.3.3` | in build (branch seathatflowsinourveins/codex-stack; branch seathatflowsinourveins/claude-omc-stack; ADR 0018, ADR 0019) | branch seathatflowsinourveins/codex-stack:UPSTREAM.md; branch seathatflowsinourveins/claude-omc-stack:docs/adr/data/0019-stack.md | 2026-11-14 |
+| Write-less-code skill | `DietrichGebert/ponytail` (holds it on Codex); `Yeachan-Heo/oh-my-claudecode`'s ai-slop-cleaner (holding it on Claude Code) | `5.3.3` | in build (PR #53; branch seathatflowsinourveins/codex-stack; branch seathatflowsinourveins/claude-omc-stack; ADR 0018, ADR 0019) | branch seathatflowsinourveins/codex-stack:UPSTREAM.md; branch seathatflowsinourveins/claude-omc-stack:docs/adr/data/0019-stack.md | 2026-11-14 |
 | Workflow layer for Claude Code | `Yeachan-Heo/oh-my-claudecode` | `5.8.4` | in build (branch seathatflowsinourveins/claude-omc-stack; ADR 0019) | branch seathatflowsinourveins/claude-omc-stack:UPSTREAM.md; branch seathatflowsinourveins/claude-omc-stack:docs/adr/data/0019-stack.md | 2026-11-14 |
-| Workflow layer for Codex | `Yeachan-Heo/oh-my-codex` | `0.22.6` | in build (branch seathatflowsinourveins/codex-stack; ADR 0018) | branch seathatflowsinourveins/codex-stack:UPSTREAM.md; branch seathatflowsinourveins/codex-stack:docs/adr/data/0018-stack.md | 2026-11-14 |
+| Workflow layer for Codex | `Yeachan-Heo/oh-my-codex` | `0.22.6` | in build (PR #53; branch seathatflowsinourveins/codex-stack; ADR 0018) | branch seathatflowsinourveins/codex-stack:UPSTREAM.md; branch seathatflowsinourveins/codex-stack:docs/adr/data/0018-stack.md | 2026-11-14 |
 | DeepSeek Harness skills: spec, self-review, source reading, test first, root cause, proof before done, research, the pull request body | `addyosmani/agent-skills`, `obra/superpowers`, `mattpocock/skills` (single folders at a pin) | `0.6.15`, `8bfcc1f9916f2eea55494d8c1fa7f4bde867dd9e`, `7.0.2`, `22f0b463e7a5e579904dd6211a520321035526f7`, `1.3.2`, `d1478fcb140db0b93c0c8df17bcfd311844749d0` | in build (PR #44; ADR 0016) | branch seathatflowsinourveins/dsh-stack:docs/adr/data/0016-stack.md | 2026-11-14 |
 | Structural search for DeepSeek Harness | `ast-grep/ast-grep` | `0.51.2` | in build (PR #44; ADR 0016) | branch seathatflowsinourveins/dsh-stack:docs/adr/data/0016-stack.md | 2026-11-14 |
 | Code navigation for DeepSeek Harness | the `lsp` tool of `deepseek-ai/deepseek-harness` on the worktree's pyright | `0.2.2-rc.1` | in build (PR #44; ADR 0016) | branch seathatflowsinourveins/dsh-stack:docs/adr/data/0016-stack.md | 2026-11-14 |
 | Completion gate for DeepSeek Harness | own design: `deploy/wsl/dsh-check-gate.sh` | not pinned | in build (PR #44; ADR 0016) | branch seathatflowsinourveins/dsh-stack:deploy/wsl/dsh-check-gate.sh | 2026-11-14 |
-| Code navigation for Codex | `oraios/serena` (the official dsh lsp holds dsh's job) | `2.1.0` | in build (branch seathatflowsinourveins/codex-stack; ADR 0018) | branch seathatflowsinourveins/codex-stack:UPSTREAM.md; branch seathatflowsinourveins/codex-stack:docs/adr/data/0018-stack.md | 2026-11-14 |
+| Code navigation for Codex | `oraios/serena` (the official dsh lsp holds dsh's job) | `2.1.0` | in build (PR #53; branch seathatflowsinourveins/codex-stack; ADR 0018) | branch seathatflowsinourveins/codex-stack:UPSTREAM.md; branch seathatflowsinourveins/codex-stack:docs/adr/data/0018-stack.md | 2026-11-14 |
 
 ### Layer 8, memory and retrieval
 | Job | Rests on | Pin | State | Where | Checked |
