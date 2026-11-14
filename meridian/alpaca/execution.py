@@ -54,6 +54,8 @@ from nautilus_trader.model import (
 )
 from websockets.exceptions import WebSocketException
 
+from meridian.alpaca_sessions import session_ns
+
 from .budget import AccountPacer, ActionKind
 from .config import AlpacaPaperExecClientConfig
 from .constants import NOT_SUPPORTED, VENUE
@@ -853,6 +855,14 @@ class AlpacaPaperExecutionClient(ExecutionClient):
     def _submit_admitted(self) -> bool:
         return self.coverage_complete and not self.foreign_writer_seen
 
+    def _asset_admitted(self, native: Any) -> bool:
+        session = session_ns(self.clock.timestamp_ns())
+        if session is None or session.name != "overnight":
+            return True
+        instrument = self.cache.instrument(native.instrument_id)
+        info = {} if instrument is None else instrument.info
+        return info.get("overnight_tradable") is True and info.get("overnight_halted") is False
+
     async def _do_submit_order(self, command: Any, token: _Command) -> None:
         native = command.order
         if (
@@ -870,7 +880,7 @@ class AlpacaPaperExecutionClient(ExecutionClient):
             token.settled = True
             self.generate_order_denied(native, str(exc))
             return
-        if not self._submit_admitted():
+        if not self._submit_admitted() or not self._asset_admitted(native):
             token.settled = True
             self.generate_order_denied(native, "account view incomplete: no new order")
             return
@@ -885,7 +895,9 @@ class AlpacaPaperExecutionClient(ExecutionClient):
                 "post",
                 "/orders",
                 payload,
-                admission=lambda: not token.withdrawn and self._submit_admitted(),
+                admission=lambda: (
+                    not token.withdrawn and self._submit_admitted() and self._asset_admitted(native)
+                ),
                 on_wire=lambda: self._mark_sent(token),
             )
         except UnreadableAnswer as exc:

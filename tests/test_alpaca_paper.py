@@ -79,6 +79,8 @@ def test_the_paper_host_is_the_only_trading_host_this_package_names():
     ("module", "host"),
     [
         ("data.py", "stream.data.sandbox.alpaca.markets"),
+        ("data.py", "overnight.alpaca.markets"),
+        ("data.py", "data.alpaca.markets"),
         ("data.py", "api." + "alpaca.markets"),
         ("wire.py", "stream.data.alpaca.markets"),
         ("wire.py", "https://docs.alpaca.markets/us/docs/paper-trading"),

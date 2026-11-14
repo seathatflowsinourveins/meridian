@@ -82,6 +82,11 @@ def data(monkeypatch):
         raise AssertionError("network is forbidden in tests")
 
     monkeypatch.setattr(module.websockets, "connect", forbidden)
+    from datetime import datetime
+
+    from meridian.alpaca_sessions import session_at
+
+    monkeypatch.setattr(module, "session_ns", lambda _: session_at(datetime.fromisoformat(STAMP)))
     yield module
     gc.collect()
 
@@ -104,7 +109,7 @@ def rig(data, monkeypatch, socket=None):
         return socket
 
     monkeypatch.setattr(data.websockets, "connect", connect)
-    stream = data.IexQuoteStream(KEYS)
+    stream = data.AlpacaQuoteStream(KEYS)
     clock = SimpleNamespace(ns=EVENT + 10, timestamp_ns=lambda: clock.ns)
     cache = SimpleNamespace(instrument=lambda iid: EQUITY if iid == AAPL else None)
 
@@ -281,7 +286,7 @@ def test_factory_refuses_without_credentials_and_opens_nothing(data, monkeypatch
     made = data.build_quote_client(
         name="ALPACA", config=config(data), cache=None, clock=None, keys=lambda: KEYS
     )
-    assert isinstance(made._stream, data.IexQuoteStream)
+    assert isinstance(made._stream, data.AlpacaQuoteStream)
     assert not made.stream_live
 
 
@@ -302,15 +307,31 @@ def test_config_refuses_invalid_or_paid_feed_choices(data, overrides):
         config(data, **overrides)
 
 
-def test_quote_reaches_real_engine_cache_and_strategy(data, monkeypatch):
+@pytest.mark.parametrize(
+    "when,feed",
+    [
+        ("2026-11-02T07:00:00Z", "overnight"),
+        ("2026-11-02T13:00:00Z", "delayed_sip"),
+        ("2026-11-02T17:00:00Z", "iex"),
+        ("2026-11-02T23:00:00Z", "delayed_sip"),
+    ],
+)
+def test_quote_reaches_real_engine_cache_and_strategy(data, monkeypatch, when, feed):
+    from datetime import datetime
+
+    from meridian.alpaca_sessions import session_at
+
+    monkeypatch.setattr(data, "session_ns", lambda _: session_at(datetime.fromisoformat(when)))
+    frame = QUOTE.replace(STAMP, when)
     seen = []
     socket = Socket()
+    socket.protocol.uri.path = data.FEED_PATHS[feed]
     original_send = socket.send
 
     async def send(raw):
         await original_send(raw)
         if json.loads(raw)["action"] == "subscribe":
-            socket.frames.put_nowait(QUOTE)
+            socket.frames.put_nowait(frame)
 
     socket.send = send
 
@@ -332,7 +353,7 @@ def test_quote_reaches_real_engine_cache_and_strategy(data, monkeypatch):
                 quote_config=config,
                 cache=cache,
                 clock=clock,
-                stream=data.IexQuoteStream(KEYS),
+                stream=data.AlpacaQuoteStream(KEYS),
             )
 
     class Observer(Strategy):
@@ -358,7 +379,7 @@ def test_quote_reaches_real_engine_cache_and_strategy(data, monkeypatch):
     assert len(seen) == 1
     tick = node.cache.quote(AAPL)
     assert tick is not None and tick.bid_price.as_decimal() == Decimal("100.1234")
-    assert seen[0].ts_event == EVENT
+    assert seen[0].ts_event == timestamp_ns(when, "synthetic")
 
 
 def test_json_decimal_text_survives_values_beyond_float_precision(data, monkeypatch):
