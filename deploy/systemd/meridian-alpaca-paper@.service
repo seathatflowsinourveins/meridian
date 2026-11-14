@@ -1,0 +1,50 @@
+# Meridian: the Alpaca paper lane, unattended, as the `paper` service user (M7; own design).
+# Instances: @restart (reconcile only) and @order (one DAY LIMIT order, then cancel), started by
+# meridian-alpaca-{restart,order}.timer. No [Install] section: `deploy/wsl/setup.sh unattended`
+# installs the units and the owner alone enables the timers (docs/HANDBOOK.md, "Unattended").
+# Keys arrive only as the two encrypted credentials (systemd.exec(5), systemd 259; made as in
+# docs/adr/data/m3-alpaca.md section 6); a missing file stops the unit before it starts. No key,
+# no value, no endpoint here: the paper endpoint is hard-coded in meridian/alpaca/constants.py.
+# Settings and rows: /etc/meridian-alpaca-paper, root-owned and only read by `paper`. State, the
+# hold file and run records: /var/lib/meridian-alpaca-paper. The release: /opt/meridian/current.
+
+[Unit]
+Description=Meridian Alpaca paper lane, unattended %i (paper account only)
+Documentation=https://github.com/seathatflowsinourveins/meridian/blob/main/docs/HANDBOOK.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=paper
+Group=paper
+WorkingDirectory=/opt/meridian/current
+LoadCredentialEncrypted=alpaca-paper-key-id:/etc/credstore.encrypted/alpaca-paper-key-id
+LoadCredentialEncrypted=alpaca-paper-secret-key:/etc/credstore.encrypted/alpaca-paper-secret-key
+ExecStart=/opt/meridian/current/.venv/bin/python -m meridian.alpaca_unattended %i
+TimeoutStartSec=5min
+StateDirectory=meridian-alpaca-paper
+StateDirectoryMode=0700
+ConfigurationDirectory=meridian-alpaca-paper
+ConfigurationDirectoryMode=0750
+UMask=0077
+# Hardening, systemd.exec(5): the lane needs outbound TCP to the paper host and nothing else.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=

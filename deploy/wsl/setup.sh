@@ -11,18 +11,24 @@
 #   deploy/wsl/setup.sh gateway       install IB Gateway (pinned build; never starts it or logs in)
 #   deploy/wsl/setup.sh agents        all of the following, in this order:
 #     claude        Claude Code, from Anthropic's signed release manifest
-#     codex         Codex CLI (npm)
+#     codex         Codex CLI and its worker stack, ADR 0018 (npm, a local plugin marketplace)
 #     agy           Antigravity CLI (its GitHub release asset)
 #     dsh           DeepSeek Harness and the terminal UI Orca launches for it (npm, pnpm)
 #     orca          Orca server, a loopback-only systemd user service (sudo for /opt)
 #     codex-bridge  the Codex review plugin for Claude Code
 #     claude-hud    the claude-hud status line for Claude Code, beside Orca's usage reporter
+#     omc           Claude lifecycle in user scope (also called by claude); ADR 0019
+#     omc-remove    remove only Meridian-owned OMC assets; retain other Claude settings
 #   deploy/wsl/setup.sh agents-check  verify the agent runtimes and their settings
 #   deploy/wsl/setup.sh drift         installed against pinned; exit 0 when upkeep is due (changes nothing)
-#   deploy/wsl/setup.sh upkeep        bring this machine to the pins, Orca's server last
+#   deploy/wsl/setup.sh upkeep        bring this machine to the pins, Orca's server last (not while
+#                                     ~/.cache/meridian/upkeep.hold holds a reason)
 #   deploy/wsl/setup.sh orca-automation  the weekly Orca automation that moves the pins, lands and applies them
+#   deploy/wsl/setup.sh codex-requirements  write /etc/codex/requirements.toml from meridian.user-data (sudo)
 #   deploy/wsl/setup.sh signins       list the sign-ins left for the owner, with their commands
 #   deploy/wsl/setup.sh orca-pair     owner, once, in Windows Terminal: pair the Windows Orca app
+#   deploy/wsl/setup.sh unattended    (sudo) install or update the unattended Alpaca lane; timers enabled once
+#   deploy/wsl/setup.sh unattended-check  its units, timers, last results and hold file (read only)
 #
 # Order: check, uv, gh, gitleaks, ocr, repo, gateway, then agents. Sign-ins are the owner's: see UPSTREAM.md.
 # Versions, checksums and the pages they were read from: UPSTREAM.md.
@@ -69,11 +75,30 @@ CLAUDE_SHA256=0dc4f4a9a165fc60746d7ae8489712e5fc352f1e7ad4eb22e7141bd0812eb0cf
 CLAUDE_RELEASE_SIGNER=31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE
 CLAUDE_RELEASES=https://downloads.claude.ai/claude-code-releases
 CLAUDE_MODEL=claude-fable-5-2
+# ADR 0019: standalone lifecycle, no plugin/MCP registration or OMC HUD.
+OMC_VERSION=5.8.4
+OMC_INTEGRITY=sha512-6J2v4YomI8vK4mmhDTMV8SqS2Bj4dUvPz3ApapKsYVN6P04rGs0/L78p3/Rda0mq1UuHOYII8ubj+ehlgmxxwA==
 # Codex CLI: OpenAI's npm package and its linux-x64 build, by their registry integrity values.
 CODEX_VERSION=0.169.0
 CODEX_INTEGRITY=sha512-KhzYlkKPxoNssR8CEm45IjqnFWn7UtlF4CiD3tOJPea51xBs7MaHy0UQG9GSbCqk6Lrjn5QdJDV0QD1/FgWlGw==
 CODEX_LINUX_INTEGRITY=sha512-o05NyAOCDygSPRo1yinzxvkRSdmsZyBD9E7mbpmjRanSfM8lypqWtQgEo4XfNkwhuCR2aFu8mlGOsQGFXVbVww==
 CODEX_MODEL=gpt-6-astra
+# The Codex worker stack (ADR 0018). oh-my-codex by npm's integrity value; ponytail at its v5.3.3
+# release commit, served from a local marketplace; OpenAI's docs server at the URL and name that
+# Codex's own openai-docs skill uses. /etc/codex/requirements.toml allows that server by name.
+OMX_VERSION=0.22.6
+OMX_INTEGRITY=sha512-ZpMHipwnaiHV/T8rp/czmF5U+ugqVdUOb28obL5U61q9WQwvfKAmzP4k1V82EnUXYMvsBgZIzFl0I3HADBbFEQ==
+PONYTAIL_COMMIT=7801d061243d7b753bad0e0b3c057cd250b11755
+PONYTAIL_MARKET=meridian-ponytail
+CODEX_DOCS_MCP=https://developers.openai.com/mcp
+# serena (code navigation and diagnostics over MCP): PyPI's file by its SHA-256, then uv installs
+# that release (its dependencies resolve on the day of the install). Only these tools are served,
+# and Codex starts it with exactly these arguments; the requirements name its command, `serena`.
+SERENA_VERSION=2.1.0
+SERENA_FILE=serena_agent-2.1.0-py3-none-any.whl
+SERENA_SHA256=cc6ae542c39b4de5d98cdf35a4ceb0b551f316c5f22e9d0f0b0c5f35d6b95d87
+SERENA_TOOLS="get_symbols_overview, find_symbol, find_referencing_symbols, find_implementations, find_declaration, get_diagnostics_for_file, get_diagnostics_for_symbol"
+SERENA_MCP_ARGS='["start-mcp-server", "--project-from-cwd", "--context=codex"]'
 # DeepSeek Harness: the engine (`dsh`), pnpm (dsh installs its profiles with it, and pins the
 # 11.x line), the community terminal UI that Orca launches for it (`dsh-tui`), and the two hook
 # packages that give Orca its status events (at the engine's version). Registry integrity values.
@@ -101,7 +126,7 @@ DSH_SKILLS=(
 )
 # Code navigation: DeepSeek's own LSP packages at the engine's version (the seam, the stdio
 # provider that runs each worktree's own pyright-langserver, and the read-only `lsp` tool),
-# installed in the dsh-tui profile. Registry integrity values.
+# installed in the dsh-tui and headless profiles. Registry integrity values.
 DSH_LSP_INTEGRITY=sha512-pEh5ErmCK52WJjOrKWQne1ojdImjf9zLNAclaCI4uOwEB8tdGwuXHSNud16gVHSID+0PdK2nm6dJjZNgfp47ig==
 DSH_LSP_STDIO_INTEGRITY=sha512-2lC3pw/DyNkOLT42POj48J02L+2JBM3HJJQts467B/JrTEOJwc29gDYEzhID3mceePMrO/n/K1duVLS/So3mXw==
 DSH_TOOL_LSP_INTEGRITY=sha512-y+OHzHOcvh3mCHMZ8bbICxPZjNBhKeCFBfDffR4GkNlT7DHcOeyzwa0mX9XBnJ7dbaAGCbZ8PQZO5EhOSmtOGw==
@@ -160,6 +185,17 @@ GATEWAY_DIR="${HOME}/Jts/ibgateway/1050"
 GATEWAY_LIBS="libgtk-3-0t64 libnss3 libnspr4 libasound2t64 libatk1.0-0t64 libatk-bridge2.0-0t64 libatspi2.0-0t64 libcups2t64 xdg-utils"
 REPO=seathatflowsinourveins/meridian
 REPO_DIR="${HOME}/src/meridian"
+USER_DATA="$(dirname "$(readlink -f "$0")")/meridian.user-data"
+# The unattended Alpaca lane (M7): release, settings, state and units, as deploy/systemd/ names
+# them. MERIDIAN_FAKE_ROOT is for tests only: a folder that stands in for /, with fake sudo,
+# systemctl and uv first on PATH. Unset, every path below is the real one.
+UA_ROOT="${MERIDIAN_FAKE_ROOT:-}"
+UNATTENDED_ROOT="${UA_ROOT}/opt/meridian"
+UNATTENDED_CONFIG="${UA_ROOT}/etc/meridian-alpaca-paper"
+UNATTENDED_STATE="${UA_ROOT}/var/lib/meridian-alpaca-paper"
+UNATTENDED_UNIT_DIR="${UA_ROOT}/etc/systemd/system"
+UNATTENDED_UNITS="meridian-alpaca-paper@.service meridian-alpaca-restart.timer meridian-alpaca-order.timer"
+UNATTENDED_TIMERS="meridian-alpaca-restart.timer meridian-alpaca-order.timer"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 ok() { echo "ok:   $*"; }
@@ -185,6 +221,15 @@ npm_user_prefix() {
 # the tarball it downloads against that same value.
 npm_pinned() {
   [ "$(npm view "$1" dist.integrity)" = "$2" ] || fail "$1 on the registry is not the pinned build"
+}
+
+# pypi_pinned PACKAGE VERSION FILE SHA256: PyPI serves FILE for that release with that digest.
+pypi_pinned() {
+  curl -fsS "https://pypi.org/pypi/$1/$2/json" | python3 -I -c '
+import json, sys
+files = {f["filename"]: f["digests"]["sha256"] for f in json.load(sys.stdin)["urls"]}
+sys.exit(0 if files.get(sys.argv[1]) == sys.argv[2] else 1)' "$3" "$4" \
+    || fail "$1 $2 on PyPI is not the pinned build"
 }
 
 [ "$(id -u)" -ne 0 ] || fail "run as the owner user, not root"
@@ -223,7 +268,7 @@ cmd_check() {
   ok "claude.ai connectors and every MCP server off for Claude Code in this distro (user and machine-wide)"
   echo "note: that setting does not cover connectors the Claude desktop app itself attaches to a session"
   check_codex_requirements
-  ok "Codex: every MCP server, ChatGPT apps, plugins and memories off machine-wide"
+  ok "Codex: ChatGPT apps off and only the MCP servers ADR 0018 names, machine-wide"
   for source in linux wsl_setup ubuntu_release_upgrader; do
     ubuntu-insights consent "${source}" 2>/dev/null | grep -qx "${source}: false" \
       || fail "Ubuntu Insights consent for ${source} is not recorded as false"
@@ -241,6 +286,122 @@ cmd_check() {
     *) fail "wsl-pro.service is running or waiting to restart" ;;
   esac
   ok "wsl-pro.service off"
+  check_unattended
+}
+
+check_unattended() {
+  # One read-only line for `check`; not installed is not a failure. Details: unattended-check.
+  if [ ! -L "${UNATTENDED_ROOT}/current" ]; then
+    echo "note: the unattended Alpaca lane is not installed (deploy/wsl/setup.sh unattended)"
+    return
+  fi
+  local timer states=""
+  for timer in ${UNATTENDED_TIMERS}; do
+    states="${states} ${timer}=$(systemctl is-active "${timer}" 2>/dev/null || true)"
+  done
+  ok "unattended Alpaca lane: release $(basename "$(readlink "${UNATTENDED_ROOT}/current")");${states}"
+}
+
+cmd_unattended() {
+  # Non-interactive and idempotent: a second run at the same commit changes nothing. Installs
+  # the checked-out commit, the settings and rows files from the templates if absent (values
+  # null; it never sets one, consent included), the state directory and the units. It enables
+  # and starts a timer only on its first install: an update leaves a timer the owner disabled or
+  # stopped as it is. It reads no credential and starts no lane run itself.
+  local src commit release cache name timer link state changed=0
+  src="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+  [ -z "$(git -C "${src}" status --porcelain)" ] || fail "the checkout has uncommitted changes"
+  id paper >/dev/null 2>&1 || fail "service user 'paper' is missing"
+  commit="$(git -C "${src}" rev-parse HEAD)"
+  release="${UNATTENDED_ROOT}/releases/${commit}"
+  # A release counts only once its marker exists, written last, after a successful sync: a
+  # failed sync leaves no marker, so a rerun synchronises again before anything is activated.
+  if [ ! -e "${release}/.meridian-release-complete" ]; then
+    sudo install -d -m 0755 "${release}"
+    git -C "${src}" archive "${commit}" | sudo tar -x -C "${release}" --no-same-owner
+    cache="$(mktemp -d)"
+    # The interpreter goes under /opt too: `paper` cannot read a home (ProtectHome=yes).
+    sudo env UV_CACHE_DIR="${cache}" UV_PYTHON_INSTALL_DIR="${UNATTENDED_ROOT}/python" \
+      "${HOME}/.local/bin/uv" sync --locked --no-default-groups --managed-python --project "${release}"
+    sudo rm -rf "${cache}"
+    sudo touch "${release}/.meridian-release-complete"
+  fi
+  [ "$(readlink "${UNATTENDED_ROOT}/current" || true)" = "${release}" ] \
+    || sudo ln -sfn "${release}" "${UNATTENDED_ROOT}/current"
+  ok "release ${commit} in ${UNATTENDED_ROOT}/current"
+  [ -d "${UNATTENDED_CONFIG}" ] || sudo install -d -o root -g paper -m 0750 "${UNATTENDED_CONFIG}"
+  for name in alpaca-lane alpaca-order-budget; do
+    sudo test -e "${UNATTENDED_CONFIG}/${name}.json" || sudo install -o root -g paper -m 0640 \
+      "${release}/deploy/${name}.template.json" "${UNATTENDED_CONFIG}/${name}.json"
+  done
+  ok "settings in ${UNATTENDED_CONFIG}: root-owned, read by paper; values are filled there"
+  [ -d "${UNATTENDED_STATE}" ] || sudo install -d -o paper -g paper -m 0700 "${UNATTENDED_STATE}"
+  for name in ${UNATTENDED_UNITS}; do
+    cmp -s "${release}/deploy/systemd/${name}" "${UNATTENDED_UNIT_DIR}/${name}" && continue
+    sudo install -m 0644 "${release}/deploy/systemd/${name}" "${UNATTENDED_UNIT_DIR}/${name}"
+    changed=1
+  done
+  [ "${changed}" = 0 ] || sudo systemctl daemon-reload
+  # No [Install] section in the units: the wants link is added here, on the first install only
+  # (systemctl(1)), and a marker under /opt records it once both steps succeeded. On an update a
+  # timer the owner stopped with `systemctl disable --now` stays disabled and stopped.
+  for timer in ${UNATTENDED_TIMERS}; do
+    if [ ! -e "${UNATTENDED_ROOT}/timers-enabled/${timer}" ]; then
+      [ -L "${UNATTENDED_UNIT_DIR}/timers.target.wants/${timer}" ] \
+        || sudo systemctl add-wants timers.target "${timer}"
+      sudo systemctl start "${timer}"
+      sudo install -D -m 0644 /dev/null "${UNATTENDED_ROOT}/timers-enabled/${timer}"
+      ok "${timer}: first install, enabled and started (stop: sudo systemctl disable --now ${timer})"
+    else
+      link=disabled
+      [ -L "${UNATTENDED_UNIT_DIR}/timers.target.wants/${timer}" ] && link=enabled
+      state="$(systemctl is-active "${timer}" 2>/dev/null || true)"
+      ok "${timer}: update, left as it is (${link}, ${state:-unknown})"
+    fi
+  done
+  cmd_unattended_check
+}
+
+cmd_unattended_check() {
+  # Read only: unit files, timers, the services' last results and the hold file's presence. It
+  # reads no credential and no settings value.
+  local name timer mode service hold
+  if [ -L "${UNATTENDED_ROOT}/current" ]; then
+    echo "release: $(basename "$(readlink "${UNATTENDED_ROOT}/current")")"
+  else
+    echo "release: not installed"
+  fi
+  for name in ${UNATTENDED_UNITS}; do
+    if [ ! -e "${UNATTENDED_UNIT_DIR}/${name}" ]; then
+      echo "${name}: not installed"
+    elif cmp -s "${UNATTENDED_ROOT}/current/deploy/systemd/${name}" "${UNATTENDED_UNIT_DIR}/${name}"; then
+      echo "${name}: installed"
+    else
+      echo "${name}: installed, differs from the release"
+    fi
+  done
+  for timer in ${UNATTENDED_TIMERS}; do
+    if [ -L "${UNATTENDED_UNIT_DIR}/timers.target.wants/${timer}" ]; then
+      echo "${timer}: enabled, $(systemctl is-active "${timer}" 2>/dev/null || true), next $(systemctl show -p NextElapseUSecRealtime --value "${timer}" 2>/dev/null || true)"
+    else
+      echo "${timer}: not enabled"
+    fi
+  done
+  for mode in restart order; do
+    service="meridian-alpaca-paper@${mode}.service"
+    echo "${service}: last result $(systemctl show -p Result --value "${service}" 2>/dev/null || true), exit status $(systemctl show -p ExecMainStatus --value "${service}" 2>/dev/null || true), at $(systemctl show -p ExecMainExitTimestamp --value "${service}" 2>/dev/null || true)"
+  done
+  if ! sudo -n test -d "${UNATTENDED_STATE}" 2>/dev/null; then
+    hold="unknown (no state directory, or no sudo)"
+  elif sudo -n test -e "${UNATTENDED_STATE}/hold"; then
+    hold="PRESENT: unattended orders refuse until the owner removes it"
+  else
+    hold="none"
+  fi
+  echo "hold file: ${hold}"
+  if sudo -n test -e "${UNATTENDED_STATE}/run-marker" 2>/dev/null; then
+    echo "run marker: PRESENT (a run is active, or one crashed or was killed; order refuses)"
+  fi
 }
 
 cmd_uv() {
@@ -405,6 +566,7 @@ cmd_claude() {
   if version_ge "$(claude_version)" "${CLAUDE_VERSION}"; then
     ok "Claude Code $(claude_version) is already installed"
     claude_settings
+    cmd_omc
     check_claude
     return
   fi
@@ -433,6 +595,7 @@ cmd_claude() {
   echo "${CLAUDE_SHA256}  ${HOME}/.local/share/claude/versions/${CLAUDE_VERSION}" | sha256sum -c -
   [ "$(claude_version)" = "${CLAUDE_VERSION}" ] || fail "claude --version is not ${CLAUDE_VERSION}"
   claude_settings
+  cmd_omc
   check_claude
 }
 
@@ -461,7 +624,75 @@ check_claude() {
   ' "${HOME}/.claude/settings.json" >/dev/null \
     || fail "~/.claude/settings.json is not what deploy/wsl/setup.sh claude writes"
   check_claude_managed
+  if [ -f "${HOME}/.claude/.meridian-omc-install.json" ]; then check_omc; fi
   ok "Claude Code $(claude_version): ${CLAUDE_MODEL} at high effort, no claude.ai connectors, sync or MCP server; thinking shown, fullscreen, compaction at its defaults"
+}
+
+cmd_omc() {
+  npm_user_prefix
+  npm_pinned "oh-my-claude-sisyphus@${OMC_VERSION}" "${OMC_INTEGRITY}"
+  npm install -g --ignore-scripts --no-audit --no-fund "oh-my-claude-sisyphus@${OMC_VERSION}"
+  local adapter="${HOME}/.local/bin/meridian-omc" tmp
+  install -m 0755 "$(dirname "${BASH_SOURCE[0]}")/meridian-omc.py" "${adapter}"
+  install -d "${HOME}/.cache/meridian"
+  tmp="$(mktemp -d "${HOME}/.cache/meridian/omc-setup.XXXXXX")"
+  python3 "${adapter}" stage "${HOME}/.claude" "${HOME}/.config/claude-omc/config.jsonc" "${tmp}/claude"
+  # Prevent setup's unified MCP registry from reading either runtime's user config.
+  # No account/auth file is copied into this scratch registry or consulted by setup.
+  printf '{}\n' > "${tmp}/empty.json"
+  (
+    cd "${tmp}"
+    CLAUDE_CONFIG_DIR="${tmp}/claude" XDG_CONFIG_HOME="${tmp}/config" \
+      OMC_HOME="${tmp}/omc" OMC_STATE_DIR="${tmp}/state" \
+      CLAUDE_MCP_CONFIG_PATH="${tmp}/empty.json" OMC_MCP_REGISTRY_PATH="${tmp}/empty.json" \
+      CODEX_HOME="${tmp}/codex" "${HOME}/.local/bin/omc" setup --no-plugin --force --quiet </dev/null
+  )
+  python3 "${adapter}" install "${HOME}/.claude" "${HOME}/.config/claude-omc/config.jsonc" "${adapter}" "${tmp}/claude"
+  rm -rf "${tmp}"
+  omc_ignore_state "$(dirname "${BASH_SOURCE[0]}")/../.."
+  check_omc
+}
+
+omc_ignore_state() {
+  local common
+  common="$(git -C "$1" rev-parse --path-format=absolute --git-common-dir)"
+  install -d "${common}/info"
+  touch "${common}/info/exclude"
+  grep -qxF '/.omc/' "${common}/info/exclude" \
+    || printf '/.omc/\n' >> "${common}/info/exclude"
+}
+
+cmd_omc_remove() {
+  python3 "$(dirname "${BASH_SOURCE[0]}")/meridian-omc.py" remove \
+    "${HOME}/.claude" "${HOME}/.config/claude-omc/config.jsonc" "${HOME}/.local/bin/meridian-omc"
+  npm uninstall -g --ignore-scripts --no-audit --no-fund oh-my-claude-sisyphus
+  omc_unignore_state "$(dirname "${BASH_SOURCE[0]}")/../.."
+  check_claude
+  check_claude_hud
+  ok "OMC absent; Orca hooks, claude-hud and other Claude settings retained"
+}
+
+omc_unignore_state() {
+  local common
+  common="$(git -C "$1" rev-parse --path-format=absolute --git-common-dir)"
+  python3 - "${common}/info/exclude" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+if path.exists():
+    path.write_text(''.join(line for line in path.read_text().splitlines(keepends=True)
+                            if line.rstrip('\r\n') != '/.omc/'))
+PY
+}
+
+check_omc() {
+  [ -f "${HOME}/.claude/.meridian-omc-install.json" ] \
+    || fail "OMC absent (run: deploy/wsl/setup.sh omc)"
+  python3 "${HOME}/.local/bin/meridian-omc" check \
+    "${HOME}/.claude" "${HOME}/.config/claude-omc/config.jsonc" "${HOME}/.local/bin/meridian-omc" "${1:---before-orca}" \
+    || fail "OMC lifecycle settings or coexisting hooks differ from ADR 0019 (run: deploy/wsl/setup.sh omc)"
+  check_claude_managed
+  ok "OMC ${OMC_VERSION}: standalone, HUD and MCP off, explicit workflows, boundary stops guarded"
 }
 
 codex_version() {
@@ -477,40 +708,121 @@ cmd_codex() {
     npm install -g --strict-allow-scripts "@openai/codex@${CODEX_VERSION}"
   fi
   codex_config
-  check_codex
+  cmd_omx
+  codex_ponytail
+  codex_serena
+  # Orca adds its hooks when it prepares Codex, after this step on a fresh distro (`agents`).
+  check_codex install
 }
 
-# codex_setting_off FILE NAME TABLE: `NAME = false` in TABLE (empty means the root).
-# Preserve other tables, parse before replacing, and refuse a missing named table.
-codex_setting_off() {
-  python3 -I - "$1" "$2" "$3" <<'PY' || fail "cannot set $2 = false in table '$3' of $1"
+# codex_setting FILE NAME TABLE VALUE: `NAME = VALUE` (VALUE in TOML) in TABLE, a dotted name
+# (empty means the root; a missing table is added at the end, or into its parent when that holds
+# it inline). An old value is replaced whole, a multi-line one included. Other tables, Orca's
+# [hooks.state.*] and [projects.*] among them, are kept, the result is parsed before it replaces
+# the file, and a value already set changes no byte.
+codex_setting() {
+  python3 -I - "$@" <<'PY' || fail "cannot set $2 = $4 in table '$3' of $1"
+import json
 import os
 import re
 import sys
 import tomllib
 
-path, name, table = sys.argv[1:]
+path, name, table, value = sys.argv[1:]
+parts = table.split(".") if table else []
+if not all(re.fullmatch(r"[A-Za-z0-9_-]+", part) for part in [*parts, name]):
+    sys.exit(f"{table}.{name} is not a dotted name of bare keys")
+want = tomllib.loads(f"v = {value}")["v"]
+
+
+def current(cfg):
+    for part in parts:
+        cfg = cfg.get(part, {})
+        if not isinstance(cfg, dict):
+            return None
+    got = cfg.get(name)
+    return (type(got), got)
+
+
+def scan(lines):
+    # Table headers by line, and statements as (table, first line, line after the value, key,
+    # value): a value may span lines (a multi-line array or string), and a line inside one is
+    # never read as a header.
+    headers, found, under, i = {}, [], "", 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if not stripped or stripped.startswith("#"):
+            i += 1
+            continue
+        if stripped.startswith("["):
+            m = re.fullmatch(r"\[\s*([^\[\]\"']+?)\s*\]\s*(#.*)?", stripped)
+            under = re.sub(r"\s*\.\s*", ".", m[1]) if m else None
+            headers[i] = under
+            i += 1
+            continue
+        for j in range(i + 1, len(lines) + 1):
+            try:
+                parsed = tomllib.loads("".join(lines[i:j]))
+            except tomllib.TOMLDecodeError:
+                continue
+            break
+        else:
+            sys.exit(f"{path}: line {i + 1} does not parse")
+        ((key, val),) = parsed.items()
+        found.append((under, i, j, key, val))
+        i = j
+    return headers, found
+
+
+def dump(v):
+    # Inline TOML for the kinds of value a Codex setting holds.
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, str)):
+        return json.dumps(v)
+    if isinstance(v, list):
+        return "[" + ", ".join(dump(x) for x in v) + "]"
+    if isinstance(v, dict):
+        pairs = [
+            f"{k if re.fullmatch(r'[A-Za-z0-9_-]+', k) else json.dumps(k)} = {dump(x)}"
+            for k, x in v.items()
+        ]
+        return "{ " + ", ".join(pairs) + " }" if pairs else "{}"
+    sys.exit(f"{path}: cannot write {v!r} inline")
+
+
 with open(path, encoding="utf-8") as f:
     text = f.read()
-cfg = tomllib.loads(text)
-if (cfg.get(table, {}) if table else cfg).get(name) is False:
+if current(tomllib.loads(text)) == (type(want), want):
     sys.exit(0)
 lines = text.splitlines(keepends=True)
-header = next(
-    (i for i, line in enumerate(lines) if re.fullmatch(rf"\s*\[\s*{re.escape(table)}\s*\]\s*(#.*)?\n?", line)),
-    None,
-) if table else -1
-if header is None:
-    sys.exit(f"{path} has no [{table}] table")
-end = next((i for i in range(header + 1, len(lines)) if re.match(r"\s*\[", lines[i])), len(lines))
-key = re.compile(rf"\s*(?:{re.escape(name)}|\"{re.escape(name)}\"|'{re.escape(name)}')\s*=")
-hits = [i for i in range(header + 1, end) if key.match(lines[i])]
-for i in reversed(hits):
-    del lines[i]
-lines.insert(hits[0] if hits else header + 1, f"{name} = false\n")
+headers, found = scan(lines)
+line = f"{name} = {value}\n"
+header = -1 if not table else next((i for i, t in headers.items() if t == table), None)
+# The table written in its parent, inline (`env = { ... }`) or as dotted keys (`env.X = ...`).
+inline = [
+    s for s in found if parts and s[0] == ".".join(parts[:-1]) and s[3] == parts[-1] and isinstance(s[4], dict)
+]
+if header is None and inline:
+    merged = {k: v for s in inline for k, v in s[4].items()} | {name: want}
+    for _, start, stop, _, _ in reversed(inline[1:]):
+        del lines[start:stop]
+    lines[inline[0][1] : inline[0][2]] = [f"{parts[-1]} = {dump(merged)}\n"]
+elif header is None:
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    lines += ["\n", f"[{table}]\n", line]
+else:
+    hits = [(start, stop) for under, start, stop, key, _ in found if under == table and key == name]
+    for start, stop in reversed(hits):
+        del lines[start:stop]
+    lines.insert(hits[0][0] if hits else header + 1, line)
 new = "".join(lines)
-cfg = tomllib.loads(new)
-if (cfg.get(table, {}) if table else cfg).get(name) is not False:
+try:
+    done = current(tomllib.loads(new)) == (type(want), want)
+except tomllib.TOMLDecodeError as error:
+    sys.exit(f"{path}: {table}.{name} is written in a form this script does not edit ({error})")
+if not done:
     sys.exit(f"{path}: {name} is set outside table '{table}'")
 with open(f"{path}.new", "w", encoding="utf-8") as f:
     f.write(new)
@@ -520,18 +832,26 @@ PY
 }
 
 codex_config() {
-  # Written once; Orca later adds its own [hooks.state.*] and [projects.*] tables to this file.
-  # The [features] switches are re-applied on every run. /etc/codex/requirements.toml pins the
-  # same four off in every config layer, a project's .codex/config.toml included.
+  # Written once; Orca later adds its own [hooks.state.*] and [projects.*] tables to this file,
+  # and oh-my-codex its instructions, hooks and trust entries. The settings below are re-applied
+  # on every run. /etc/codex/requirements.toml pins apps off and names the MCP servers allowed.
   local file="${HOME}/.codex/config.toml" feature
   if [ ! -e "${file}" ]; then
     codex_config_file
   fi
   # The startup menu is independent of --no-daemon; tasks typed later do not skip it.
-  codex_setting_off "${file}" check_for_update_on_startup ""
-  for feature in apps plugins skill_mcp_dependency_install memories; do
-    codex_setting_off "${file}" "${feature}" features
+  codex_setting "${file}" check_for_update_on_startup "" false
+  codex_setting "${file}" model_reasoning_effort "" '"high"'
+  for feature in apps skill_mcp_dependency_install memories; do
+    codex_setting "${file}" "${feature}" features false
   done
+  codex_setting "${file}" plugins features true
+  codex_setting "${file}" url mcp_servers.openaiDeveloperDocs "\"${CODEX_DOCS_MCP}\""
+  codex_setting "${file}" command mcp_servers.serena '"serena"'
+  codex_setting "${file}" args mcp_servers.serena "${SERENA_MCP_ARGS}"
+  codex_setting "${file}" startup_timeout_sec mcp_servers.serena 15
+  # serena reports each start to its maker's server unless this is set (serena/agent.py).
+  codex_setting "${file}" SERENA_USAGE_REPORTING mcp_servers.serena.env '"false"'
 }
 
 codex_config_file() {
@@ -548,11 +868,10 @@ check_for_update_on_startup = false
 
 [features]
 # ChatGPT apps (account connectors) stay off, as claude.ai connectors do for Claude Code, so no
-# account-linked tool (a broker connector among them) reaches an agent here. Plugins, and the MCP
-# servers a skill can ask for, stay off until an evidence record adds one (plan 8.6). So does
-# Codex's own memory: the memory layer is chosen by evidence record too (plan 8.7).
+# account-linked tool (a broker connector among them) reaches an agent here. Plugins are on for
+# the one plugin of ADR 0018; the MCP servers a skill can ask for and Codex's own memory stay off.
 apps = false
-plugins = false
+plugins = true
 skill_mcp_dependency_install = false
 memories = false
 
@@ -568,61 +887,363 @@ TOML
   chmod 0600 "${HOME}/.codex/config.toml"
 }
 
+omx_version() { "${HOME}/.local/bin/omx" --version 2>/dev/null </dev/null | sed -n 's/^oh-my-codex v//p' | head -n 1; }
+
+# oh-my-codex (ADR 0018): the pinned package without its install script (it fetches a native
+# helper this setup does not use), set up in user scope with no MCP server and no team mode.
+cmd_omx() {
+  local tmp exclude
+  if [ "$(omx_version)" != "${OMX_VERSION}" ]; then
+    npm_pinned "oh-my-codex@${OMX_VERSION}" "${OMX_INTEGRITY}"
+    npm install -g --ignore-scripts --no-audit --no-fund "oh-my-codex@${OMX_VERSION}"
+  fi
+  # Its setup writes .omx/setup-scope.json in the folder it runs in.
+  tmp="$(mktemp -d)"
+  (cd "${tmp}" && OMX_AUTO_UPDATE=0 OMX_NATIVE_AUTO_FETCH=0 "${HOME}/.local/bin/omx" setup \
+    --scope user --install-mode legacy --mcp none --team-mode disabled </dev/null)
+  rm -rf "${tmp}"
+  omx_config
+  # Its setup writes "medium" where the key is missing.
+  codex_setting "${HOME}/.codex/config.toml" model_reasoning_effort "" '"high"'
+  # It keeps a .omx/ folder in each project; the line goes to the repository's shared exclude.
+  exclude="$(git -C "${REPO_DIR}" rev-parse --path-format=absolute --git-common-dir)/info/exclude" \
+    || fail "no repository at ${REPO_DIR} for oh-my-codex's ignore line (run: deploy/wsl/setup.sh repo)"
+  install -d "$(dirname "${exclude}")"
+  grep -qxF '.omx/' "${exclude}" 2>/dev/null || printf '%s\n' '.omx/' >> "${exclude}"
+}
+
+# What its setup flag does not keep at run time: team mode off, read from the user file when the
+# project has no setup file; and prompt triage off, because the lead names the workflow.
+omx_config() {
+  local file="${HOME}/.codex/.omx-config.json" tmp
+  tmp="$(mktemp)"
+  { [ -s "${file}" ] && cat "${file}" || echo '{}'; } \
+    | jq '.teamMode = "disabled" | .promptRouting.triage.enabled = false' > "${tmp}"
+  install -m 0600 "${tmp}" "${file}"
+  rm -f "${tmp}"
+}
+
+# ponytail (ADR 0018) as a Codex plugin, from a local marketplace holding the files of its release
+# commit (its own marketplace installs from `main`). Codex runs its hooks once the owner trusts
+# them in /hooks.
+codex_ponytail() {
+  local src="${HOME}/.local/share/meridian/ponytail-src" market="${HOME}/.local/share/meridian/codex-market"
+  local codex="${HOME}/.local/bin/codex" tmp changed=0
+  if [ "$(git -C "${src}" rev-parse HEAD 2>/dev/null)" != "${PONYTAIL_COMMIT}" ]; then
+    rm -rf "${src}"
+    git init -q "${src}"
+    git -C "${src}" fetch -q --depth 1 https://github.com/DietrichGebert/ponytail.git "${PONYTAIL_COMMIT}"
+    git -C "${src}" checkout -q --detach FETCH_HEAD
+  fi
+  [ "$(git -C "${src}" rev-parse HEAD)" = "${PONYTAIL_COMMIT}" ] && [ -z "$(git -C "${src}" status --porcelain)" ] \
+    || fail "the ponytail checkout is not ${PONYTAIL_COMMIT} as fetched"
+  tmp="$(mktemp -d)"
+  tar -C "${src}" --exclude=.git -cf - . | tar -C "${tmp}" -xf -
+  if ! diff -r "${tmp}" "${market}/plugins/ponytail" >/dev/null 2>&1; then
+    rm -rf "${market}/plugins/ponytail"
+    install -d "${market}/plugins" "${market}/.agents/plugins"
+    mv "${tmp}" "${market}/plugins/ponytail"
+    changed=1
+  fi
+  rm -rf "${tmp}"
+  cat > "${market}/.agents/plugins/marketplace.json" <<JSON
+{
+  "name": "${PONYTAIL_MARKET}",
+  "interface": { "displayName": "ponytail ${PONYTAIL_COMMIT:0:7} (deploy/wsl/setup.sh)" },
+  "plugins": [
+    { "name": "ponytail", "source": { "source": "local", "path": "./plugins/ponytail" }, "category": "Productivity" }
+  ]
+}
+JSON
+  grep -qxF "[marketplaces.${PONYTAIL_MARKET}]" "${HOME}/.codex/config.toml" \
+    || "${codex}" plugin marketplace add "${market}" </dev/null
+  if [ "${changed}" = 1 ] || ! grep -qxF "[plugins.\"ponytail@${PONYTAIL_MARKET}\"]" "${HOME}/.codex/config.toml"; then
+    "${codex}" plugin add "ponytail@${PONYTAIL_MARKET}" </dev/null
+  fi
+}
+
+serena_version() { "${HOME}/.local/bin/serena" --version 2>/dev/null </dev/null | sed -n 's/^Serena //p' | tail -n 1; }
+serena_python() { printf '%s\n' "$("${HOME}/.local/bin/uv" tool dir)/serena-agent/bin/python"; }
+
+# serena (ADR 0018), Codex's code navigation: the pinned release through uv, its global config,
+# and the repository's shared exclude for the .serena/ folder it keeps in each project.
+codex_serena() {
+  local exclude
+  if [ "$(serena_version)" != "${SERENA_VERSION}" ]; then
+    pypi_pinned serena-agent "${SERENA_VERSION}" "${SERENA_FILE}" "${SERENA_SHA256}"
+    "${HOME}/.local/bin/uv" tool install "serena-agent==${SERENA_VERSION}"
+  fi
+  # serena adds its defaults, its project list and a secret to the file when it starts, so the
+  # file is written only when a setting below has changed.
+  serena_config_check "$(serena_python)" >/dev/null 2>&1 || serena_config
+  exclude="$(git -C "${REPO_DIR}" rev-parse --path-format=absolute --git-common-dir)/info/exclude" \
+    || fail "no repository at ${REPO_DIR} for serena's ignore line (run: deploy/wsl/setup.sh repo)"
+  grep -qxF '.serena/' "${exclude}" 2>/dev/null || printf '%s\n' '.serena/' >> "${exclude}"
+}
+
+serena_config() {
+  install -d -m 0700 "${HOME}/.serena"
+  cat > "${HOME}/.serena/serena_config.yml.new" <<YAML
+# Written by deploy/wsl/setup.sh codex (ADR 0018); serena adds its defaults when it starts.
+language_backend: LSP
+# One MCP tool per operation, so the list below is what Codex sees (the REPL interface runs Python).
+agent_interface: tools
+gui_log_window: false
+web_dashboard: false
+web_dashboard_open_on_launch: false
+fixed_tools: [${SERENA_TOOLS}]
+# The project's own pyright (relative to the project root), not one that uvx downloads.
+ls_specific_settings:
+  python:
+    ls_path: .venv/bin/pyright-langserver
+projects: []
+YAML
+  chmod 0600 "${HOME}/.serena/serena_config.yml.new"
+  mv "${HOME}/.serena/serena_config.yml.new" "${HOME}/.serena/serena_config.yml"
+}
+
+# serena_config_check PYTHON: the settings serena_config writes, read with PyYAML in serena's
+# own environment (it depends on it).
+serena_config_check() {
+  "$1" -I - "${HOME}/.serena/serena_config.yml" "${SERENA_TOOLS}" <<'PY'
+import sys
+
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    cfg = yaml.safe_load(f) or {}
+want = dict(
+    language_backend="LSP",
+    agent_interface="tools",
+    gui_log_window=False,
+    web_dashboard=False,
+    web_dashboard_open_on_launch=False,
+    fixed_tools=sys.argv[2].split(", "),
+    ls_specific_settings={"python": {"ls_path": ".venv/bin/pyright-langserver"}},
+)
+problems = [key for key, value in want.items() if cfg.get(key) != value]
+problems += [key for key in ("excluded_tools", "included_optional_tools") if cfg.get(key)]
+sys.exit(f"serena_config.yml: {', '.join(problems)}" if problems else 0)
+PY
+}
+
+# check_codex [install]: the state setup writes. With `install`, Orca's hooks may be missing
+# still (agents-check, without it, requires them).
 check_codex() {
   version_ge "$(codex_version)" "${CODEX_VERSION}" \
     || fail "Codex CLI is older than ${CODEX_VERSION} or missing (run: deploy/wsl/setup.sh codex)"
-  python3 -I - "${HOME}/.codex/config.toml" "${CODEX_MODEL}" <<'PY' || fail "~/.codex/config.toml is not what deploy/wsl/setup.sh codex writes"
+  python3 -I - "${HOME}/.codex/config.toml" "${CODEX_MODEL}" "${HOME}/.codex/hooks.json" \
+    "${HOME}/.codex/.omx-config.json" "${CODEX_DOCS_MCP}" "ponytail@${PONYTAIL_MARKET}" "${SERENA_MCP_ARGS}" "${1:-full}" <<'PY' \
+    || fail "~/.codex is not what deploy/wsl/setup.sh codex writes"
+import glob
+import hashlib
+import json
+import os
+import re
 import sys
 import tomllib
 
-with open(sys.argv[1], "rb") as f:
+config, model, hooks_file, omx_file, docs_url, plugin, serena_args, mode = sys.argv[1:]
+serena = dict(
+    command="serena",
+    args=tomllib.loads(f"v = {serena_args}")["v"],
+    startup_timeout_sec=15,
+    env={"SERENA_USAGE_REPORTING": "false"},
+)
+with open(config, "rb") as f:
     cfg = tomllib.load(f)
 features = cfg.get("features", {})
 profiles = cfg.get("profiles", {})
-off = ("apps", "plugins", "skill_mcp_dependency_install", "memories")
+servers = cfg.get("mcp_servers", {})
+plugins = {name for name, p in cfg.get("plugins", {}).items() if p.get("enabled", True) is not False}
+state = cfg.get("hooks", {}).get("state", {})
+
+
+# Codex's hook trust identity (codex-rs/hooks/src/engine/discovery.rs `hook_hash` and
+# config/src/fingerprint.rs at rust-v0.167.2 and rust-v0.169.0): SHA-256 of the sorted, compact
+# JSON of the normalized hook. A trust entry counts only when its hash is the current one, so a
+# hook whose command, matcher or timeout changed after approval is untrusted, as Codex sees it.
+MATCHER_EVENTS = {"PreToolUse", "PermissionRequest", "PostToolUse", "SessionStart", "SessionEnd",
+                  "SubagentStart", "SubagentStop", "PreCompact", "PostCompact"}
+CONTEXT_EVENTS = {"PreToolUse", "PostToolUse", "SessionStart", "UserPromptSubmit", "SubagentStart"}
+
+
+def event_label(event):
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower()
+
+
+def hook_hash(event, group, handler):
+    if handler.get("type", "command") != "command" or not str(handler.get("command", "")).strip():
+        return None
+    timeout = handler.get("timeout")
+    if event in ("SessionEnd", "Interrupt"):
+        timeout = min(max(1 if timeout is None else timeout, 1), 3)
+    else:
+        timeout = max(600 if timeout is None else timeout, 1)
+    normalized = dict(type="command", command=handler["command"], timeout=timeout, **{"async": bool(handler.get("async", False))})
+    if handler.get("statusMessage") is not None:
+        normalized["statusMessage"] = handler["statusMessage"]
+    limit = handler.get("additionalContextLimit")
+    if event in CONTEXT_EVENTS and limit is not None and limit != 2500:
+        normalized["additionalContextLimit"] = limit
+    identity = {"event_name": event_label(event), "hooks": [normalized]}
+    if event in MATCHER_EVENTS and group.get("matcher") is not None:
+        identity["matcher"] = group["matcher"]
+    text = json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return "sha256:" + hashlib.sha256(text.encode()).hexdigest()
+
+
+def plugin_content_hash(root):
+    # codex-rs/hooks/src/engine/plugin_fingerprint.rs at the same tags.
+    digest, pending = hashlib.sha256(b"codex-plugin-bundle-v1"), [root]
+    while pending:
+        path = pending.pop()
+        relative = os.path.relpath(path, root) if path != root else ""
+        base = os.path.basename(relative)
+        if base in ("__pycache__", ".venv") or base.endswith((".pyc", ".egg-info")):
+            continue
+        name = os.fsencode(relative)
+        digest.update(len(name).to_bytes(8, "little") + name)
+        if os.path.isdir(path) and not os.path.islink(path):
+            digest.update(b"directory")
+            pending.extend(sorted((os.path.join(path, e) for e in os.listdir(path)), key=lambda p: os.fsencode(os.path.basename(p)), reverse=True))
+        else:
+            with open(path, "rb") as f:
+                data = f.read()
+            digest.update(b"file" + len(data).to_bytes(8, "little") + data)
+    return "sha256:" + digest.hexdigest()
+
+
+def trusted(key, current):
+    entry = state.get(key, {})
+    return current is not None and entry.get("trusted_hash") == current and entry.get("enabled") is not False
+
+
+# Every hook entry in hooks.json is Orca's or oh-my-codex's, and each has its trust entry.
+count, untrusted = {"orca": 0, "omx": 0, "unknown": 0}, []
+try:
+    with open(hooks_file, encoding="utf-8") as f:
+        hooks = json.load(f).get("hooks", {})
+except (OSError, ValueError):
+    hooks = {}
+for event, groups in hooks.items():
+    label = re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower()
+    for g, group in enumerate(groups):
+        for h, handler in enumerate(group.get("hooks", [])):
+            command = handler.get("command", "")
+            owner = "orca" if "orca-agent-hook-form" in command else "omx" if "/oh-my-codex/" in command else "unknown"
+            count[owner] += 1
+            if not trusted(f"{hooks_file}:{label}:{g}:{h}", hook_hash(event, group, handler)):
+                untrusted.append(f"{event} {g}:{h}")
+try:
+    with open(omx_file, encoding="utf-8") as f:
+        omx = json.load(f)
+except (OSError, ValueError):
+    omx = {}
 problems = [
     name
     for name, bad in [
-        ("model", cfg.get("model") != sys.argv[2]),
+        ("model", cfg.get("model") != model),
         ("model_reasoning_effort", cfg.get("model_reasoning_effort") != "high"),
         ("approval_policy", cfg.get("approval_policy") != "never"),
         ("sandbox_mode", cfg.get("sandbox_mode") != "danger-full-access"),
         ("check_for_update_on_startup", cfg.get("check_for_update_on_startup") is not False),
-        *[(f"[features] {name}", features.get(name) is not False) for name in off],
+        *[(f"[features] {name}", features.get(name) is not False) for name in ("apps", "skill_mcp_dependency_install", "memories")],
+        ("[features] plugins", features.get("plugins") is not True),
         ("[features] connectors (the old name of apps)", "connectors" in features),
-        ("MCP servers configured", bool(cfg.get("mcp_servers"))),
+        (f"MCP servers {sorted(servers)}", set(servers) != {"openaiDeveloperDocs", "serena"}),
+        ("openaiDeveloperDocs", servers.get("openaiDeveloperDocs", {}) != {"url": docs_url}),
+        ("[mcp_servers.serena]", servers.get("serena", {}) != serena),
+        (f"plugins {sorted(plugins)}", plugins != {plugin}),
         (
-            "a profile sets features or MCP servers",
-            any("features" in p or "mcp_servers" in p for p in profiles.values()),
+            "a profile sets features, MCP servers or plugins",
+            any(key in p for p in profiles.values() for key in ("features", "mcp_servers", "plugins")),
         ),
         ("[analytics] enabled", cfg.get("analytics", {}).get("enabled") is not False),
         ("[feedback] enabled", cfg.get("feedback", {}).get("enabled") is not False),
         ("[otel] metrics_exporter", cfg.get("otel", {}).get("metrics_exporter") != "none"),
+        (
+            f"hooks.json entries {count}",
+            count not in ({"orca": 9, "omx": 8, "unknown": 0}, *([{"orca": 0, "omx": 8, "unknown": 0}] if mode == "install" else [])),
+        ),
+        (f"hooks without trust: {untrusted}", bool(untrusted)),
+        (".omx-config.json teamMode", omx.get("teamMode") != "disabled"),
+        (
+            ".omx-config.json prompt triage",
+            omx.get("promptRouting", {}).get("triage", {}).get("enabled") is not False,
+        ),
     ]
     if bad
 ]
-sys.exit(f"config.toml: {', '.join(problems)}" if problems else 0)
+if problems:
+    sys.exit(f"Codex config: {', '.join(problems)}")
+if count["orca"] == 0:
+    print("note: Orca's 9 Codex hooks are not there yet; Orca adds them, and agents-check requires them")
+# Ponytail's hooks: each trust entry (`<plugin>:<file>:<event>:<group>:<handler>`) must hold the
+# current hash of its declaration in the installed copy, and of that copy's files.
+market, name = plugin.split("@")[1], plugin.split("@")[0]
+roots = glob.glob(os.path.join(os.path.dirname(hooks_file), "plugins", "cache", market, name, "*", ""))
+root = roots[0].rstrip("/") if len(roots) == 1 else None
+content = plugin_content_hash(root) if root else None
+current_plugin = 0
+for key, entry in state.items():
+    if not key.startswith(f"{plugin}:") or root is None or entry.get("trusted_content_hash") != content:
+        continue
+    file, label, g, h = key[len(plugin) + 1 :].rsplit(":", 3)
+    event = "".join(part.capitalize() for part in label.split("_"))
+    try:
+        with open(os.path.join(root, file), encoding="utf-8") as f:
+            group = json.load(f)["hooks"][event][int(g)]
+        current_plugin += trusted(key, hook_hash(event, group, group["hooks"][int(h)]))
+    except (OSError, ValueError, KeyError, IndexError):
+        continue
+waiting = 3 - current_plugin
+if waiting > 0:
+    print(f"note: {waiting} of ponytail's 3 hooks wait for the owner's /hooks in codex; its skills work meanwhile")
 PY
   check_codex_requirements
-  ok "Codex CLI $(codex_version): ${CODEX_MODEL} at high effort, no ChatGPT apps, plugins, memories or MCP server"
+  [ "$(omx_version)" = "${OMX_VERSION}" ] || fail "oh-my-codex is not ${OMX_VERSION} (run: deploy/wsl/setup.sh codex)"
+  [ "$(serena_version)" = "${SERENA_VERSION}" ] || fail "serena is not ${SERENA_VERSION} (run: deploy/wsl/setup.sh codex)"
+  serena_config_check "$(serena_python)" || fail "~/.serena/serena_config.yml is not what deploy/wsl/setup.sh codex writes"
+  # omx doctor exits 0 whatever it finds; its summary line says what failed.
+  local tmp doctor
+  tmp="$(mktemp -d)"
+  doctor="$(cd "${tmp}" && OMX_AUTO_UPDATE=0 "${HOME}/.local/bin/omx" doctor </dev/null 2>&1)" || true
+  rm -rf "${tmp}"
+  grep -qE '^Results: [0-9]+ passed, [0-9]+ warnings, 0 failed$' <<<"${doctor}" \
+    || fail "omx doctor: $(grep -E '^ *\[XX\]|^Results:' <<<"${doctor}" | tr -s ' ' | tr '\n' ';')"
+  ok "Codex CLI $(codex_version): ${CODEX_MODEL} at high effort, no ChatGPT apps or memories; oh-my-codex ${OMX_VERSION} (omx doctor: 0 failed), the ponytail plugin, serena ${SERENA_VERSION} (navigation and diagnostics only) and OpenAI's docs server"
 }
 
-# /etc/codex/requirements.toml, written by deploy/wsl/meridian.user-data: an empty MCP allowlist
-# (no server starts from any config layer) and the account-linked features pinned off.
+# /etc/codex/requirements.toml: the text in deploy/wsl/meridian.user-data, byte for byte. It pins
+# ChatGPT apps off in every config layer and names the MCP servers Codex may start: a server
+# starts only when its name and identity (its command, or its URL) both match.
 check_codex_requirements() {
-  python3 -I - <<'PY' || fail "/etc/codex/requirements.toml does not switch every MCP server and the account features off"
-import sys
-import tomllib
+  cmp -s <(codex_requirements_text "${USER_DATA}") /etc/codex/requirements.toml \
+    || fail "/etc/codex/requirements.toml is not the text in deploy/wsl/meridian.user-data (run: deploy/wsl/setup.sh codex-requirements)"
+}
 
-try:
-    with open("/etc/codex/requirements.toml", "rb") as f:
-        req = tomllib.load(f)
-except (OSError, tomllib.TOMLDecodeError) as error:
-    sys.exit(str(error))
-features = req.get("features", {})
-off = ("apps", "plugins", "skill_mcp_dependency_install", "memories")
-sys.exit(0 if req.get("mcp_servers") == {} and all(features.get(name) is False for name in off) else 1)
-PY
+# codex_requirements_text USER_DATA: the content of the requirements file in the definition (a
+# YAML literal block: indentation removed, trailing blank lines dropped).
+codex_requirements_text() {
+  awk '
+    $0 == "  - path: /etc/codex/requirements.toml" { file = 1; next }
+    file && $0 == "    content: |" { body = 1; next }
+    body && /^$/ { blank++; next }
+    body && /^      / { for (; blank > 0; blank--) print ""; print substr($0, 7); found = 1; next }
+    body { exit }
+    END { exit !found }
+  ' "$1"
+}
+
+cmd_codex_requirements() {
+  local tmp
+  tmp="$(mktemp)"
+  codex_requirements_text "${USER_DATA}" > "${tmp}" || fail "no requirements text in ${USER_DATA}"
+  sudo install -D -m 0644 -o root -g root "${tmp}" /etc/codex/requirements.toml
+  rm -f "${tmp}"
+  check_codex_requirements
+  ok "/etc/codex/requirements.toml is the text in deploy/wsl/meridian.user-data"
 }
 
 cmd_codex_bridge() {
@@ -861,10 +1482,6 @@ cmd_dsh() {
     npm_pinned "@deepseek-harness-tui/dsh-tui@${DSH_TUI_VERSION}" "${DSH_TUI_INTEGRITY}"
     # The TUI lives in its own dsh profile; the global copy is the launcher on PATH (dsh-tui, dst).
     "${HOME}/.local/bin/dsh" plugin --profile dsh-tui add "@deepseek-harness-tui/dsh-tui@${DSH_TUI_VERSION}" </dev/null
-    npm_pinned "@deepseek-ai/dsh-hooks-claude-code@${DSH_VERSION}" "${DSH_HOOKS_INTEGRITY}"
-    npm_pinned "@deepseek-ai/dsh-hook-protocol@${DSH_VERSION}" "${DSH_HOOK_PROTOCOL_INTEGRITY}"
-    "${HOME}/.local/bin/dsh" plugin --profile dsh-tui add \
-      "@deepseek-ai/dsh-hooks-claude-code@${DSH_VERSION}" "@deepseek-ai/dsh-hook-protocol@${DSH_VERSION}" </dev/null
     npm install -g --strict-allow-scripts --legacy-peer-deps "@deepseek-harness-tui/dsh-tui@${DSH_TUI_VERSION}"
   fi
   dsh_stack
@@ -1000,11 +1617,15 @@ PY
   mv "${guide}.new" "${guide}"
 }
 
-# The worker stack of ADR 0016, for dsh only: skills, the LSP packages, ast-grep, agentsview, the
-# completion gate.
+# The worker stack of ADR 0016, for dsh only: skills, the LSP and hook packages in both the
+# interactive and the headless profile, ast-grep, agentsview, the completion gate.
 dsh_stack() {
   dsh_skills
-  dsh_lsp_packages
+  local profile
+  for profile in dsh-tui headless; do
+    dsh_lsp_packages "${profile}"
+    dsh_hook_packages "${profile}"
+  done
   dsh_release_binaries
   # The completion gate: a copy of the tracked script, and the hooks file the Meridian block's
   # second hook-bridge mount reads (Stop only; Orca's own hooks file is never touched).
@@ -1057,25 +1678,51 @@ dsh_skill_names() {
 }
 
 DSH_LSP_PACKAGES=(dsh-lsp dsh-lsp-stdio dsh-tool-lsp)
-# dsh_profile_package NAME: the version of @deepseek-ai/NAME the dsh-tui profile depends on.
+DSH_HOOK_PACKAGES=(dsh-hooks-claude-code dsh-hook-protocol)
+# dsh_profile_package PROFILE NAME: the version of @deepseek-ai/NAME that PROFILE depends on.
 dsh_profile_package() {
-  jq -r --arg name "@deepseek-ai/$1" '.dependencies[$name] // empty' \
-    "${HOME}/.dsh/profiles/dsh-tui/package.json" 2>/dev/null
+  jq -r --arg name "@deepseek-ai/$2" '.dependencies[$name] // empty' \
+    "${HOME}/.dsh/profiles/$1/package.json" 2>/dev/null
 }
 
-# The three LSP packages declare no dsh bundle: they go into the profile as plain dependencies,
-# as the hook packages do, and the Meridian block's rows mount them.
+# dsh_profile_init PROFILE: create a shipped profile from dsh's template on first use. dsh's
+# README ("Profiles") says the headless profile auto-initializes on first use from its shipped
+# template; a config dump is that use and makes no model call.
+dsh_profile_init() {
+  local profile="$1"
+  [ -e "${HOME}/.dsh/profiles/${profile}/package.json" ] && return 0
+  "${HOME}/.local/bin/dsh" --profile "${profile}" --dump-config </dev/null >/dev/null \
+    || fail "cannot initialize the ${profile} profile from dsh's template"
+}
+
+# The LSP packages and the hook bridge declare no dsh bundle: they go into the profile as plain
+# dependencies, as each other, and the Meridian block's rows mount them.
 dsh_lsp_packages() {
-  local name missing=0
+  local profile="$1" name missing=0
+  dsh_profile_init "${profile}"
   for name in "${DSH_LSP_PACKAGES[@]}"; do
-    version_ge "$(dsh_profile_package "${name}")" "${DSH_VERSION}" || missing=1
+    version_ge "$(dsh_profile_package "${profile}" "${name}")" "${DSH_VERSION}" || missing=1
   done
   [ "${missing}" = 1 ] || return 0
   npm_pinned "@deepseek-ai/dsh-lsp@${DSH_VERSION}" "${DSH_LSP_INTEGRITY}"
   npm_pinned "@deepseek-ai/dsh-lsp-stdio@${DSH_VERSION}" "${DSH_LSP_STDIO_INTEGRITY}"
   npm_pinned "@deepseek-ai/dsh-tool-lsp@${DSH_VERSION}" "${DSH_TOOL_LSP_INTEGRITY}"
-  "${HOME}/.local/bin/dsh" plugin --profile dsh-tui add "@deepseek-ai/dsh-lsp@${DSH_VERSION}" \
+  "${HOME}/.local/bin/dsh" plugin --profile "${profile}" add "@deepseek-ai/dsh-lsp@${DSH_VERSION}" \
     "@deepseek-ai/dsh-lsp-stdio@${DSH_VERSION}" "@deepseek-ai/dsh-tool-lsp@${DSH_VERSION}" </dev/null
+}
+
+# The hook bridge: Orca's status hooks and the completion gate each mount it.
+dsh_hook_packages() {
+  local profile="$1" name missing=0
+  dsh_profile_init "${profile}"
+  for name in "${DSH_HOOK_PACKAGES[@]}"; do
+    version_ge "$(dsh_profile_package "${profile}" "${name}")" "${DSH_VERSION}" || missing=1
+  done
+  [ "${missing}" = 1 ] || return 0
+  npm_pinned "@deepseek-ai/dsh-hooks-claude-code@${DSH_VERSION}" "${DSH_HOOKS_INTEGRITY}"
+  npm_pinned "@deepseek-ai/dsh-hook-protocol@${DSH_VERSION}" "${DSH_HOOK_PROTOCOL_INTEGRITY}"
+  "${HOME}/.local/bin/dsh" plugin --profile "${profile}" add \
+    "@deepseek-ai/dsh-hooks-claude-code@${DSH_VERSION}" "@deepseek-ai/dsh-hook-protocol@${DSH_VERSION}" </dev/null
 }
 
 ast_grep_version() { "${HOME}/.local/bin/ast-grep" --version 2>/dev/null </dev/null | sed -n 's/^ast-grep //p'; }
@@ -1130,9 +1777,11 @@ check_dsh() {
   jq -e '.completed == true and (.version | type) == "number" and .version >= 1' \
     "${HOME}/.dsh-tui/onboarding.json" >/dev/null \
     || fail "dsh-tui's first-run guide is not completed (run: deploy/wsl/setup.sh dsh)"
-  local config row
+  local config headless_config row
   config="$("${HOME}/.local/bin/dsh" --profile dsh-tui --dump-config </dev/null 2>/dev/null)" \
     || fail "dsh cannot build its configuration for the dsh-tui profile"
+  headless_config="$("${HOME}/.local/bin/dsh" --profile headless --dump-config </dev/null 2>/dev/null)" \
+    || fail "dsh cannot build its configuration for the headless profile"
   for row in session-log-deepseek plugin-package-inventory-deepseek; do
     dsh_row "${config}" "${row}" | grep -qx '    enabled: false' || fail "the ${row} upload is not off"
   done
@@ -1153,8 +1802,8 @@ check_dsh() {
   [ ! -e "${pick}" ] \
     || jq -e --arg model "${DSH_MODEL}" '.provider == "deepseek-official" and .model == $model' "${pick}" >/dev/null 2>&1 \
     || fail "${pick} picks another model than deepseek-official/${DSH_MODEL}"
-  check_dsh_stack "${config}"
-  ok "DeepSeek Harness $(dsh_version) with dsh-tui $(dsh_tui_version): ${DSH_MODEL}; uploads to DeepSeek off, no plugin tools"
+  check_dsh_stack "${config}" "${headless_config}"
+  ok "DeepSeek Harness $(dsh_version) with dsh-tui $(dsh_tui_version): ${DSH_MODEL}; the lsp tool and the completion gate in both dsh-tui and headless; uploads to DeepSeek off, no plugin tools"
 }
 
 # dsh_rows_named CONFIG PACKAGE: every row of `dsh --dump-config` that mounts PACKAGE.
@@ -1165,9 +1814,34 @@ dsh_rows_named() {
     END { if (hit) printf "%s", row }'
 }
 
-# check_dsh_stack CONFIG: the worker stack of ADR 0016 is what setup.sh pins and writes.
+# check_dsh_profile PROFILE CONFIG: the worker rows and packages that profile must carry.
+check_dsh_profile() {
+  local profile="$1" config="$2" row run="run: deploy/wsl/setup.sh dsh"
+  # No MCP server; the LSP rows and the gate are mounted, and none of them is switched off.
+  [ -z "$(dsh_rows_named "${config}" @deepseek-ai/dsh-mcp-client)" ] \
+    || fail "the ${profile} profile names an MCP server (ADR 0016 adds none)"
+  for row in meridian-lsp:dsh-lsp meridian-lsp-pyright:dsh-lsp-stdio meridian-tool-lsp:dsh-tool-lsp \
+    meridian-check-gate:dsh-hooks-claude-code; do
+    dsh_row "${config}" "${row%%:*}" | grep -qxF "  name: '@deepseek-ai/${row#*:}'" \
+      || fail "the ${row%%:*} row is not in the ${profile} profile's configuration (${run})"
+    ! dsh_row "${config}" "${row%%:*}" | grep -qx '  disabled: true' \
+      || fail "the ${row%%:*} row is switched off in the ${profile} profile"
+  done
+  # The dump folds a long argument over lines, so the row's lines are joined before matching.
+  dsh_row "${config}" meridian-lsp-pyright | tr -s ' \n' '  ' \
+    | grep -qF "exec python3 -I ${HOME}/.dsh/lsp/dsh-lsp-root.py \"\$top\" \"\$top/.venv/bin/pyright-langserver\" --stdio" \
+    && cmp -s "$(dirname "$(readlink -f "$0")")/dsh-lsp-root.py" "${HOME}/.dsh/lsp/dsh-lsp-root.py" \
+    || fail "the LSP provider does not run the worktree's own pyright-langserver at its root in the ${profile} profile (${run})"
+  for row in "${DSH_LSP_PACKAGES[@]}" "${DSH_HOOK_PACKAGES[@]}"; do
+    version_ge "$(dsh_profile_package "${profile}" "${row}")" "${DSH_VERSION}" \
+      || fail "@deepseek-ai/${row} is not in the ${profile} profile (${run})"
+  done
+}
+
+# check_dsh_stack CONFIG_TUI CONFIG_HEADLESS: the worker stack of ADR 0016 is what setup.sh
+# pins and writes, in both profiles.
 check_dsh_stack() {
-  local config="$1" entry repo commit path dir row patch="${HOME}/.dsh/cordis.patch.yml" run="run: deploy/wsl/setup.sh dsh"
+  local config_tui="$1" config_headless="$2" entry repo commit path dir config patch="${HOME}/.dsh/cordis.patch.yml" run="run: deploy/wsl/setup.sh dsh"
   python3 -I - "${patch}" <<'PY' || fail "~/.dsh/cordis.patch.yml has no single Meridian block above Orca's block (${run})"
 import sys
 
@@ -1176,32 +1850,15 @@ ours = [i for i, line in enumerate(lines) if line.startswith("# >>> meridian-man
 orca = [i for i, line in enumerate(lines) if line.startswith("# >>> orca-managed-dsh-hooks")]
 sys.exit(0 if len(ours) == 1 and (not orca or ours[0] < orca[0]) else 1)
 PY
-  # No MCP server; the LSP rows and the gate are mounted, and none of them is switched off.
-  [ -z "$(dsh_rows_named "${config}" @deepseek-ai/dsh-mcp-client)" ] \
-    || fail "dsh's configuration names an MCP server (ADR 0016 adds none)"
-  for row in meridian-lsp:dsh-lsp meridian-lsp-pyright:dsh-lsp-stdio meridian-tool-lsp:dsh-tool-lsp \
-    meridian-check-gate:dsh-hooks-claude-code; do
-    dsh_row "${config}" "${row%%:*}" | grep -qxF "  name: '@deepseek-ai/${row#*:}'" \
-      || fail "the ${row%%:*} row is not in dsh's configuration (${run})"
-    ! dsh_row "${config}" "${row%%:*}" | grep -qx '  disabled: true' \
-      || fail "the ${row%%:*} row is switched off in the dsh-tui profile"
-  done
-  # The dump folds a long argument over lines, so the row's lines are joined before matching.
-  dsh_row "${config}" meridian-lsp-pyright | tr -s ' \n' '  ' \
-    | grep -qF "exec python3 -I ${HOME}/.dsh/lsp/dsh-lsp-root.py \"\$top\" \"\$top/.venv/bin/pyright-langserver\" --stdio" \
-    && cmp -s "$(dirname "$(readlink -f "$0")")/dsh-lsp-root.py" "${HOME}/.dsh/lsp/dsh-lsp-root.py" \
-    || fail "the LSP provider does not run the worktree's own pyright-langserver at its root (${run})"
-  for row in "${DSH_LSP_PACKAGES[@]}"; do
-    version_ge "$(dsh_profile_package "${row}")" "${DSH_VERSION}" \
-      || fail "@deepseek-ai/${row} is not in the dsh-tui profile (${run})"
-  done
   # dsh 0.2.2-rc.2 and newer delete a Session's eligible worktrees when it is archived, unless
   # the worktree plugin retains them. dsh updates itself, so this fails until that is set.
-  if version_ge "$(dsh_version)" 0.2.2-rc.2 \
-    && [ -n "$(dsh_rows_named "${config}" @deepseek-ai/dsh-experimental-worktree)" ] \
-    && ! dsh_rows_named "${config}" @deepseek-ai/dsh-experimental-worktree | grep -qx '    retainOnArchive: true'; then
-    fail "dsh $(dsh_version) deletes worktrees on archive: set retainOnArchive: true on its worktree plugin (ADR 0016)"
-  fi
+  for config in "${config_tui}" "${config_headless}"; do
+    if version_ge "$(dsh_version)" 0.2.2-rc.2 \
+      && [ -n "$(dsh_rows_named "${config}" @deepseek-ai/dsh-experimental-worktree)" ] \
+      && ! dsh_rows_named "${config}" @deepseek-ai/dsh-experimental-worktree | grep -qx '    retainOnArchive: true'; then
+      fail "dsh $(dsh_version) deletes worktrees on archive: set retainOnArchive: true on its worktree plugin (ADR 0016)"
+    fi
+  done
   # Skills: exactly the pinned folders, each the same as its checkout at the pinned commit.
   [ "$(find "${HOME}/.dsh/skills" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort)" = "$(dsh_skill_names)" ] \
     || fail "~/.dsh/skills does not hold exactly the pinned skills (${run})"
@@ -1226,7 +1883,9 @@ PY
     && jq -e --arg command "${HOME}/.dsh/hooks/dsh-check-gate.sh" \
       '.hooks | keys == ["Stop"] and .Stop[0].hooks[0].command == $command' "${HOME}/.dsh/meridian-hooks.json" >/dev/null \
     || fail "the completion gate is not the repository's copy (${run})"
-  ok "dsh stack: $(dsh_skill_names | wc -l) skills, the lsp tool, ast-grep ${AST_GREP_VERSION}, agentsview ${AGENTSVIEW_VERSION}, completion gate"
+  check_dsh_profile dsh-tui "${config_tui}"
+  check_dsh_profile headless "${config_headless}"
+  ok "dsh stack: $(dsh_skill_names | wc -l) skills, the lsp tool, ast-grep ${AST_GREP_VERSION}, agentsview ${AGENTSVIEW_VERSION}, completion gate; dsh-tui and headless"
 }
 
 orca_cli() { "${ORCA_ROOT}/current/bin/orca-ide" "$@" </dev/null; }
@@ -1370,7 +2029,7 @@ cmd_gateway() {
 #   upkeep           this machine to the pins, and Claude Code to its newest release
 #   orca-automation  a weekly Orca automation: when drift says so, a worker moves the pins, has
 #                    another model family review the change, lands it through the lead's merge
-#                    gate under the shared landing lock, and applies it with upkeep
+#                    gate (which owns the shared landing lock), and applies it with upkeep
 drift_report() {
   # stdin: one "name installed pinned newest" line per runtime; "-" stands for "not installed"
   # or "not read". Returns 0 when a runtime is off its pin or upstream has a newer release.
@@ -1431,8 +2090,20 @@ EOF
     echo "the weekly landscape watch has an open report: issue #${issue}"
     due=0
   fi
+  if upkeep_held; then
+    echo "drift: on hold, so the weekly run does not start"
+    return 1
+  fi
   if [ "${due}" = 0 ]; then echo "drift: there is upkeep to do"; else echo "drift: nothing is due"; fi
   return "${due}"
+}
+
+# The hold: any session can pause upkeep and the weekly run while it has a hand-made state on
+# this machine that an installer would undo. Write the reason into the file; remove it to resume.
+UPKEEP_HOLD="${HOME}/.cache/meridian/upkeep.hold"
+upkeep_held() {
+  [ -s "${UPKEEP_HOLD}" ] || return 1
+  echo "upkeep is on hold (${UPKEEP_HOLD}): $(head -n 3 "${UPKEEP_HOLD}")"
 }
 
 cmd_upkeep() {
@@ -1441,6 +2112,9 @@ cmd_upkeep() {
   # and otherwise installs the pinned release with its checksum check. Orca's server goes last:
   # its service restarts for a few seconds, and the terminals stay, because they run in the
   # terminal daemon, whose scope outlives the service (cmd_orca; UPSTREAM.md, Weekly upkeep).
+  if upkeep_held; then
+    fail "upkeep installs nothing while it is on hold; remove the file when its reason is gone"
+  fi
   "${HOME}/.local/bin/claude" update </dev/null || echo "note: claude update did not complete"
   cmd_gh
   cmd_ocr
@@ -1463,8 +2137,8 @@ Do this, in order:
 3. Claude Code: read its changelog between the old pin and the new one. For each setting or feature that is new, off by default and useful to this setup, either add it to claude_settings and check_claude with a test, or name it in the pull request as considered and left out, with the reason.
 4. If Orca'"'"'s pin moves, the two copied skills move with it: after step 8 has installed the new server, refresh them the way .agents/skills/NOTICE.md describes, in a second small change landed the same way.
 5. If a model newer than the lead or worker model ids in deploy/wsl/setup.sh is listed on its vendor'"'"'s models page, say so in the pull request. Do not change a model id.
-6. Commit on this branch. Have another model family review it: `codex review --base origin/main`, run in this worktree. Fix each finding or answer it with a reason, and write the review, its findings and what you did into the review record for the pull request.
-7. Land it yourself through the merge gate. Take the shared lock for the whole landing (`flock ~/.cache/meridian/landing.lock`) and, inside it, from the main checkout `~/src/meridian` after `git pull --ff-only`, run the gate'"'"'s `trial`, `open` and `land` for this branch as the `lead` skill describes. If the gate refuses or a check fails, fix the cause and run `trial` again; never go around it.
+6. Commit on this branch and prepare the pull request title and body file. The gate in the next step obtains the other model family review and records it.
+7. Land it yourself through the merge gate from the main checkout `~/src/meridian` after `git pull --ff-only`. Register this branch with `register BRANCH --builder claude --task TASK_ID`, then run `auto BRANCH --builder claude TITLE BODY.md` as the `lead` skill describes. The gate runs the Codex review and holds `~/.cache/meridian/landing.lock` itself from `trial` through `land`; run the gate without an outer flock. Triage any `LEAD ACTION` candidates, record closures with `close`, fix confirmed defects, and retry `auto`; never go around it.
 8. After the merge, fast-forward the main checkout (`git -C ~/src/meridian pull --ff-only`) and confirm it holds the merged pins. From there run `~/src/meridian/deploy/wsl/setup.sh upkeep`: it installs the moved pins, Orca'"'"'s server last (its service restarts for a few seconds; the terminals stay). Then run `~/src/meridian/deploy/wsl/setup.sh agents-check` and `~/src/meridian/deploy/wsl/setup.sh drift`, and put the three outputs in a closing comment on the pull request; a runtime that drift still shows behind its pin is a failure to report, not a success.
 
 Never: merge or close any pull request but your own upkeep changes; start a lane (any `python -m meridian.` command); read or print a key or credential; edit anything under risk/ or a *.contract.json; add a plugin, skill or MCP server; change a model id; stop a process you did not start. Everything else a working session needs is allowed.'
@@ -1515,7 +2189,10 @@ case "${1:-}" in
   dsh) cmd_dsh ;;
   orca) cmd_orca ;;
   codex-bridge) cmd_codex_bridge ;;
+  codex-requirements) cmd_codex_requirements ;;
   claude-hud) cmd_claude_hud ;;
+  omc) cmd_omc ;;
+  omc-remove) cmd_omc_remove ;;
   drift) cmd_drift "${2:-}" ;;
   upkeep) cmd_upkeep ;;
   orca-automation) cmd_orca_automation ;;
@@ -1530,11 +2207,14 @@ case "${1:-}" in
     ;;
   signins) cmd_signins ;;
   orca-pair) cmd_orca_pair ;;
+  unattended) cmd_unattended ;;
+  unattended-check) cmd_unattended_check ;;
   agents-check)
     check_gh
     check_gitleaks
     check_ocr
     check_claude
+    check_omc --require-orca
     check_codex
     check_agy
     check_dsh
@@ -1545,5 +2225,5 @@ case "${1:-}" in
     ;;
   repo) cmd_repo ;;
   gateway) cmd_gateway ;;
-  *) sed -n '2,28p' "$0"; exit 2 ;;
+  *) sed -n '2,34p' "$0"; exit 2 ;;
 esac

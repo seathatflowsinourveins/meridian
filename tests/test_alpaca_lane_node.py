@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib
+from contextlib import suppress
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -626,3 +627,73 @@ def test_queued_price_cannot_cross_session_at_pacer(node_module, monkeypatch):
     asyncio.run(drive())
     assert getattr(rig.venue, "last_post", None) is None
     assert record.data["session"] == "regular" and record.data["feed"] == "iex"
+
+
+# The unattended lane skips, not fails, a run the venue's calendar says is closed; it needs the
+# node's `venue_closed`, set only after the calendar was read.
+CLOSED_DAYS = [
+    # A full holiday: the venue returns no row for the trade date.
+    ("2026-11-26T12:00:00-05:00", lambda day: []),
+    # An early close, after the close: the weekly window says after hours, the row says closed.
+    (
+        "2026-11-27T18:00:00-05:00",
+        lambda day: [
+            {
+                "date": day,
+                "open": "09:30",
+                "close": "13:00",
+                "session_open": "0400",
+                "session_close": "1700",
+            }
+        ],
+    ),
+]
+
+
+@pytest.mark.parametrize("when,rows", CLOSED_DAYS)
+def test_a_venue_closed_day_is_an_unattended_skip(node_module, monkeypatch, when, rows):
+    from meridian.alpaca_unattended import venue_closed_skip
+
+    node, record, rig, quotes, clients = session_build(node_module, monkeypatch, when)
+    get = rig.venue.get
+    rig.venue.get = lambda path, data=None, *a, **kw: (
+        rows((data or {})["start"]) if path == "/calendar" else get(path, data, *a, **kw)
+    )
+    handle = node.handle()
+
+    async def drive():
+        task = asyncio.create_task(run(node))
+        await wait_until(lambda: record.data["startup_reconciliation"]["trader_started"])
+        handle.stop()
+        await task
+
+    asyncio.run(drive())
+    record.data["checks_unchanged_after_run"] = True
+    assert record.data["venue_closed"] is True and record.data["session"] == "closed"
+    assert record.data["order"] is None
+    assert all(method == "get" for method, _ in rig.venue.calls)
+    assert venue_closed_skip(record)
+
+
+def test_a_calendar_read_that_fails_is_never_a_skip(node_module, monkeypatch):
+    from meridian.alpaca_unattended import venue_closed_skip
+
+    node, record, rig, quotes, clients = session_build(node_module, monkeypatch, SESSIONS[2][0])
+    get = rig.venue.get
+
+    attempted = []
+
+    def failing(path, *args, **kwargs):
+        if path == "/calendar":
+            attempted.append(path)
+            raise OSError("calendar unavailable")
+        return get(path, *args, **kwargs)
+
+    rig.venue.get = failing
+    with suppress(Exception):
+        asyncio.run(run(node))
+    record.data["checks_unchanged_after_run"] = True
+    assert attempted  # the read was attempted, and failed
+    assert not record.data["startup_reconciliation"]["trader_started"]
+    assert "venue_closed" not in record.data
+    assert not venue_closed_skip(record)
