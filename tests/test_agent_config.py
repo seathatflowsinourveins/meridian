@@ -5,10 +5,12 @@ start in: MCP servers, hooks, plugins and feature switches. Claude Code and Code
 machine-wide (``deploy/wsl/meridian.user-data``); Antigravity has no such setting. So the only
 agent files git may list are the skills in ``.agents/skills/`` and their links in
 ``.claude/skills/``. This catches an accidental commit. It cannot stop a branch from outside the
-owner's own sessions, which carries its own tests: AGENTS.md keeps such branches out of worktrees.
+owner's own sessions, which carries its own tests: docs/HANDBOOK.md (Rules) keeps such branches
+out of worktrees.
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -218,8 +220,11 @@ def test_the_wrapper_name_suits_both_orca_and_claude_hud():
     assert WRAPPER.endswith(name[1])
 
 
-def run_wrapper(home, payload, launcher=None, reporter=None):
+def run_wrapper(home, payload, launcher=None, reporter=None, limit="300"):
     # The wrapper under a fake home: no real Orca, claude-hud or settings file is touched.
+    # claude-hud's time limit is far above anything a loaded CI runner needs to start node, so
+    # no test here depends on speed; the limit itself has its own test with a launcher that
+    # never returns.
     if launcher is not None:
         path = home / ".claude" / "plugins" / "claude-hud" / "statusline.mjs"
         path.parent.mkdir(parents=True)
@@ -229,7 +234,7 @@ def run_wrapper(home, payload, launcher=None, reporter=None):
         path.parent.mkdir(parents=True)
         path.write_text(reporter)
         path.chmod(0o755)
-    environment = {"HOME": str(home), "PATH": "/usr/local/bin:/usr/bin:/bin"}
+    environment = {"HOME": str(home), "PATH": os.environ["PATH"], "MERIDIAN_HUD_TIMEOUT": limit}
     return subprocess.run(
         [str(DEPLOY / "meridian-claude-hud.sh")],
         input=payload,
@@ -237,7 +242,7 @@ def run_wrapper(home, payload, launcher=None, reporter=None):
         text=True,
         check=False,
         env=environment,
-        timeout=20,
+        timeout=600,
     )
 
 
@@ -269,17 +274,37 @@ def test_the_wrapper_falls_back_when_claude_hud_fails_or_is_silent(tmp_path, lau
 
 
 def test_the_wrapper_feeds_orcas_reporter_without_waiting_for_it(tmp_path):
-    received = tmp_path / "received"
-    reporter = f'#!/bin/sh\ncat > "{received}"\nsleep 5\necho noise\necho noise >&2\n'
-    started = time.monotonic()
+    # The reporter stays alive until this test releases it, so "the wrapper returned first"
+    # does not depend on how fast the runner is; then it is let go, leaving no process behind.
+    received, release, finished = (tmp_path / name for name in ("received", "release", "done"))
+    reporter = (
+        f'#!/bin/sh\ncat > "{received}"\ni=0\n'
+        f'while [ ! -e "{release}" ] && [ "$i" -lt 3000 ]; do sleep 0.1; i=$((i + 1)); done\n'
+        f'touch "{finished}"\necho noise\necho noise >&2\n'
+    )
     result = run_wrapper(tmp_path, PAYLOAD, reporter=reporter)
-    assert time.monotonic() - started < 4, "the wrapper waited for Orca's reporter"
     assert (result.returncode, result.stdout, result.stderr) == (0, PLAIN_LINE, "")
-    for _ in range(40):
-        if received.exists() and received.read_text() == PAYLOAD:
-            break
-        time.sleep(0.05)
+    assert not finished.exists(), "the wrapper waited for Orca's reporter"
+
+    def wait_for(path):
+        for _ in range(3000):
+            if path.exists():
+                return
+            time.sleep(0.1)
+        raise AssertionError(f"{path.name} never appeared")
+
+    wait_for(received)
+    release.touch()
+    wait_for(finished)
     assert received.read_text() == PAYLOAD
+
+
+def test_the_wrapper_gives_claude_hud_a_time_limit(tmp_path):
+    # A launcher that never returns: after the limit (one second here) the plain line is used.
+    result = run_wrapper(tmp_path, PAYLOAD, launcher="setInterval(() => {}, 1000)\n", limit="1")
+    assert (result.returncode, result.stdout, result.stderr) == (0, PLAIN_LINE, "")
+    wrapper = (DEPLOY / "meridian-claude-hud.sh").read_text()
+    assert 'timeout "${MERIDIAN_HUD_TIMEOUT:-5}" node' in wrapper
 
 
 def test_the_wrapper_survives_an_empty_payload(tmp_path):
@@ -301,14 +326,28 @@ def test_the_wrapper_is_executable_in_git():
 def test_claude_hud_config_is_written_once_with_the_account_labels_off(tmp_path):
     file = tmp_path / ".claude" / "plugins" / "claude-hud" / "config.json"
     run_config_writer("claude_hud_config", tmp_path)
-    display = json.loads(file.read_text())["display"]
-    assert display == {
-        "showTools": True,
-        "showAgents": True,
-        "showTodos": True,
-        "showAuth": False,
-        "showAuthUser": False,
-    }
+    config = json.loads(file.read_text())
+    display = config["display"]
+    # The two options that read the account block of ~/.claude.json, and the usage file paths.
+    assert display["showAuth"] is False and display["showAuthUser"] is False
+    assert not any(key.startswith("externalUsage") for key in display)
+    switched_on = {key for key, value in display.items() if value is True}
+    for key in (
+        "showTools",
+        "showSkills",
+        "showMcp",
+        "showAgents",
+        "showTodos",
+        "showEffortLevel",
+        "showAgentEffort",
+        "showSpeed",
+        "showPromptCache",
+        "showCacheHitRate",
+        "showSessionTokens",
+    ):
+        assert key in switched_on, key
+    assert display["sevenDayThreshold"] == 0 and display["contextValue"] == "both"
+    assert config["gitStatus"] == {"showAheadBehind": True, "showFileStats": True}
     file.write_text('{"display": {"showTools": false}}')
     run_config_writer("claude_hud_config", tmp_path)
     assert json.loads(file.read_text()) == {"display": {"showTools": False}}
@@ -489,3 +528,134 @@ def test_dsh_check_requires_completed_guide_at_current_revision(state):
         check=False,
     )
     assert (result.returncode == 0) == (state == {"completed": True, "version": 1})
+
+
+def setup_value(name):
+    pin = re.search(rf"^{name}=(\S+)$", (DEPLOY / "setup.sh").read_text(), re.M)
+    assert pin, f"setup.sh has no {name}"
+    return pin[1]
+
+
+def test_gitleaks_is_the_build_and_checksum_ci_uses():
+    ci = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    version, sha = setup_value("GITLEAKS_VERSION"), setup_value("GITLEAKS_SHA256")
+    assert f"/download/v{version}/gitleaks_{version}_linux_x64.tar.gz" in ci
+    assert f'echo "{sha}  gitleaks.tar.gz"' in ci
+
+
+def run_gitleaks_step(tmp_path, step, version="8.30.1"):
+    # cmd_gitleaks and check_gitleaks on a fake home with a fake curl that copies a local
+    # tarball holding a fake gitleaks; nothing is downloaded and the real home is untouched.
+    pack = tmp_path / "pack"
+    pack.mkdir(exist_ok=True)
+    fake = pack / "gitleaks"
+    fake.write_text(f'#!/bin/sh\n[ "$1" = version ] && echo {version}\n')
+    fake.chmod(0o755)
+    tarball = tmp_path / "gitleaks.tar.gz"
+    subprocess.run(["tar", "-czf", str(tarball), "-C", str(pack), "gitleaks"], check=True)
+    sha = subprocess.run(
+        ["sha256sum", str(tarball)], check=True, capture_output=True, text=True
+    ).stdout.split()[0]
+    home = tmp_path / "home"
+    script = (DEPLOY / "setup.sh").read_text()
+    one_liner = re.search(r"^gitleaks_version\(\) \{.*\}$", script, re.M)
+    assert one_liner, "setup.sh has no gitleaks_version"
+    functions = "\n".join(
+        [one_liner[0]]
+        + [f"{f}() {{\n{setup_function_body(f)}\n}}" for f in ("cmd_gitleaks", "check_gitleaks")]
+    )
+    program = (
+        'HOME=$1; PATH="$HOME/.local/bin:$PATH"; TARBALL=$2; CALLS=$3\n'
+        f"GITLEAKS_VERSION=8.30.1\nGITLEAKS_SHA256={sha}\nGITLEAKS_URL=https://example.invalid/g\n"
+        'fail() { echo "FAIL: $*" >&2; exit 1; }\nok() { echo "ok:   $*"; }\n'
+        'curl() { echo "$@" >> "$CALLS"; cp "$TARBALL" "$2"; }\n' + functions + f"\n{step}"
+    )
+    calls = tmp_path / "curl-calls"
+    result = subprocess.run(
+        ["bash", "-eu", "-o", "pipefail", "-c", program, "t", str(home), str(tarball), str(calls)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    count = len(calls.read_text().splitlines()) if calls.exists() else 0
+    return result, count
+
+
+def test_the_gitleaks_step_installs_once_and_its_check_passes(tmp_path):
+    first, downloads = run_gitleaks_step(tmp_path, "cmd_gitleaks")
+    assert first.returncode == 0, first.stderr
+    assert downloads == 1 and (tmp_path / "home/.local/bin/gitleaks").is_file()
+    assert "ok:   gitleaks 8.30.1 in ~/.local/bin" in first.stdout
+    again, downloads = run_gitleaks_step(tmp_path, "cmd_gitleaks")
+    assert again.returncode == 0 and downloads == 1  # already there: no second download
+
+
+def test_the_gitleaks_check_fails_when_missing_or_another_version(tmp_path):
+    missing, _ = run_gitleaks_step(tmp_path, "check_gitleaks")
+    assert missing.returncode == 1 and "is not 8.30.1" in missing.stderr
+    installed, _ = run_gitleaks_step(tmp_path, "cmd_gitleaks", version="8.29.0")
+    assert installed.returncode == 1 and "is not 8.30.1" in installed.stderr
+
+
+def run_ocr_step(tmp_path, step, version="1.13.9", provider=False):
+    # cmd_ocr and check_ocr on a fake home with a fake curl that copies a local fake binary;
+    # nothing is downloaded and the real home is untouched.
+    fake = tmp_path / "ocr-release"
+    fake.write_text(f'#!/bin/sh\necho "open-code-review v{version} (0e9060d) linux/amd64"\n')
+    sha = subprocess.run(
+        ["sha256sum", str(fake)], check=True, capture_output=True, text=True
+    ).stdout.split()[0]
+    home = tmp_path / "home"
+    if provider:
+        (home / ".opencodereview").mkdir(parents=True)
+        (home / ".opencodereview" / "config.json").write_text("{}")
+    script = (DEPLOY / "setup.sh").read_text()
+    one_liner = re.search(r"^ocr_version\(\) \{.*\}$", script, re.M)
+    assert one_liner, "setup.sh has no ocr_version"
+    functions = "\n".join(
+        [one_liner[0]]
+        + [f"{f}() {{\n{setup_function_body(f)}\n}}" for f in ("cmd_ocr", "check_ocr")]
+    )
+    program = (
+        'HOME=$1; PATH="$HOME/.local/bin:$PATH"; RELEASE=$2; CALLS=$3\n'
+        f"OCR_VERSION=1.13.9\nOCR_SHA256={sha}\nOCR_URL=https://example.invalid/ocr\n"
+        'fail() { echo "FAIL: $*" >&2; exit 1; }\nok() { echo "ok:   $*"; }\n'
+        'curl() { echo "$@" >> "$CALLS"; cp "$RELEASE" "$2"; }\n' + functions + f"\n{step}"
+    )
+    calls = tmp_path / "curl-calls"
+    result = subprocess.run(
+        ["bash", "-eu", "-o", "pipefail", "-c", program, "t", str(home), str(fake), str(calls)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    count = len(calls.read_text().splitlines()) if calls.exists() else 0
+    return result, count
+
+
+def test_the_ocr_step_installs_the_release_binary_once(tmp_path):
+    first, downloads = run_ocr_step(tmp_path, "cmd_ocr")
+    assert first.returncode == 0, first.stderr
+    assert downloads == 1 and (tmp_path / "home/.local/bin/ocr").is_file()
+    assert "ok:   open-code-review 1.13.9 in ~/.local/bin" in first.stdout
+    again, downloads = run_ocr_step(tmp_path, "cmd_ocr")
+    assert again.returncode == 0 and downloads == 1  # already there: no second download
+
+
+def test_the_ocr_check_fails_on_another_version_or_a_provider_of_its_own(tmp_path):
+    missing, _ = run_ocr_step(tmp_path, "check_ocr")
+    assert missing.returncode == 1 and "is not 1.13.9" in missing.stderr
+    other, _ = run_ocr_step(tmp_path, "cmd_ocr", version="1.13.8")
+    assert other.returncode == 1 and "is not 1.13.9" in other.stderr
+    run_ocr_step(tmp_path, "cmd_ocr")
+    configured, _ = run_ocr_step(tmp_path, "check_ocr", provider=True)
+    assert configured.returncode == 1 and "without a model provider" in configured.stderr
+
+
+def test_ocr_comes_from_the_release_binary_not_the_self_updating_npm_package():
+    assert (
+        setup_value("OCR_URL")
+        .strip('"')
+        .endswith("/releases/download/v${OCR_VERSION}/opencodereview-linux-amd64")
+    )
+    assert "@alibaba-group/open-code-review" not in (DEPLOY / "setup.sh").read_text()
