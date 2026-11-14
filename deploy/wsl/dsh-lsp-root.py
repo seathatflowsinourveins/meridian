@@ -8,32 +8,76 @@ installs as ~/.dsh/lsp/dsh-lsp-root.py, starts the server and rewrites only the 
 `initialize` request so that its root is the worktree root. Every other byte passes unchanged,
 and the server's output goes straight to the client.
 
+Lifecycle: the shim's exit status is the server's (128 + N when signal N ended it), and the shim
+exits as soon as the server does, even while the client keeps its input open (the provider waits
+for that exit to finish shutdown or to notice a failed transport). The client's end of input, or
+a header block with no Content-Length, closes the server's input and waits for its status.
+SIGTERM terminates the server, then exits with its status.
+
 Usage: python3 -I dsh-lsp-root.py ROOT COMMAND [ARG...]
 """
 
 import contextlib
 import json
+import os
 import signal
 import subprocess
 import sys
+import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import BinaryIO
+from typing import IO
 
 
-def read_message(stream: BinaryIO) -> tuple[bytes, bytes] | None:
-    """One framed message as (header block, body), or None at the end of the stream."""
-    header = b""
-    while not header.endswith(b"\r\n\r\n"):
-        byte = stream.read(1)
-        if not byte:
-            return None
-        header += byte
-    length = next(
-        int(line.split(b":", 1)[1])
-        for line in header.split(b"\r\n")
-        if line.lower().startswith(b"content-length:")
-    )
-    return header, stream.read(length)
+class RawReader:
+    """Reads file descriptor `fd` with os.read: no buffered object whose lock a blocked daemon
+    thread could still hold when the interpreter exits."""
+
+    def __init__(self, fd: int) -> None:
+        self.fd = fd
+        self.pending = b""
+
+    def read(self, size: int) -> bytes:
+        while len(self.pending) < size:
+            chunk = os.read(self.fd, 65536)
+            if not chunk:
+                break
+            self.pending += chunk
+        data, self.pending = self.pending[:size], self.pending[size:]
+        return data
+
+    def read_header(self) -> bytes:
+        while b"\r\n\r\n" not in self.pending:
+            chunk = os.read(self.fd, 65536)
+            if not chunk:
+                return b""
+            self.pending += chunk
+        end = self.pending.index(b"\r\n\r\n") + 4
+        header, self.pending = self.pending[:end], self.pending[end:]
+        return header
+
+
+def content_length(header: bytes) -> int | None:
+    for line in header.split(b"\r\n"):
+        name, _, value = line.partition(b":")
+        if name.strip().lower() == b"content-length":
+            try:
+                return int(value.strip())
+            except ValueError:
+                return None
+    return None
+
+
+def read_message(reader: RawReader) -> tuple[bytes, bytes] | None:
+    """One framed message as (header block, body); None at the end of input or on a header block
+    without a usable Content-Length."""
+    header = reader.read_header()
+    if not header:
+        return None
+    length = content_length(header)
+    if length is None:
+        return None
+    return header, reader.read(length)
 
 
 def with_root(body: bytes, root: Path) -> bytes:
@@ -51,28 +95,44 @@ def with_root(body: bytes, root: Path) -> bytes:
     return json.dumps(message, separators=(",", ":")).encode()
 
 
-def main(argv: list[str]) -> int:
-    if len(argv) < 2:
-        print(__doc__.strip().splitlines()[-1], file=sys.stderr)
-        return 2
-    root = Path(argv[0]).resolve()
-    server = subprocess.Popen(argv[1:], stdin=subprocess.PIPE)
-    signal.signal(signal.SIGTERM, lambda *_: server.terminate())
-    assert server.stdin is not None
+def forward(reader: RawReader, sink: IO[bytes], root: Path) -> None:
+    """Copy the client's messages to the server until the client's input ends."""
     try:
-        while (message := read_message(sys.stdin.buffer)) is not None:
+        while (message := read_message(reader)) is not None:
             header, body = message
             new = with_root(body, root)
             if new is not body:
                 header = b"Content-Length: %d\r\n\r\n" % len(new)
-            server.stdin.write(header + new)
-            server.stdin.flush()
-    except BrokenPipeError:
-        pass
+            sink.write(header + new)
+            sink.flush()
+    except BrokenPipeError, ValueError, OSError:
+        pass  # the server's input closed: it is exiting, and main() waits for it
     finally:
-        with contextlib.suppress(BrokenPipeError):
-            server.stdin.close()
-    return server.wait()
+        with contextlib.suppress(BrokenPipeError, ValueError, OSError):
+            sink.close()
+
+
+def exit_status(returncode: int) -> int:
+    return 128 - returncode if returncode < 0 else returncode
+
+
+def main(argv: list[str], fd: int = 0, exit_now: Callable[[int], object] = os._exit) -> int:
+    if len(argv) < 2:
+        print("usage: python3 -I dsh-lsp-root.py ROOT COMMAND [ARG...]", file=sys.stderr)
+        return 2
+    root = Path(argv[0]).resolve()
+    started: list[subprocess.Popen[bytes]] = []
+    # Installed before the server starts, so a SIGTERM at any moment reaches it.
+    signal.signal(signal.SIGTERM, lambda *_: [process.terminate() for process in started])
+    server = subprocess.Popen(argv[1:], stdin=subprocess.PIPE)
+    started.append(server)
+    assert server.stdin is not None
+    threading.Thread(target=forward, args=(RawReader(fd), server.stdin, root), daemon=True).start()
+    status = exit_status(server.wait())
+    # The forwarding thread may still be blocked on the client's input: leave without joining it.
+    sys.stderr.flush()
+    exit_now(status)
+    return status
 
 
 if __name__ == "__main__":

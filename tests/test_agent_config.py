@@ -14,6 +14,7 @@ import importlib.util
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tarfile
@@ -1056,3 +1057,51 @@ def test_ocr_comes_from_the_release_binary_not_the_self_updating_npm_package():
         .endswith("/releases/download/v${OCR_VERSION}/opencodereview-linux-amd64")
     )
     assert "@alibaba-group/open-code-review" not in (DEPLOY / "setup.sh").read_text()
+
+
+def start_shim(*command: str) -> subprocess.Popen[bytes]:
+    # The client's input stays open, as dsh-lsp-stdio keeps it until shutdown.
+    return subprocess.Popen(
+        [sys.executable, "-I", str(DEPLOY / "dsh-lsp-root.py"), "/", *command],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def finish(shim: subprocess.Popen[bytes], timeout: float) -> int:
+    try:
+        return shim.wait(timeout=timeout)
+    finally:
+        if shim.poll() is None:
+            shim.kill()
+            shim.wait()
+        for stream in (shim.stdin, shim.stdout, shim.stderr):
+            if stream:
+                stream.close()
+
+
+def test_the_shim_exits_with_the_server_while_the_client_keeps_its_input_open():
+    started = time.monotonic()
+    assert finish(start_shim("/bin/true"), timeout=5) == 0
+    assert time.monotonic() - started < 2, "the shim outlived its server"
+    assert finish(start_shim("sh", "-c", "exit 3"), timeout=5) == 3
+
+
+def test_a_header_block_without_content_length_ends_the_session_cleanly():
+    shim = start_shim("cat")
+    assert shim.stdin is not None
+    shim.stdin.write(b"X-Other: 1\r\n\r\n")
+    shim.stdin.flush()
+    # The shim closes the server's input; cat ends, and the shim returns its status.
+    assert finish(shim, timeout=5) == 0
+
+
+def test_sigterm_ends_the_shim_and_its_server():
+    shim = start_shim("sh", "-c", "echo $$; exec sleep 30")
+    assert shim.stdout is not None
+    server = int(shim.stdout.readline())
+    shim.send_signal(signal.SIGTERM)
+    assert finish(shim, timeout=5) == 128 + signal.SIGTERM
+    with pytest.raises(ProcessLookupError):
+        os.kill(server, 0)
