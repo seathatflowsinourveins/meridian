@@ -5,9 +5,9 @@ what differs is who consents. No word is typed: the owner's standing consent is 
 field `unattended_orders_enabled`, in a file the service user cannot write, together with the
 timers the owner enabled. Only the units in `deploy/systemd/` start `restart` or `order`.
 
-Fail closed: an order run writes the hold file before the engine starts and removes it only after
-a pass; any failure, refusal inside the run, crash or kill leaves it. A failed restart writes one
-too. While it exists `order` refuses; `restart` still runs, so the records keep showing the account.
+Fail closed: each run writes the hold file before the engine starts, unless one exists, and removes
+only that one after a pass; any failure, refusal inside the run, crash or kill leaves it. While
+it exists `order` refuses; `restart` still runs, so the records keep showing the account.
 """
 
 from __future__ import annotations
@@ -114,8 +114,12 @@ def gate(mode: str, environ: Mapping[str, str]) -> tuple[Path, Path, Preflight]:
 def run_unattended(mode: str, state_dir: Path, settings: Path, state: Preflight) -> int:
     from meridian import alpaca_node
 
-    if mode == "order":
-        write_hold(state_dir, mode, "an unattended order run started and has not passed")
+    # Provisional hold, for both modes: a run killed by the unit's timeout or crashing never
+    # reaches the end, so the hold must already be there. Only a hold this run wrote is cleared.
+    hold = state_dir / HOLD_NAME
+    created = not hold.exists()  # under the lane lock; `gate` refuses `order` on a hold
+    if created:
+        write_hold(state_dir, mode, f"an unattended {mode} run started and has not passed")
     record = RunRecord(mode, state)
     record.data["unattended"] = True
     alpaca_node.run(state, record, state_dir / "runs")  # it catches the engine's own failures
@@ -130,11 +134,11 @@ def run_unattended(mode: str, state_dir: Path, settings: Path, state: Preflight)
     except OSError, ValueError, RuntimeError:
         print("FAIL: run record could not be written", file=sys.stderr)
     if passed:
-        if mode == "order":
-            (state_dir / HOLD_NAME).unlink()
+        if created:
+            hold.unlink()
         print("PASS: scrubbed run record written to the state directory")
         return 0
-    if mode == "order" or not (state_dir / HOLD_NAME).exists():
+    if created:
         write_hold(state_dir, mode, f"the unattended {mode} run failed", name)
     print("FAIL: hold file written; inspect the run record in the state directory")
     return 1
@@ -143,21 +147,32 @@ def run_unattended(mode: str, state_dir: Path, settings: Path, state: Preflight)
 def status(state_dir: Path, last: int) -> int:
     """Read only: the last records' outcomes and the hold file, without any free text."""
     try:
-        names = sorted(p for p in (state_dir / "runs").glob("*.json"))[-last:]
+        # os.listdir raises on a directory it cannot read; Path.glob and Path.exists would hide
+        # that and report an empty state.
+        entries = os.listdir(state_dir)
+        runs = state_dir / "runs"
+        found = os.listdir(runs) if "runs" in entries else []
+        names = sorted(runs / n for n in found if n.endswith(".json"))[-last:]
+    except OSError:
+        print("state not readable", file=sys.stderr)
+        return 1
+    try:
         for path in names:
             data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
             problems = "; ".join(str(p) for p in data.get("problems", []))
             print(f"{path.name}: {data.get('result')} {problems}".rstrip())
         if not names:
             print("no run records")
-        hold = state_dir / HOLD_NAME
-        if hold.exists():
-            data = json.loads(hold.read_text(encoding="utf-8"))
+        if HOLD_NAME in entries:
+            data = json.loads((state_dir / HOLD_NAME).read_text(encoding="utf-8"))
             print(f"HOLD since {data.get('written_utc')}: {data.get('reason')}")
         else:
             print("no hold file")
-    except OSError, ValueError:
-        print("state directory unreadable or a record is malformed", file=sys.stderr)
+    except OSError:
+        print("state not readable", file=sys.stderr)
+        return 1
+    except ValueError:
+        print("a run record or the hold file is malformed", file=sys.stderr)
         return 1
     return 0
 

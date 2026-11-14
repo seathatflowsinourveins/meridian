@@ -237,7 +237,9 @@ cmd_unattended() {
   id paper >/dev/null 2>&1 || fail "service user 'paper' is missing"
   commit="$(git -C "${src}" rev-parse HEAD)"
   release="${UNATTENDED_ROOT}/releases/${commit}"
-  if [ ! -e "${release}/.venv/bin/python" ]; then
+  # A release counts only once its marker exists, written last, after a successful sync: a
+  # failed sync leaves no marker, so a rerun synchronises again before anything is activated.
+  if [ ! -e "${release}/.meridian-release-complete" ]; then
     sudo install -d -m 0755 "${release}"
     git -C "${src}" archive "${commit}" | sudo tar -x -C "${release}" --no-same-owner
     cache="$(mktemp -d)"
@@ -245,6 +247,7 @@ cmd_unattended() {
     sudo env UV_CACHE_DIR="${cache}" UV_PYTHON_INSTALL_DIR="${UNATTENDED_ROOT}/python" \
       "${HOME}/.local/bin/uv" sync --locked --no-dev --managed-python --project "${release}"
     sudo rm -rf "${cache}"
+    sudo touch "${release}/.meridian-release-complete"
   fi
   [ "$(readlink "${UNATTENDED_ROOT}/current" || true)" = "${release}" ] \
     || sudo ln -sfn "${release}" "${UNATTENDED_ROOT}/current"

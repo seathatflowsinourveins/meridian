@@ -47,6 +47,8 @@ esac
 UV = r"""echo "uv $*" >> "$FAKE_LOG"
 project="${@: -1}"
 mkdir -p "$project/.venv/bin" && touch "$project/.venv/bin/python"
+# A sync that fails after creating the interpreter, while the test asks for one.
+if [ -e "$MERIDIAN_FAKE_ROOT/.fail-sync" ]; then rm "$MERIDIAN_FAKE_ROOT/.fail-sync"; exit 1; fi
 """
 MUTATING = ("daemon-reload", "add-wants", "systemctl start", "uv ", "install ", "ln ", "tar ")
 
@@ -159,3 +161,18 @@ def test_a_dirty_checkout_refuses(fake):
     with pytest.raises(subprocess.CalledProcessError):
         run("unattended")
     assert not (root / "opt").exists()
+
+
+def test_a_failed_sync_is_never_activated_and_a_rerun_synchronises_again(fake):
+    """Review fix (Codex, P2): `.venv/bin/python` existing does not make a release complete."""
+    _, root, run = fake
+    (root / ".fail-sync").write_text("")
+    with pytest.raises(subprocess.CalledProcessError):
+        run("unattended")
+    current = root / "opt/meridian/current"
+    assert not current.exists() and not current.is_symlink()
+    out, calls = run("unattended")
+    assert sum(c.startswith("uv sync --locked --no-dev") for c in calls) == 1
+    assert current.is_symlink() and (current / ".meridian-release-complete").exists()
+    _, calls = run("unattended")
+    assert not [c for c in calls if c.startswith("uv ")]

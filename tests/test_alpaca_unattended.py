@@ -412,3 +412,40 @@ def test_setup_enables_only_timers_and_its_checks_are_read_only():
     assert "check_unattended" in function_body(script, "cmd_check")
     for path in TIMERS.values():
         assert path.name in script
+
+
+# Review fixes (Codex, P2): a killed restart holds; status never hides an unreadable state.
+
+
+def test_a_restart_holds_while_it_runs_and_a_crash_or_kill_leaves_the_hold(unit, monkeypatch):
+    run, _ = fake_node()
+    seen = []
+
+    def watched(state, record, log_dir=None):
+        seen.append(json.loads(hold(unit).read_text()))  # held while reconciliation runs
+        run(state, record, log_dir)
+
+    monkeypatch.setattr(alpaca_node, "run", watched)
+    assert alpaca_unattended.main(["restart"], unit) == 0
+    assert seen and seen[0]["mode"] == "restart"
+    assert not hold(unit).exists()  # a pass clears the hold this run created
+    crash, _ = fake_node("crash")  # what the unit's timeout kill leaves: no code after the engine
+    monkeypatch.setattr(alpaca_node, "run", crash)
+    with pytest.raises(RuntimeError):
+        alpaca_unattended.main(["restart"], unit)
+    assert json.loads(hold(unit).read_text())["mode"] == "restart"
+    monkeypatch.setattr(alpaca_node, "run", run)
+    assert alpaca_unattended.main(["order"], unit) == 2  # the next order stays refused
+
+
+def test_status_of_an_unreadable_state_fails_instead_of_reporting_no_hold(unit, capsys):
+    state = Path(unit["STATE_DIRECTORY"])
+    alpaca_unattended.write_hold(state, "order", "fixed reason")
+    state.chmod(0o000)
+    try:
+        assert alpaca_unattended.main(["status", "--state", str(state)], {}) == 1
+    finally:
+        state.chmod(0o700)
+    captured = capsys.readouterr()
+    assert captured.err == "state not readable\n"
+    assert "no hold file" not in captured.out and "no run records" not in captured.out
