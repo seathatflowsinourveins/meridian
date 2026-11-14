@@ -1,0 +1,5 @@
+{
+  "autopilot": {"workflows": {"meridian-full": {
+    "version": 1, "stages": ["ralplan", "execution", "ralph", "qa"]
+  }}}
+}

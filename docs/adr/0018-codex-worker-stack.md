@@ -1,0 +1,6 @@
+# ADR 0018: Codex worker stack (stack ADR)
+**Status: adopted on the owner's instruction.** Decided 2026-11-13 (plan `can-you-enhanced-codex-eventual-raccoon`; admitted by upstream quality, no with-and-without run per item).
+
+**Need:** Codex becomes a full worker runtime for the lead; until now it ran bare (no plugin, no MCP server, no skills or hooks beyond Orca's and its own). **Components, advisories, what each installs and sends, install and removal, the always-on context measured once, and the selection (sections 2 to 6 and 8):** [data/0018-stack.md](data/0018-stack.md), with the pins `deploy/wsl/setup.sh codex` installs and `agents-check` verifies.
+
+**Decision:** adopted, one maintained, leading upstream per job: `Yeachan-Heo/oh-my-codex` 0.22.6 for workflows, `DietrichGebert/ponytail` 5.3.3 as a plugin, and two MCP servers, OpenAI's `openaiDeveloperDocs` and `oraios/serena` 2.1.0 (navigation and diagnostics only); `kenn-io/agentsview` is Codex's cost report too. `/etc/codex/requirements.toml` names every MCP server allowed and pins ChatGPT apps off, and `check_codex` fails on an unnamed server or plugin: no order tool or broker connector reaches Codex. Supersedes ADR 0008 ([revisit](data/0008-revisits.md)); ADR 0007's decision stands ([revisit](data/0007-revisits.md)).

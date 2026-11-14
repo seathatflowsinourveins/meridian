@@ -52,7 +52,7 @@ Milestones (plan 9.2); each ends in a committed, scrubbed run record:
 | The size budget | `size-budget.toml`, `tests/test_size_budget.py` | CI tripwire |
 | The owner sets goals; a goal never names a lane run, an order, the IB Gateway, port 4002 or a step only the owner takes | "Goals" below | rule |
 | Work is reviewed by a different model family before it merges (`/codex:review` in Claude Code); findings are fixed in the pull request or closed with a reason; nothing auto-files issues | plan 9.5 | rule |
-| MCP servers are off machine-wide for Claude Code and Codex; a skill, plugin or MCP server is added only by an ADR (`docs/adr/README.md`), and none gets an order tool or broker connector | `deploy/wsl/setup.sh agents-check` | check |
+| Claude Code's MCP servers stay off; Codex's are the named set in `deploy/wsl/setup.sh` and `/etc/codex/requirements.toml` (ADR 0018); a skill, plugin or MCP server is added only by an ADR (`docs/adr/README.md`), and none gets an order tool or broker connector | `deploy/wsl/setup.sh agents-check` | check |
 | Ask the owner before adding a paid service or an account; no licence is chosen for this repo's own code: that is the owner's decision | the owner | rule |
 | One writer per account; plain DAY LIMIT entries, no brackets | plan 9.1 | rule; the M1 record fails an order that is not a DAY LIMIT |
 
@@ -212,6 +212,9 @@ Deployment parameters are null placeholders; data reads share a separate 200/min
    adds an execution client.
 6. Sandbox first, then paper (plan 9.2). Every paper run is the owner's, attended, and ends in
    a run record.
+
+Claude lead/workers use `/autopilot --workflow meridian-full <task>` ([ADR 0019](adr/0019-claude-omc-stack.md)): cite upstream first; the upstream gate and owner boundaries apply inside every stage. QA runs `uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest`; Orca keeps the fleet and cross-family merge review.
+At a required owner decision use `[MERIDIAN_WAIT]`; a worker uses Orca `ask` and ends its turn.
 
 ## Goals
 
