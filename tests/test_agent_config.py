@@ -129,6 +129,30 @@ def test_claude_settings_enable_the_two_plugins_and_preserve_unrelated_settings(
     assert claude_settings_filter("check_claude", settings).returncode == 1
 
 
+@pytest.mark.parametrize(
+    "switch",
+    [
+        "autoCompactEnabled",
+        "idleCompaction",
+        "precomputeCompactionEnabled",
+        "autoContinueAtUsageLimit",
+    ],
+)
+def test_claude_settings_show_thinking_and_keep_compaction_at_its_defaults(switch):
+    settings = json.loads(claude_settings_filter("claude_settings", {}).stdout)
+    assert settings["showThinkingSummaries"] is True
+    assert settings["showMessageTimestamps"] is True
+    assert settings["tui"] == "fullscreen"
+    # The compaction switches are on when absent: setup writes none, the check refuses "off".
+    assert switch not in settings
+    assert claude_settings_filter("check_claude", settings).returncode == 0
+    assert claude_settings_filter("check_claude", settings | {switch: True}).returncode == 0
+    assert claude_settings_filter("check_claude", settings | {switch: False}).returncode == 1
+    for key in ("showThinkingSummaries", "showMessageTimestamps", "tui"):
+        without = {name: value for name, value in settings.items() if name != key}
+        assert claude_settings_filter("check_claude", without).returncode == 1
+
+
 def test_claude_check_allows_only_the_two_plugin_names():
     settings = json.loads(claude_settings_filter("claude_settings", {}).stdout)
     settings["enabledPlugins"] = {
