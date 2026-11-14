@@ -70,9 +70,9 @@ CLAUDE_RELEASE_SIGNER=31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE
 CLAUDE_RELEASES=https://downloads.claude.ai/claude-code-releases
 CLAUDE_MODEL=claude-fable-5-2
 # Codex CLI: OpenAI's npm package and its linux-x64 build, by their registry integrity values.
-CODEX_VERSION=0.167.2
-CODEX_INTEGRITY=sha512-6OFkr2ndzTdFb32OEiUlM9BgpeY8+wnMe8vRhuvt+22TnxVR39KnJ22Ghay98IY9OmEltoNgFN4GALUkxFQCOw==
-CODEX_LINUX_INTEGRITY=sha512-2Rw3VkWonMxwCSgOw+NkiKLOuOzyoQNWmxU7x8GniesdMfhKc4asNqOzTgQwJLKCrSlPc4/6fYTaH7fYcuGWGQ==
+CODEX_VERSION=0.169.0
+CODEX_INTEGRITY=sha512-KhzYlkKPxoNssR8CEm45IjqnFWn7UtlF4CiD3tOJPea51xBs7MaHy0UQG9GSbCqk6Lrjn5QdJDV0QD1/FgWlGw==
+CODEX_LINUX_INTEGRITY=sha512-o05NyAOCDygSPRo1yinzxvkRSdmsZyBD9E7mbpmjRanSfM8lypqWtQgEo4XfNkwhuCR2aFu8mlGOsQGFXVbVww==
 CODEX_MODEL=gpt-6-astra
 # DeepSeek Harness: the engine (`dsh`), pnpm (dsh installs its profiles with it, and pins the
 # 11.x line), the community terminal UI that Orca launches for it (`dsh-tui`), and the two hook
@@ -121,8 +121,8 @@ CLAUDE_HUD_COMMIT=b86e1c3e5255880578de4b7cc87dc383228c2a18
 # Antigravity CLI (`agy`): the GitHub release asset of this version, by the SHA-256 digest
 # GitHub shows for it. (Google's install.sh and agy's own updater take the build named in their
 # updater service's manifest instead, checked against the SHA-512 in that manifest.)
-AGY_VERSION=1.5.7
-AGY_SHA256=d6150a8d2a9e29a3d171b2325d6f66b6e7059628f4799a20c069b8ed8f78fdbb
+AGY_VERSION=1.5.8
+AGY_SHA256=905d4accfbd61bc00bee84bfaf24c59b85d334cabd786cf99237b66cfe06ab98
 AGY_URL="https://github.com/google-antigravity/antigravity-cli/releases/download/${AGY_VERSION}/agy_cli_linux_x64.tar.gz"
 # agy's default model, by the label `agy models` prints (plan 8.8: Gemini 4 Carbon, at its
 # highest effort). A label agy no longer offers falls back to its own default, with a warning.
