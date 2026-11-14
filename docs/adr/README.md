@@ -65,5 +65,6 @@ this table; the row's first cell links the file by name, as in `[NNNN](NNNN-shor
 | [0013](0013-antigravity-cli-reading.md) | Antigravity CLI documentation reading (plan 8.6) | not adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0014](0014-claude-you-should-know.md) | You should know for Claude Code (plan 8.6) | adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0015](0015-claude-hud.md) | claude-hud status line for Claude Code (plan 8.6) | adopted, 2026-11-13 | 2026-11-14 | 2027-02-12 |
+| [0016](0016-dsh-worker-stack.md) | DeepSeek Harness worker stack: eight skills, the lsp tool, ast-grep, agentsview, a completion gate (stack ADR) | adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |
 | [0020](0020-open-code-review.md) | open-code-review as a second reviewer, in delegation mode (plan 8.6) | adopted, 2026-11-14 | 2026-11-14 | 2027-02-12 |
 | [0018](0018-codex-worker-stack.md) | Codex worker stack: oh-my-codex, ponytail, OpenAI's docs server (stack ADR) | adopted, 2026-11-13 | 2026-11-13 | 2027-02-11 |

@@ -107,6 +107,28 @@ PNPM_INTEGRITY=sha512-NUIc6icg7KP1rXIrZ+jvGPTTzUdF7S/P6w3CiNTpQ3+tOHDZHuboPyaPD2
 DSH_MODEL=deepseek-flash
 # The only install scripts dsh's tree may run (terminal, FFI, its process helper, two SDKs).
 DSH_ALLOW_SCRIPTS=node-pty,koffi,@deepseek-ai/dsh-subprocess-local,@google/genai,protobufjs
+# DeepSeek Harness's worker stack (docs/adr/0016-dsh-worker-stack.md), for dsh only. None of
+# these updates itself: a new pin here updates it.
+# Skills: "repository commit folder...", each at the commit of the repository's latest release
+# tag, copied to ~/.dsh/skills/<folder name>. Every file of each folder was read at its pin.
+DSH_SKILLS=(
+  "addyosmani/agent-skills 8bfcc1f9916f2eea55494d8c1fa7f4bde867dd9e skills/spec-driven-development skills/code-review-and-quality skills/source-driven-development"
+  "obra/superpowers 22f0b463e7a5e579904dd6211a520321035526f7 skills/test-driven-development skills/systematic-debugging skills/verification-before-completion"
+  "mattpocock/skills d1478fcb140db0b93c0c8df17bcfd311844749d0 skills/engineering/research skills/engineering/pr"
+)
+# Code navigation: DeepSeek's own LSP packages at the engine's version (the seam, the stdio
+# provider that runs each worktree's own pyright-langserver, and the read-only `lsp` tool),
+# installed in the dsh-tui profile. Registry integrity values.
+DSH_LSP_INTEGRITY=sha512-pEh5ErmCK52WJjOrKWQne1ojdImjf9zLNAclaCI4uOwEB8tdGwuXHSNud16gVHSID+0PdK2nm6dJjZNgfp47ig==
+DSH_LSP_STDIO_INTEGRITY=sha512-2lC3pw/DyNkOLT42POj48J02L+2JBM3HJJQts467B/JrTEOJwc29gDYEzhID3mceePMrO/n/K1duVLS/So3mXw==
+DSH_TOOL_LSP_INTEGRITY=sha512-y+OHzHOcvh3mCHMZ8bbICxPZjNBhKeCFBfDffR4GkNlT7DHcOeyzwa0mX9XBnJ7dbaAGCbZ8PQZO5EhOSmtOGw==
+# ast-grep and agentsview: GitHub release assets, by the SHA-256 digest GitHub shows for each.
+AST_GREP_VERSION=0.51.2
+AST_GREP_SHA256=40604c21c38d4c7581c56bdddeef277c56bf3c0113620aa96e78ae87e82366df
+AST_GREP_URL="https://github.com/ast-grep/ast-grep/releases/download/${AST_GREP_VERSION}/app-x86_64-unknown-linux-gnu.zip"
+AGENTSVIEW_VERSION=0.47.0
+AGENTSVIEW_SHA256=a49876edf9fe8d0641978afe69d776540175852a446a5d42a6d439215eb0dc45
+AGENTSVIEW_URL="https://github.com/kenn-io/agentsview/releases/download/v${AGENTSVIEW_VERSION}/agentsview_${AGENTSVIEW_VERSION}_linux_amd64.tar.gz"
 # Orca server: the server-only release tarball (orcad, its own Node, the orca-ide CLI), by the
 # SHA-256 in the release's checksum file. It does not update itself; a new pin here updates it.
 ORCA_VERSION=1.4.258
@@ -1262,12 +1284,14 @@ cmd_dsh() {
       "@deepseek-ai/dsh-hooks-claude-code@${DSH_VERSION}" "@deepseek-ai/dsh-hook-protocol@${DSH_VERSION}" </dev/null
     npm install -g --strict-allow-scripts --legacy-peer-deps "@deepseek-harness-tui/dsh-tui@${DSH_TUI_VERSION}"
   fi
+  dsh_stack
   check_dsh
 }
 
 dsh_home_files() {
-  # Both are written once and left alone afterwards: Orca appends its own marked hooks block to
-  # cordis.patch.yml, and the TUI's updater edits the profile's pnpm-workspace.yaml.
+  # Both are written once and left alone afterwards, apart from the Meridian block below: Orca
+  # appends its own marked hooks block to cordis.patch.yml, and the TUI's updater edits the
+  # profile's pnpm-workspace.yaml.
   local profile="${HOME}/.dsh/profiles/dsh-tui"
   install -d -m 0700 "${HOME}/.dsh" "${HOME}/.dsh/profiles" "${profile}"
   if [ ! -e "${profile}/pnpm-workspace.yaml" ]; then
@@ -1305,28 +1329,82 @@ YAML
 YAML
     chmod 0600 "${HOME}/.dsh/cordis.patch.yml"
   fi
-  # The model row is added to a file written earlier as well, above Orca's block. A row's config
-  # replaces the default's config as a whole, so it names the provider too.
-  if ! grep -qxF -- '- id: agent-default-model' "${HOME}/.dsh/cordis.patch.yml"; then
-    python3 -I - "${HOME}/.dsh/cordis.patch.yml" "${DSH_MODEL}" <<'PY' \
-      || fail "cannot add the model row to ~/.dsh/cordis.patch.yml"
+  # The Meridian block (ADR 0016), rewritten whole on every run and kept above Orca's own marked
+  # block, whose lines are never touched: the model row (a row's config replaces the default's
+  # as a whole, so it names the provider too), code navigation through DeepSeek's LSP packages,
+  # and the completion gate's Stop hook, a second mount of the hook bridge beside Orca's. The
+  # provider starts the server in the session's working directory and sends it as the workspace;
+  # the server row finds the worktree root with git from there, runs that worktree's own
+  # pyright-langserver, and gives it the root as its workspace (deploy/wsl/dsh-lsp-root.py), so
+  # navigation resolves the repository's imports from any subdirectory.
+  # A model row that an older run wrote outside the block is moved into it.
+  local block
+  block="$(cat <<YAML
+# >>> meridian-managed (deploy/wsl/setup.sh dsh; docs/adr/0016-dsh-worker-stack.md) >>>
+- id: agent-default-model
+  config:
+    model: ${DSH_MODEL}
+    provider: deepseek-official
+- insert:
+    - id: meridian-lsp
+      name: '@deepseek-ai/dsh-lsp'
+    - id: meridian-lsp-pyright
+      name: '@deepseek-ai/dsh-lsp-stdio'
+      config:
+        servers:
+          pyright:
+            command: sh
+            args: ['-c', 'top="\$(git rev-parse --show-toplevel)" && exec python3 -I ${HOME}/.dsh/lsp/dsh-lsp-root.py "\$top" "\$top/.venv/bin/pyright-langserver" --stdio']
+            extensionToLanguage:
+              '.py': python
+              '.pyi': python
+    - id: meridian-tool-lsp
+      name: '@deepseek-ai/dsh-tool-lsp'
+- insert:
+    - id: meridian-check-gate
+      name: '@deepseek-ai/dsh-hooks-claude-code'
+      config:
+        configPath: '${HOME}/.dsh/meridian-hooks.json'
+# <<< meridian-managed <<<
+YAML
+)"
+  python3 -I - "${HOME}/.dsh/cordis.patch.yml" "${block}" <<'PY' \
+    || fail "cannot write the Meridian block in ~/.dsh/cordis.patch.yml"
 import os
 import sys
 
-path, model = sys.argv[1], sys.argv[2]
-row = f"- id: agent-default-model\n  config:\n    model: {model}\n    provider: deepseek-official\n"
+path, block = sys.argv[1], sys.argv[2] + "\n"
+begin, end, orca = "# >>> meridian-managed", "# <<< meridian-managed", "# >>> orca-managed-dsh-hooks"
 with open(path, encoding="utf-8") as f:
-    lines = f.read().splitlines(keepends=True)
+    text = f.read()
+lines = text.splitlines(keepends=True)
 if lines and not lines[-1].endswith("\n"):
     lines[-1] += "\n"
-at = next((i for i, line in enumerate(lines) if line.startswith("# >>> orca-managed-dsh-hooks")), len(lines))
-lines.insert(at, row)
-with open(f"{path}.new", "w", encoding="utf-8") as f:
-    f.writelines(lines)
-os.chmod(f"{path}.new", 0o600)
-os.replace(f"{path}.new", path)
+at = next((i for i, line in enumerate(lines) if line.startswith(orca)), len(lines))
+head, tail = lines[:at], lines[at:]
+if sum(line.startswith(begin) for line in head) != sum(line.startswith(end) for line in head):
+    sys.exit("the Meridian block is not closed")
+kept, inside, i = [], False, 0
+while i < len(head):
+    line = head[i]
+    inside = inside or line.startswith(begin)
+    if not inside and line == "- id: agent-default-model\n":
+        i += 1
+        while i < len(head) and head[i].startswith(" "):
+            i += 1
+        continue
+    if not inside:
+        kept.append(line)
+    if line.startswith(end):
+        inside = False
+    i += 1
+new = "".join(kept) + block + "".join(tail)
+if new != text:
+    with open(f"{path}.new", "w", encoding="utf-8") as f:
+        f.write(new)
+    os.chmod(f"{path}.new", 0o600)
+    os.replace(f"{path}.new", path)
 PY
-  fi
   # dsh-tui 0.20.0's guide is home-wide UI state, outside the Cordis patch layer.
   # Escape skips without recording completion. Keep unrelated prefs and newer revisions.
   local guide="${HOME}/.dsh-tui/onboarding.json"
@@ -1337,6 +1415,125 @@ PY
   ' > "${guide}.new"
   chmod 0600 "${guide}.new"
   mv "${guide}.new" "${guide}"
+}
+
+# The worker stack of ADR 0016, for dsh only: skills, the LSP packages, ast-grep, agentsview, the
+# completion gate.
+dsh_stack() {
+  dsh_skills
+  dsh_lsp_packages
+  dsh_release_binaries
+  # The completion gate: a copy of the tracked script, and the hooks file the Meridian block's
+  # second hook-bridge mount reads (Stop only; Orca's own hooks file is never touched).
+  install -D -m 0755 "$(dirname "$(readlink -f "$0")")/dsh-check-gate.sh" "${HOME}/.dsh/hooks/dsh-check-gate.sh"
+  install -D -m 0644 "$(dirname "$(readlink -f "$0")")/dsh-lsp-root.py" "${HOME}/.dsh/lsp/dsh-lsp-root.py"
+  jq -n --arg command "${HOME}/.dsh/hooks/dsh-check-gate.sh" \
+    '{hooks: {Stop: [{hooks: [{type: "command", command: $command, timeout: 1800}]}]}}' \
+    > "${HOME}/.dsh/meridian-hooks.json.new"
+  chmod 0600 "${HOME}/.dsh/meridian-hooks.json.new"
+  mv "${HOME}/.dsh/meridian-hooks.json.new" "${HOME}/.dsh/meridian-hooks.json"
+}
+
+# Each skill folder from a sparse, shallow checkout of its repository at the pinned commit, then
+# copied whole to ~/.dsh/skills/<folder name>, which only dsh reads. A copy that differs from
+# its checkout is replaced.
+dsh_skills() {
+  local sources="${HOME}/.local/share/meridian/dsh-skill-src" entry repo commit path dir paths_line
+  local -a paths
+  install -d "${sources}"
+  install -d -m 0700 "${HOME}/.dsh/skills"
+  for entry in "${DSH_SKILLS[@]}"; do
+    read -r repo commit paths_line <<<"${entry}"
+    read -r -a paths <<<"${paths_line}"
+    dir="${sources}/${repo/\//__}"
+    if [ "$(git -C "${dir}" rev-parse HEAD 2>/dev/null)" != "${commit}" ] \
+      || [ -n "$(git -C "${dir}" status --porcelain 2>/dev/null)" ]; then
+      rm -rf "${dir}"
+      git init -q "${dir}"
+      git -C "${dir}" remote add origin "https://github.com/${repo}.git"
+      git -C "${dir}" sparse-checkout set --no-cone "${paths[@]/#//}"
+      git -C "${dir}" fetch -q --depth 1 --filter=blob:none origin "${commit}"
+      git -C "${dir}" -c advice.detachedHead=false checkout -q FETCH_HEAD
+      [ "$(git -C "${dir}" rev-parse HEAD)" = "${commit}" ] || fail "${repo} did not check out at ${commit}"
+    fi
+    for path in "${paths[@]}"; do
+      [ -f "${dir}/${path}/SKILL.md" ] || fail "${repo} has no skill at ${path}"
+      if ! diff -rq "${dir}/${path}" "${HOME}/.dsh/skills/${path##*/}" >/dev/null 2>&1; then
+        rm -rf "${HOME}/.dsh/skills/${path##*/}"
+        cp -R "${dir}/${path}" "${HOME}/.dsh/skills/${path##*/}"
+      fi
+    done
+  done
+}
+
+dsh_skill_names() {
+  local entry path
+  for entry in "${DSH_SKILLS[@]}"; do
+    for path in ${entry#* * }; do printf '%s\n' "${path##*/}"; done
+  done | sort
+}
+
+DSH_LSP_PACKAGES=(dsh-lsp dsh-lsp-stdio dsh-tool-lsp)
+# dsh_profile_package NAME: the version of @deepseek-ai/NAME the dsh-tui profile depends on.
+dsh_profile_package() {
+  jq -r --arg name "@deepseek-ai/$1" '.dependencies[$name] // empty' \
+    "${HOME}/.dsh/profiles/dsh-tui/package.json" 2>/dev/null
+}
+
+# The three LSP packages declare no dsh bundle: they go into the profile as plain dependencies,
+# as the hook packages do, and the Meridian block's rows mount them.
+dsh_lsp_packages() {
+  local name missing=0
+  for name in "${DSH_LSP_PACKAGES[@]}"; do
+    version_ge "$(dsh_profile_package "${name}")" "${DSH_VERSION}" || missing=1
+  done
+  [ "${missing}" = 1 ] || return 0
+  npm_pinned "@deepseek-ai/dsh-lsp@${DSH_VERSION}" "${DSH_LSP_INTEGRITY}"
+  npm_pinned "@deepseek-ai/dsh-lsp-stdio@${DSH_VERSION}" "${DSH_LSP_STDIO_INTEGRITY}"
+  npm_pinned "@deepseek-ai/dsh-tool-lsp@${DSH_VERSION}" "${DSH_TOOL_LSP_INTEGRITY}"
+  "${HOME}/.local/bin/dsh" plugin --profile dsh-tui add "@deepseek-ai/dsh-lsp@${DSH_VERSION}" \
+    "@deepseek-ai/dsh-lsp-stdio@${DSH_VERSION}" "@deepseek-ai/dsh-tool-lsp@${DSH_VERSION}" </dev/null
+}
+
+ast_grep_version() { "${HOME}/.local/bin/ast-grep" --version 2>/dev/null </dev/null | sed -n 's/^ast-grep //p'; }
+# agentsview_version PATH: the version a regular, executable agentsview file at PATH reports.
+# The private binary is asked, not the launcher: a standalone agentsview the owner put at
+# ~/.local/bin/agentsview must not stand in for the install the launcher points at.
+agentsview_version() {
+  [ -f "$1" ] && [ -x "$1" ] || return 0
+  "$1" --version 2>/dev/null </dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1
+}
+
+# ast-grep and agentsview: the release asset at its checksum, one named member installed. Only
+# the `ast-grep` name goes on PATH: its `sg` alias would shadow the system's sg(1). agentsview
+# goes behind a wrapper that switches off its anonymous telemetry and update check, which it
+# reads only from the environment (or a flag); it serves on 127.0.0.1 by default.
+dsh_release_binaries() {
+  local tmp
+  if [ "$(ast_grep_version)" != "${AST_GREP_VERSION}" ]; then
+    tmp="$(mktemp -d)"
+    curl -fsSLo "${tmp}/ast-grep.zip" "${AST_GREP_URL}"
+    echo "${AST_GREP_SHA256}  ${tmp}/ast-grep.zip" | sha256sum -c -
+    python3 -I -m zipfile -e "${tmp}/ast-grep.zip" "${tmp}/x"
+    install -D -m 0755 "${tmp}/x/ast-grep" "${HOME}/.local/bin/ast-grep"
+    rm -rf "${tmp}"
+  fi
+  if [ "$(agentsview_version "${HOME}/.local/libexec/meridian/agentsview")" != "${AGENTSVIEW_VERSION}" ]; then
+    tmp="$(mktemp -d)"
+    curl -fsSLo "${tmp}/agentsview.tar.gz" "${AGENTSVIEW_URL}"
+    echo "${AGENTSVIEW_SHA256}  ${tmp}/agentsview.tar.gz" | sha256sum -c -
+    [ "$(tar -tzf "${tmp}/agentsview.tar.gz")" = agentsview ] || fail "the agentsview archive is not one file named agentsview"
+    tar -xzf "${tmp}/agentsview.tar.gz" -C "${tmp}" agentsview
+    install -D -m 0755 "${tmp}/agentsview" "${HOME}/.local/libexec/meridian/agentsview"
+    rm -rf "${tmp}"
+  fi
+  cat > "${HOME}/.local/bin/agentsview.new" <<SH
+#!/bin/sh
+# Written by deploy/wsl/setup.sh dsh: agentsview ${AGENTSVIEW_VERSION} with its telemetry and update check off.
+AGENTSVIEW_TELEMETRY_ENABLED=0 DO_NOT_TRACK=1 AGENTSVIEW_DISABLE_UPDATE_CHECK=1 exec '${HOME}/.local/libexec/meridian/agentsview' "\$@"
+SH
+  chmod 0755 "${HOME}/.local/bin/agentsview.new"
+  mv "${HOME}/.local/bin/agentsview.new" "${HOME}/.local/bin/agentsview"
 }
 
 # dsh_row CONFIG ID: the lines of one row of `dsh --dump-config`, up to the next row.
@@ -1373,7 +1570,80 @@ check_dsh() {
   [ ! -e "${pick}" ] \
     || jq -e --arg model "${DSH_MODEL}" '.provider == "deepseek-official" and .model == $model' "${pick}" >/dev/null 2>&1 \
     || fail "${pick} picks another model than deepseek-official/${DSH_MODEL}"
+  check_dsh_stack "${config}"
   ok "DeepSeek Harness $(dsh_version) with dsh-tui $(dsh_tui_version): ${DSH_MODEL}; uploads to DeepSeek off, no plugin tools"
+}
+
+# dsh_rows_named CONFIG PACKAGE: every row of `dsh --dump-config` that mounts PACKAGE.
+dsh_rows_named() {
+  printf '%s\n' "$1" | awk -v name="  name: '$2'" '
+    /^- / { if (hit) printf "%s", row; row = ""; hit = 0 }
+    { row = row $0 "\n"; if ($0 == name) hit = 1 }
+    END { if (hit) printf "%s", row }'
+}
+
+# check_dsh_stack CONFIG: the worker stack of ADR 0016 is what setup.sh pins and writes.
+check_dsh_stack() {
+  local config="$1" entry repo commit path dir row patch="${HOME}/.dsh/cordis.patch.yml" run="run: deploy/wsl/setup.sh dsh"
+  python3 -I - "${patch}" <<'PY' || fail "~/.dsh/cordis.patch.yml has no single Meridian block above Orca's block (${run})"
+import sys
+
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+ours = [i for i, line in enumerate(lines) if line.startswith("# >>> meridian-managed")]
+orca = [i for i, line in enumerate(lines) if line.startswith("# >>> orca-managed-dsh-hooks")]
+sys.exit(0 if len(ours) == 1 and (not orca or ours[0] < orca[0]) else 1)
+PY
+  # No MCP server; the LSP rows and the gate are mounted, and none of them is switched off.
+  [ -z "$(dsh_rows_named "${config}" @deepseek-ai/dsh-mcp-client)" ] \
+    || fail "dsh's configuration names an MCP server (ADR 0016 adds none)"
+  for row in meridian-lsp:dsh-lsp meridian-lsp-pyright:dsh-lsp-stdio meridian-tool-lsp:dsh-tool-lsp \
+    meridian-check-gate:dsh-hooks-claude-code; do
+    dsh_row "${config}" "${row%%:*}" | grep -qxF "  name: '@deepseek-ai/${row#*:}'" \
+      || fail "the ${row%%:*} row is not in dsh's configuration (${run})"
+    ! dsh_row "${config}" "${row%%:*}" | grep -qx '  disabled: true' \
+      || fail "the ${row%%:*} row is switched off in the dsh-tui profile"
+  done
+  # The dump folds a long argument over lines, so the row's lines are joined before matching.
+  dsh_row "${config}" meridian-lsp-pyright | tr -s ' \n' '  ' \
+    | grep -qF "exec python3 -I ${HOME}/.dsh/lsp/dsh-lsp-root.py \"\$top\" \"\$top/.venv/bin/pyright-langserver\" --stdio" \
+    && cmp -s "$(dirname "$(readlink -f "$0")")/dsh-lsp-root.py" "${HOME}/.dsh/lsp/dsh-lsp-root.py" \
+    || fail "the LSP provider does not run the worktree's own pyright-langserver at its root (${run})"
+  for row in "${DSH_LSP_PACKAGES[@]}"; do
+    version_ge "$(dsh_profile_package "${row}")" "${DSH_VERSION}" \
+      || fail "@deepseek-ai/${row} is not in the dsh-tui profile (${run})"
+  done
+  # dsh 0.2.2-rc.2 and newer delete a Session's eligible worktrees when it is archived, unless
+  # the worktree plugin retains them. dsh updates itself, so this fails until that is set.
+  if version_ge "$(dsh_version)" 0.2.2-rc.2 \
+    && [ -n "$(dsh_rows_named "${config}" @deepseek-ai/dsh-experimental-worktree)" ] \
+    && ! dsh_rows_named "${config}" @deepseek-ai/dsh-experimental-worktree | grep -qx '    retainOnArchive: true'; then
+    fail "dsh $(dsh_version) deletes worktrees on archive: set retainOnArchive: true on its worktree plugin (ADR 0016)"
+  fi
+  # Skills: exactly the pinned folders, each the same as its checkout at the pinned commit.
+  [ "$(find "${HOME}/.dsh/skills" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort)" = "$(dsh_skill_names)" ] \
+    || fail "~/.dsh/skills does not hold exactly the pinned skills (${run})"
+  for entry in "${DSH_SKILLS[@]}"; do
+    read -r repo commit _ <<<"${entry}"
+    dir="${HOME}/.local/share/meridian/dsh-skill-src/${repo/\//__}"
+    [ "$(git -C "${dir}" rev-parse HEAD 2>/dev/null)" = "${commit}" ] && [ -z "$(git -C "${dir}" status --porcelain)" ] \
+      || fail "the ${repo} checkout is not clean at ${commit} (${run})"
+    for path in ${entry#* * }; do
+      diff -rq "${dir}/${path}" "${HOME}/.dsh/skills/${path##*/}" >/dev/null \
+        || fail "~/.dsh/skills/${path##*/} differs from ${repo} at ${commit} (${run})"
+    done
+  done
+  [ "$(ast_grep_version)" = "${AST_GREP_VERSION}" ] || fail "ast-grep is not ${AST_GREP_VERSION} (${run})"
+  [ ! -e "${HOME}/.local/bin/sg" ] || fail "~/.local/bin/sg exists: it would shadow the system's sg"
+  [ "$(agentsview_version "${HOME}/.local/libexec/meridian/agentsview")" = "${AGENTSVIEW_VERSION}" ] \
+    && grep -qF "exec '${HOME}/.local/libexec/meridian/agentsview'" "${HOME}/.local/bin/agentsview" \
+    && grep -q 'AGENTSVIEW_TELEMETRY_ENABLED=0' "${HOME}/.local/bin/agentsview" \
+    && [ "$("${HOME}/.local/bin/agentsview" --version 2>/dev/null </dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)" = "${AGENTSVIEW_VERSION}" ] \
+    || fail "agentsview is not ${AGENTSVIEW_VERSION} behind its telemetry-off wrapper (${run})"
+  cmp -s "$(dirname "$(readlink -f "$0")")/dsh-check-gate.sh" "${HOME}/.dsh/hooks/dsh-check-gate.sh" \
+    && jq -e --arg command "${HOME}/.dsh/hooks/dsh-check-gate.sh" \
+      '.hooks | keys == ["Stop"] and .Stop[0].hooks[0].command == $command' "${HOME}/.dsh/meridian-hooks.json" >/dev/null \
+    || fail "the completion gate is not the repository's copy (${run})"
+  ok "dsh stack: $(dsh_skill_names | wc -l) skills, the lsp tool, ast-grep ${AST_GREP_VERSION}, agentsview ${AGENTSVIEW_VERSION}, completion gate"
 }
 
 orca_cli() { "${ORCA_ROOT}/current/bin/orca-ide" "$@" </dev/null; }
