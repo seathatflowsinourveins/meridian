@@ -1,0 +1,12 @@
+# ADR 0019: Claude lifecycle with oh-my-claudecode
+**Status: adopted by selection, 2026-11-13; implementation checked 2026-11-14.** Install after merge, by the lead; no real installation was run.
+
+**Need:** the lead and Claude workers share an explicit plan, execute, persist and verify lifecycle inside Orca's worktree fleet.
+**Candidate and components:** [OMC v5.8.4](https://github.com/Yeachan-Heo/oh-my-claudecode/tree/b93059fb7c10ae28934a0bc950e26c9a17437a94), MIT, Yeachan Heo; pins, component decisions and source lines are in [the stack record](data/0019-stack.md).
+**Advisories:** checked 2026-11-14: no repository advisories; the scratch dependency audit flags Zod's high-severity collection-validation memory exhaustion (two affected package rows, one advisory). No compatible fix is offered; this remains a dependency risk, not a clean audit.
+**Installs:** user-scoped standalone skills, agents, instructions and hooks; Meridian's stop adapter; `.claude/omc.jsonc` supplies `meridian-full`. Orca hooks and claude-hud's exact status line survive setup; no plugin or MCP server is registered.
+**Always-on context:** estimated 9,885 o200k_base tokens for added instructions and skill/agent frontmatter; no provider-measured delta. The unsigned capture returned “Not logged in”; methods and limits are in the stack record.
+**Selection:** the owner's 2026-11-13 instruction admits this maintained upstream for lifecycle work; no A/B claim supersedes ADR 0008's Codex measurement. Scratch hooks activated and advanced all four stages with synthetic evidence; this is not an end-to-end model task.
+**Boundary review:** upstream has no general switch to yield to Orca `ask` or an owner boundary question. Meridian wraps its hooks: an Orca ask/done latches a stop until the next prompt; questions, blocked/waiting text and `[MERIDIAN_WAIT]` release Stop. This is a conservative guard, not a language-level proof; repository boundaries remain authoritative.
+**Decision:** lifecycle on; prose activations disabled except emergency cancel words; HUD, tmux fleet and MCP off. Native Claude teams are enabled, but OMC's MCP-dependent independent Ralph/team state, cancel and trace tools remain unavailable; report that limitation instead of adding a server.
+**Install and removal:** `deploy/wsl/setup.sh omc` (also in `claude`); `agents-check` asserts the integration. Exact flags, dispatch probe, per-component removal and scratch failures are recorded in [data](data/0019-stack.md).

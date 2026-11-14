@@ -1,16 +1,17 @@
-"""No agent configuration is committed here, apart from the shared skills, and setup stays runnable.
+"""Only admitted agent configuration is committed; setup stays runnable.
 
 Claude Code, Codex, Antigravity and DeepSeek Harness each load configuration from the folder they
 start in: MCP servers, hooks, plugins and feature switches. Claude Code and Codex have MCP off
 machine-wide (``deploy/wsl/meridian.user-data``); Antigravity has no such setting. So the only
-agent files git may list are the skills in ``.agents/skills/`` and their links in
-``.claude/skills/``. This catches an accidental commit. It cannot stop a branch from outside the
-owner's own sessions, which carries its own tests: docs/HANDBOOK.md (Rules) keeps such branches
-out of worktrees.
+agent files git may list are shared skills and their Claude links, plus ADR 0019's exact
+OMC stage schedule (checked below). Runtime state remains forbidden. This catches accidental
+commits; branches outside the owner's sessions stay out under docs/HANDBOOK.md (Rules).
 """
 
 import json
+import os
 import re
+import runpy
 import subprocess
 import sys
 import time
@@ -25,7 +26,7 @@ DEPLOY = REPO_ROOT / "deploy" / "wsl"
 GH_NEWEST_FIX = (2, 97, 0)
 
 # Folders the four agents (or Gemini CLI, whose layout Antigravity shares) read in a project.
-AGENT_FOLDERS = (".agents/", ".claude/", ".codex/", ".gemini/", ".dsh/")
+AGENT_FOLDERS = (".agents/", ".claude/", ".codex/", ".gemini/", ".dsh/", ".omc/")
 ALLOWED = (".agents/skills/", ".claude/skills/")
 # Files an agent reads wherever they are: Claude Code's project MCP servers.
 AGENT_FILES = {".mcp.json"}
@@ -35,7 +36,11 @@ def agent_config(names: list[str]) -> list[str]:
     return [
         name
         for name in names
-        if (name.startswith(AGENT_FOLDERS) and not name.startswith(ALLOWED))
+        if (
+            name.startswith(AGENT_FOLDERS)
+            and not name.startswith(ALLOWED)
+            and name != ".claude/omc.jsonc"
+        )
         or name.rsplit("/", 1)[-1] in AGENT_FILES
     ]
 
@@ -60,6 +65,8 @@ def test_no_agent_configuration_is_committed():
         ".agents/plugins/x/plugin.json",
         ".gemini/settings.json",
         ".dsh/cordis.patch.yml",
+        ".omc/state/run.json",
+        ".claude/omc.jsonc.backup",
     ],
 )
 def test_the_check_catches_agent_configuration(name):
@@ -72,6 +79,7 @@ def test_the_check_catches_agent_configuration(name):
         ".agents/skills/orca-cli/SKILL.md",
         ".agents/skills/NOTICE.md",
         ".claude/skills/orca-cli",
+        ".claude/omc.jsonc",
         "a.json",
     ],
 )
@@ -571,3 +579,207 @@ def test_the_gitleaks_check_fails_when_missing_or_another_version(tmp_path):
     assert missing.returncode == 1 and "is not 8.30.1" in missing.stderr
     installed, _ = run_gitleaks_step(tmp_path, "cmd_gitleaks", version="8.29.0")
     assert installed.returncode == 1 and "is not 8.30.1" in installed.stderr
+
+
+OMC_ADAPTER = DEPLOY / "meridian-omc.py"
+
+
+def omc_api():
+    return runpy.run_path(str(OMC_ADAPTER))
+
+
+def test_omc_project_profile_is_only_the_admitted_stage_schedule():
+    profile = json.loads((REPO_ROOT / ".claude/omc.jsonc").read_text())
+    assert profile == {
+        "autopilot": {
+            "workflows": {
+                "meridian-full": {
+                    "version": 1,
+                    "stages": ["ralplan", "execution", "ralph", "qa"],
+                }
+            }
+        }
+    }
+
+
+def fake_omc_home(tmp_path):
+    api = omc_api()
+    home = tmp_path / "claude"
+    user = tmp_path / "config.jsonc"
+    settings = {"statusLine": {"type": "command", "command": WRAPPER}, "model": "keep", "hooks": {}}
+    for event in api["HOOKS"]:
+        settings["hooks"][event] = [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "sh ~/.orca/agent-hooks/claude-hook.sh",
+                    }
+                ]
+            }
+        ]
+    api["write"](home / "settings.json", settings)
+    api["prepare"](home, user)
+    for event, names in api["HOOKS"].items():
+        for name in names:
+            path = home / "hooks" / name
+            path.parent.mkdir(exist_ok=True)
+            path.write_text('console.log(JSON.stringify({decision:"block",reason:"upstream"}));\n')
+            settings["hooks"][event].append(
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": f'node "{path}"',
+                        }
+                    ]
+                }
+            )
+    api["write"](home / "settings.json", settings)
+    api["write"](home / ".omc-version.json", {"version": api["VERSION"]})
+    (home / "CLAUDE.md").write_text("upstream instructions\n")
+    for name in ("autopilot", "ralph", "ralplan", "team", "verify", "cancel"):
+        path = home / "skills" / name / "SKILL.md"
+        path.parent.mkdir(parents=True)
+        path.touch()
+    api["configure"](home, OMC_ADAPTER)
+    return api, home, user
+
+
+def test_omc_configuration_is_idempotent_and_preserves_orca_and_hud(tmp_path):
+    api, home, user = fake_omc_home(tmp_path)
+    api["check"](home, user, OMC_ADAPTER)
+    once = (home / "settings.json").read_bytes(), (home / "CLAUDE.md").read_bytes()
+    api["prepare"](home, user)
+    api["configure"](home, OMC_ADAPTER)
+    api["check"](home, user, OMC_ADAPTER)
+    assert once == ((home / "settings.json").read_bytes(), (home / "CLAUDE.md").read_bytes())
+    assert api["read"](home / "settings.json")["model"] == "keep"
+
+
+@pytest.mark.parametrize("damage", ["statusLine", "orca", "omc", "mcp", "hud", "triggers"])
+def test_omc_check_rejects_drift(tmp_path, damage):
+    api, home, user = fake_omc_home(tmp_path)
+    path = home / "settings.json"
+    settings = api["read"](path)
+    if damage == "statusLine":
+        settings["statusLine"]["command"] = "another-hud"
+    elif damage in ("orca", "omc"):
+        settings["hooks"]["Stop"].pop(0 if damage == "orca" else -1)
+    elif damage == "mcp":
+        settings["mcpServers"] = {"unexpected": {"command": "false"}}
+    elif damage == "hud":
+        api["write"](home / ".omc-config.json", {"hudEnabled": True})
+    else:
+        api["write"](user, {"keywordDetector": {"disabled": []}})
+    api["write"](path, settings)
+    with pytest.raises(AssertionError):
+        api["check"](home, user, OMC_ADAPTER)
+
+
+def run_omc_hook(home, event, data):
+    name = {
+        "Stop": "persistent-mode.mjs",
+        "PostToolUse": "post-tool-use.mjs",
+        "UserPromptSubmit": "keyword-detector.mjs",
+    }[event]
+    return subprocess.run(
+        [sys.executable, str(OMC_ADAPTER), "hook", event, str(home / "hooks" / name)],
+        input=json.dumps(data),
+        capture_output=True,
+        text=True,
+        check=True,
+        env=dict(os.environ, CLAUDE_CONFIG_DIR=str(home)),
+    ).stdout
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "May I change that boundary?",
+        "Waiting for the owner.",
+        "[MERIDIAN_WAIT]",
+        "Blocked on approval.",
+        "",
+        None,
+    ],
+)
+def test_omc_stop_releases_owner_questions(tmp_path, message):
+    _, home, _ = fake_omc_home(tmp_path)
+    assert (
+        run_omc_hook(home, "Stop", {"session_id": "one", "last_assistant_message": message}) == ""
+    )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "orca orchestration ask --question 'Need an owner decision'",
+        "orca orchestration send --type worker_done --body 'Done'",
+    ],
+)
+def test_omc_orca_handoff_latches_only_its_session_until_next_prompt(tmp_path, command):
+    _, home, _ = fake_omc_home(tmp_path)
+    stop = {"session_id": "one", "last_assistant_message": "Continue implementation."}
+    assert json.loads(run_omc_hook(home, "Stop", stop))["decision"] == "block"
+    run_omc_hook(home, "PostToolUse", {"session_id": "one", "tool_input": {"command": command}})
+    assert run_omc_hook(home, "Stop", stop) == ""
+    assert (
+        json.loads(run_omc_hook(home, "Stop", stop | {"session_id": "two"}))["decision"] == "block"
+    )
+    run_omc_hook(home, "UserPromptSubmit", {"session_id": "one", "prompt": "Authorized reply"})
+    assert json.loads(run_omc_hook(home, "Stop", stop))["decision"] == "block"
+
+
+def test_omc_dispatch_probe_runs_detector_in_disposable_state(tmp_path):
+    _, home, user = fake_omc_home(tmp_path)
+    (home / "hooks/keyword-detector.mjs").write_text(
+        'import fs from "node:fs";\n'
+        'const input=JSON.parse(fs.readFileSync(0,"utf8"));\n'
+        'if(!fs.existsSync(".claude/omc.jsonc")) process.exit(2);\n'
+        'fs.writeFileSync("probe-wrote-here", "scratch");\n'
+        "console.log(JSON.stringify({prompt:input.prompt,cwd:process.cwd()}));\n"
+    )
+    result = subprocess.run(
+        [sys.executable, str(OMC_ADAPTER), "probe", str(home), str(user)],
+        input="build me a tool",
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    output = json.loads(result.stdout)
+    assert output["prompt"] == "build me a tool"
+    assert not os.path.exists(output["cwd"])
+
+
+def test_omc_does_not_spawn_factory_work_when_a_session_ends(tmp_path, capsys):
+    api, home, _ = fake_omc_home(tmp_path)
+    assert api["hook"]("SessionEnd", home / "hooks/session-end.mjs", "{}") == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_omc_bootstrap_before_orca_and_final_check_have_distinct_requirements(tmp_path):
+    api, home, user = fake_omc_home(tmp_path)
+    settings = api["read"](home / "settings.json")
+    for groups in settings["hooks"].values():
+        groups.pop(0)
+    api["write"](home / "settings.json", settings)
+    # A removed existing Orca hook fails even during bootstrap.
+    with pytest.raises(AssertionError):
+        api["check"](home, user, OMC_ADAPTER, require_orca=False)
+    before = api["read"](home / ".meridian-omc-before.json")
+    before["hooks"] = {}
+    api["write"](home / ".meridian-omc-before.json", before)
+    api["check"](home, user, OMC_ADAPTER, require_orca=False)
+    with pytest.raises(AssertionError):
+        api["check"](home, user, OMC_ADAPTER)
+
+
+def test_omc_setup_ignores_state_once_without_replacing_existing_exclusions(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    exclude = tmp_path / ".git/info/exclude"
+    exclude.write_text("keep-this\n")
+    program = f"omc_ignore_state() {{\n{setup_function_body('omc_ignore_state')}\n}}"
+    program += '\nomc_ignore_state "$1"\nomc_ignore_state "$1"\n'
+    subprocess.run(["bash", "-euc", program, "fixture", str(tmp_path)], check=True)
+    assert exclude.read_text() == "keep-this\n\n/.omc/\n"

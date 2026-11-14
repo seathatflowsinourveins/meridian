@@ -49,6 +49,7 @@ config = [
   "*.yml",
   "*.yaml",
   "*.json",
+  "*.jsonc",
   "*.ini",
   "*.cfg",
   "*.conf",

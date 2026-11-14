@@ -16,6 +16,7 @@
 #     orca          Orca server, a loopback-only systemd user service (sudo for /opt)
 #     codex-bridge  the Codex review plugin for Claude Code
 #     claude-hud    the claude-hud status line for Claude Code, beside Orca's usage reporter
+#     omc           Claude lifecycle in user scope (also called by claude); ADR 0019
 #   deploy/wsl/setup.sh agents-check  verify the agent runtimes and their settings
 #   deploy/wsl/setup.sh drift         installed against pinned; exit 0 when upkeep is due (changes nothing)
 #   deploy/wsl/setup.sh upkeep        bring this machine to the pins (not Orca's server: the owner's step)
@@ -63,6 +64,9 @@ CLAUDE_SHA256=0dc4f4a9a165fc60746d7ae8489712e5fc352f1e7ad4eb22e7141bd0812eb0cf
 CLAUDE_RELEASE_SIGNER=31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE
 CLAUDE_RELEASES=https://downloads.claude.ai/claude-code-releases
 CLAUDE_MODEL=claude-fable-5-2
+# ADR 0019: standalone lifecycle, no plugin/MCP registration or OMC HUD.
+OMC_VERSION=5.8.4
+OMC_INTEGRITY=sha512-6J2v4YomI8vK4mmhDTMV8SqS2Bj4dUvPz3ApapKsYVN6P04rGs0/L78p3/Rda0mq1UuHOYII8ubj+ehlgmxxwA==
 # Codex CLI: OpenAI's npm package and its linux-x64 build, by their registry integrity values.
 CODEX_VERSION=0.167.2
 CODEX_INTEGRITY=sha512-6OFkr2ndzTdFb32OEiUlM9BgpeY8+wnMe8vRhuvt+22TnxVR39KnJ22Ghay98IY9OmEltoNgFN4GALUkxFQCOw==
@@ -351,6 +355,7 @@ cmd_claude() {
   if version_ge "$(claude_version)" "${CLAUDE_VERSION}"; then
     ok "Claude Code $(claude_version) is already installed"
     claude_settings
+    cmd_omc
     check_claude
     return
   fi
@@ -379,6 +384,7 @@ cmd_claude() {
   echo "${CLAUDE_SHA256}  ${HOME}/.local/share/claude/versions/${CLAUDE_VERSION}" | sha256sum -c -
   [ "$(claude_version)" = "${CLAUDE_VERSION}" ] || fail "claude --version is not ${CLAUDE_VERSION}"
   claude_settings
+  cmd_omc
   check_claude
 }
 
@@ -407,7 +413,48 @@ check_claude() {
   ' "${HOME}/.claude/settings.json" >/dev/null \
     || fail "~/.claude/settings.json is not what deploy/wsl/setup.sh claude writes"
   check_claude_managed
+  check_omc
   ok "Claude Code $(claude_version): ${CLAUDE_MODEL} at high effort, no claude.ai connectors, sync or MCP server; thinking shown, fullscreen, compaction at its defaults"
+}
+
+cmd_omc() {
+  npm_user_prefix
+  npm_pinned "oh-my-claude-sisyphus@${OMC_VERSION}" "${OMC_INTEGRITY}"
+  npm install -g --ignore-scripts --no-audit --no-fund "oh-my-claude-sisyphus@${OMC_VERSION}"
+  local adapter="${HOME}/.local/bin/meridian-omc" tmp
+  install -m 0755 "$(dirname "${BASH_SOURCE[0]}")/meridian-omc.py" "${adapter}"
+  python3 "${adapter}" prepare "${HOME}/.claude" "${HOME}/.config/claude-omc/config.jsonc"
+  tmp="$(mktemp -d)"
+  # Prevent setup's unified MCP registry from reading either runtime's user config.
+  # No account/auth file is copied into this scratch registry or consulted by setup.
+  printf '{}\n' > "${tmp}/empty.json"
+  (
+    cd "${tmp}"
+    CLAUDE_CONFIG_DIR="${HOME}/.claude" OMC_HOME="${tmp}/omc" OMC_STATE_DIR="${tmp}/state" \
+      CLAUDE_MCP_CONFIG_PATH="${tmp}/empty.json" OMC_MCP_REGISTRY_PATH="${tmp}/empty.json" \
+      CODEX_HOME="${tmp}/codex" "${HOME}/.local/bin/omc" setup --no-plugin --force --quiet </dev/null
+  )
+  rm -rf "${tmp}"
+  python3 "${adapter}" configure "${HOME}/.claude" "${HOME}/.config/claude-omc/config.jsonc" "${adapter}"
+  omc_ignore_state "$(dirname "${BASH_SOURCE[0]}")/../.."
+  check_omc
+}
+
+omc_ignore_state() {
+  local common
+  common="$(git -C "$1" rev-parse --path-format=absolute --git-common-dir)"
+  install -d "${common}/info"
+  touch "${common}/info/exclude"
+  grep -qxF '/.omc/' "${common}/info/exclude" \
+    || printf '\n/.omc/\n' >> "${common}/info/exclude"
+}
+
+check_omc() {
+  python3 "${HOME}/.local/bin/meridian-omc" check \
+    "${HOME}/.claude" "${HOME}/.config/claude-omc/config.jsonc" "${HOME}/.local/bin/meridian-omc" "${1:---before-orca}" \
+    || fail "OMC lifecycle settings or coexisting hooks differ from ADR 0019 (run: deploy/wsl/setup.sh omc)"
+  check_claude_managed
+  ok "OMC ${OMC_VERSION}: standalone, HUD and MCP off, explicit workflows, boundary stops guarded"
 }
 
 codex_version() {
@@ -1200,6 +1247,7 @@ case "${1:-}" in
   orca) cmd_orca ;;
   codex-bridge) cmd_codex_bridge ;;
   claude-hud) cmd_claude_hud ;;
+  omc) cmd_omc ;;
   drift) cmd_drift "${2:-}" ;;
   upkeep) cmd_upkeep ;;
   orca-automation) cmd_orca_automation ;;
@@ -1218,6 +1266,7 @@ case "${1:-}" in
     check_gh
     check_gitleaks
     check_claude
+    check_omc --require-orca
     check_codex
     check_agy
     check_dsh

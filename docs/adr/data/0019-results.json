@@ -1,0 +1,45 @@
+{
+  "prose_has_no_trigger": true,
+  "profile_activated": true,
+  "owner_question_releases_stop": true,
+  "orca_ask_releases_stop": true,
+  "ralplan_advanced_once": true,
+  "execution_advanced_once": true,
+  "ralph_advanced_once": true,
+  "qa_advanced_once": true,
+  "complete_is_inactive": true,
+  "next_stop_released": true,
+  "setup_preserves_status_and_orca": true,
+  "repeat_setup_configure_identical": true,
+  "static_context_estimate": {
+    "instructions": {
+      "bytes": 6972,
+      "characters": 6930,
+      "tokens": 1723
+    },
+    "skill_listing": {
+      "bytes": 31617,
+      "characters": 31517,
+      "tokens": 7551
+    },
+    "agent_listing": {
+      "bytes": 2777,
+      "characters": 2775,
+      "tokens": 611
+    },
+    "combined": {
+      "tokens": 9885
+    },
+    "session_start": {
+      "characters": 0,
+      "tokens": 0
+    }
+  },
+  "audit": {
+    "affected_package_rows": 2,
+    "unique_advisories": 1,
+    "severity": "high",
+    "zod_version": "3.25.76",
+    "advisory": "GHSA-mrhx-c7xc-m3w5"
+  }
+}
